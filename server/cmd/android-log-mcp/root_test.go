@@ -68,7 +68,8 @@ func TestSetRootCLI(t *testing.T) {
 		t.Fatalf("set-root: %d %q %q", code, out, errOut)
 	}
 	out, _, _ = cli(t, nil, "root", "--json")
-	if !strings.Contains(out, `"source": "config"`) || !strings.Contains(out, res.NewRoot) {
+	var cur struct{ Root, Source string }
+	if json.Unmarshal([]byte(out), &cur) != nil || cur.Source != "config" || cur.Root != res.NewRoot {
 		t.Fatalf("root after set-root: %s", out)
 	}
 	_, errOut, code = cli(t, nil, "set-root", filepath.Join(res.NewRoot, "inside"), "--keep-old")

@@ -171,7 +171,9 @@ func TestSetRootDeleteOldOnlyOurs(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(old, kept)); err != nil {
 			t.Errorf("foreign %s deleted", kept)
 		}
-		if !slices.Contains(res.Remained, filepath.Join(old, kept)) {
+		// compare names: the result holds the resolved path (macOS
+		// /private/var, Windows long names), the test the temp path
+		if !slices.ContainsFunc(res.Remained, func(p string) bool { return filepath.Base(p) == kept && filepath.Base(filepath.Dir(p)) == "old" }) {
 			t.Errorf("%s not reported as remaining: %v", kept, res.Remained)
 		}
 	}
