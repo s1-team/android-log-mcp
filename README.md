@@ -62,7 +62,7 @@ args = ["-y", "android-log-mcp"]
 }
 ```
 
-Windows 上如果客户端找不到 `npx`，把 command 改成 `"cmd"`，args 改成 `["/c", "npx", "-y", "android-log-mcp"]`。如果想固定版本，用 `android-log-mcp@0.1.0`。
+Windows 上如果客户端找不到 `npx`，把 command 改成 `"cmd"`，args 改成 `["/c", "npx", "-y", "android-log-mcp"]`。如果想固定版本，用 `android-log-mcp@0.2.0`。
 
 ### 从源码构建
 
@@ -106,6 +106,85 @@ tag:A | tag:B   (tag:A | level:error) & package:com.foo
 # 先录制 5 秒（可用 ANDROID_LOG_MCP_CALL_WAIT=20s 调整），然后调用一次工具并打印结果
 npx -y android-log-mcp call logcat_search '{"filter":"level:error","limit":20}'
 ```
+
+### 诊断包（`report`）
+
+需要把问题反馈给维护者时，用 `report` 子命令把诊断数据打成一个 zip（**默认打码敏感信息**）：
+
+```bash
+npx -y android-log-mcp report                                   # 所有已录制设备，最近 2 小时
+npx -y android-log-mcp report --serial emulator-5556 --package com.foo \
+    --since 30m --note "点登录按钮后闪退" -o foo-crash.zip
+npx -y android-log-mcp report --from "2026-10-10 14:00" --to "2026-10-10 14:30" --note @repro.txt
+npx -y android-log-mcp report --package com.foo --am-start com.foo/.MainActivity   # 会启动 App，见下文
+```
+
+| 参数 | 含义 |
+|---|---|
+| `--serial S` | 只打包这台设备（可重复）；默认所有有录制数据的设备 |
+| `--since 2h` / `--from` / `--to` | 时间窗口（设备本地时间，语法同工具的 `from`/`to`）。默认最近 2 小时；`--to` 缺省表示到最新一条 |
+| `--package P` | 只保留该 App 的日志（按包名 / 进程名），以及正文中提到该包名的系统日志（`START u0`、`am_proc_start`、`Displayed` 等），并只保留它的崩溃、进程和 DropBox 条目 |
+| `--max-size 50MB` | 日志数据（未压缩）上限，超出时从最旧的开始丢弃；丢弃数量写进 `manifest.json`，并在包内的 `meta.json` 里记成一个 "report size cap" 缺口 |
+| `--note TEXT` / `--note @FILE` | 复现步骤或问题说明，存为 `note.txt`（同样会打码） |
+| `--am-start PKG/Activity` | 执行 `am start -W -n` 并记录输出（对照数据）。**这会启动 App**，所以只有显式指定时才执行；执行后最多等 8 秒让录制进程把启动日志落盘 |
+| `--redact-extra REGEX` | 追加打码规则（RE2，可重复；有分组时只替换第 1 组），类型记为 `custom` |
+| `--no-redact` | 关闭打码（manifest 里会有警告） |
+| `--keep-private-ip` | 不打码内网地址（10/8、172.16/12、192.168/16、链路本地、ULA） |
+| `--keep-domain D` | 不打码域名 `D` 及其子域名（可重复），例如自家 API 的域名；值不写入 manifest |
+| `--offline` | 不使用 adb：不采集实时设备信息和 DropBox |
+| `-o FILE` | 输出路径，默认 `./android-log-mcp-report-<时间>.zip`（路径打印到 stdout，摘要打印到 stderr） |
+
+`report` 只读取数据目录，不会改动它，也不会开始录制；除 `--am-start` 外不会改变设备状态（只执行 `getprop`、`date`、`cat /proc/sys/kernel/random/boot_id`、`dumpsys dropbox --print`）。
+
+zip 内容：
+
+| 路径 | 内容 |
+|---|---|
+| `manifest.json` | 工具版本、生成时间、参数（`--note` / `--redact-extra` / `--keep-domain` 的值不写入）、每台设备的窗口和记录数、各文件大小、裁剪情况、各打码规则的命中次数和不同值个数、警告 |
+| `note.txt` | `--note` 的内容 |
+| `store/<serial>/` | 本工具自己的存储格式（`seg-*.jsonl`、`meta.json`、`crashes.jsonl`、`procs.jsonl`、`packages.json`），已按窗口/包名裁剪、序号重排为 1..N。可直接加载：`android-log-mcp --home <解压目录>/store --offline`（作为 MCP 服务器，或配合 `call` 调用工具） |
+| `devices/<serial>/device.json` | `ro.build.fingerprint`、型号、厂商、Android 版本、SDK、时区和 `date +%z` 偏移、boot_id、设备与主机的时钟差（设备离线时取录制时保存的信息，并注明来源） |
+| `devices/<serial>/logcat/<boot>.txt` | 同一批记录按 `logcat -v threadtime -v epoch -v uid -v usec -v printable` 格式重新输出，每次启动（boot）一个文件，可以直接用回放测试的 `device.Pipeline.ReplayText` 加载 |
+| `devices/<serial>/dropbox/<tag>.txt` | 窗口内的 DropBox 条目（`data_app_crash`、`data_app_native_crash`、`data_app_anr`、`SYSTEM_TOMBSTONE` 及 `system_app_*`），格式同 `dumpsys dropbox --print`，可用 `Pipeline.ApplyDropbox` 加载 |
+| `devices/<serial>/am-start.txt` | `--am-start` 的输出 |
+
+```bash
+unzip foo-crash.zip -d r
+android-log-mcp --home r/store --offline call logcat_crashes '{"package":"com.foo"}'
+```
+
+#### 隐私提示
+
+默认会把下列内容替换成 `[REDACTED:<类型>#n]`：同一个原值在整个包里（日志、崩溃、DropBox、note）对应同一个编号，方便关联；编号由每次随机生成、用完即丢的 HMAC 密钥决定，包里不保存原值，也无法反推。
+
+| 类型 | 规则 |
+|---|---|
+| `token` | `Authorization:` / `Proxy-Authorization:` 头、`Bearer` / `Basic` 后面的值 |
+| `jwt` | `eyJ….eyJ….…` 形式的 JWT |
+| `secret` | 常见密钥前缀：`ghp_` `gho_` `ghu_` `ghs_` `ghr_` `github_pat_` `npm_` `sk-`（含 `sk-proj-` 等） `AKIA` / `ASIA` `AIza` `xox?-` `glpat-`、PEM 私钥头 |
+| `credential` | 键名含 api_key / secret / token / password / passwd / access_key / private_key / credential 的 `key=value`、`key: value`、JSON 字段，以及 URL query 里的同名参数 |
+| `url_param` | URL query 里的 `sig` `signature` `code` `key` `auth` `ticket` `sid` `session` `otp` `nonce` 以及 AWS / GCS 签名参数 |
+| `password` | URL 里的 `scheme://user:password@host` |
+| `cookie` | `Cookie:` / `Set-Cookie:` 的值 |
+| `email` | 邮箱地址 |
+| `phone` | 中国大陆 11 位手机号（含 `+86`），以及带 `+` 的国际号码 |
+| `id_card` | 18 位居民身份证号（校验出生日期和 GB 11643 校验位） |
+| `bank_card` | 13–19 位银行卡号（Luhn 校验 + 卡组织号段；不带分隔符的纯数字串还要求 15/16/19 位、键名不像计数器） |
+| `device_id` | IMEI、IMSI、ICCID、MEID、序列号、Android ID、广告 ID（`key=value` 形式） |
+| `ipv4` / `ipv6` | IP 地址（不含 127.0.0.1、::1、0.0.0.0）；`--keep-private-ip` 保留内网地址 |
+| `mac` | MAC 地址（不含全 0 / 广播地址） |
+| `domain` | 域名 / 主机名，见下文；`--keep-domain` 保留指定域名 |
+
+`domain` 规则分两种情况：
+
+- **URL 里的主机**（`https://`、`http://`、`wss://`、`ftp://`、`postgres://` 等任意网络 scheme）：只替换主机部分，scheme、`user:` 、端口、路径和 query 保持原样，比如 `GET https://api.foo.com:8443/v1/login?page=2` → `GET https://[REDACTED:domain#1]:8443/v1/login?page=2`。这里不限顶级域名。IP 字面量仍归 `ipv4` / `ipv6`；`content://`、`file://`、`android.resource://`、`intent:` 等非网络 scheme 不处理；`app://com.foo.app:10108` 这类以包名作 authority 的也不处理。与 `password`、`credential`、`url_param` 可同时生效：`postgres://bob:[REDACTED:password#1]@[REDACTED:domain#1]:5432/app`。
+- **不在 URL 里的裸主机名**（`Unable to resolve host "cdn.foo.com"`、`failed to connect to www.foo.com/1.2.3.4`、`apn: epc.foo.com`、`sub.example.cn`）：只认小写、至少两段、最后一段在一份精选的公共顶级域名列表里（com、net、org、io、co、ai、app、dev、cn、uk、jp、de 等常见通用和国家顶级域名），并且第一段不能是 `com` / `org` / `android` / `java` / `ro` / `persist` 等反向域名 / 属性前缀。所以包名和类名（`com.example.logtest`、`android.app.ActivityThread`、`java.lang.RuntimeException`）、Java 堆栈帧、文件名（`Foo.java`、`libc.so`、`base.apk`、`*.odex`、`*.xml`、`*.json`）、版本号、IP、系统属性（`ro.build.fingerprint`、`persist.sys.*`）、intent action（`android.intent.action.MAIN`）都不会被误判。
+
+取舍：裸主机名用的是精选列表，不是完整的 IANA 列表。也是常见文件扩展名或单词的顶级域名（`.so` `.md` `.py` `.sh` `.rs` `.id` `.in` `.it` `.is` `.to` `.top` `.site` `.online` `.store` `.cloud` 等）不在列表里，所以 `cdn.foo.so` 这种主机名只有出现在 URL 里时才会被打码。邮箱整体归 `email`，不会再单独拆出域名。
+
+**不会打码**的：时间戳、pid、tid、uid、级别、tag、包名、进程名、设备属性（fingerprint 等），以及正文里的包名 / 类名 / 文件名 / 属性名（见上面的 `domain` 规则）。为了不误伤日志结构，规则会排除：epoch 时间戳和 ns 计数、十六进制值和地址（`0x…`、寄存器 / 内存转储列）、native 堆栈帧（`#01 pc …`）、Java 堆栈帧、版本号（`versionName=1.2.3.4`、`Chrome/83.0.41.10`、`Radio: 1.0.0.0`）、HIDL 库名（`android.hardware.foo@1.0.so`）、`schedstat` 等数字列表，以及键名是 time / size / bytes / count / duration / …Ms 之类的数字。这些都有单元测试，并在 API 29 的真实日志上回归。
+
+**打码是基于模式的，不能保证完全**：自定义格式的 token、姓名、地址、不带键名的随机串等识别不了。分享前请先检查 zip 内容；需要时用 `--redact-extra` 追加规则。`--no-redact` 生成的包可能含有 token、密码和个人信息，只应发给可信的人。
 
 ## 环境变量与数据目录
 
@@ -164,6 +243,7 @@ npx -y android-log-mcp call logcat_search '{"filter":"level:error","limit":20}'
 - **已验证**：
   - `go test ./...` 全部通过，其中移植了 Android Studio 的过滤器解析器测试。
   - 回归测试会把 `server/internal/testdata/api29/`（API 29 模拟器的真实输出）里的 logcat 和 DropBox 数据，经过和线上相同的 ingest pipeline（`device.Pipeline`）回放，再调用 MCP 工具断言输出（`server/internal/mcpserver/replay_test.go`）。
+  - `report`：每条打码规则都有正反例单元测试（`server/internal/redact`），并在 API 29 全部真实日志上确认时间、pid、tid、级别、tag 不变；回放测试会把 fixture 打成包，再分别按数据目录和原始 logcat + DropBox 文本加载回来，确认崩溃和启动时间线和原始录制一致（`server/internal/mcpserver/report_replay_test.go`）。在 emulator-5556 上用 `scripts/e2e-report.sh` 注入 21 条假密钥（15 种类型）和 4 条结构反例，打包后全部打码、日志头完整、离线加载正常，记录在 `validation/report-e2e/`。
   - 在 emulator-5556（Android 10 / API 29，TCG）上做了端到端验证：冷启动、HOT 启动、onNewIntent、Java 崩溃、SIGSEGV、SIGABRT、`:remote` 进程及其崩溃、广播 ANR、`log -t` 标记，以及非 ASCII 字符的处理。输出保存在 `validation/mcp-v2/`。
 - **未验证**：
   - Android 11 及以上的 `wm_*` 事件格式：只有单元测试。
@@ -178,16 +258,17 @@ npx -y android-log-mcp call logcat_search '{"filter":"level:error","limit":20}'
 |---|---|
 | `server/` | Go 模块 `github.com/s1crab/android-log-mcp/server`，包括源码、单元测试和回归测试 fixture（`internal/testdata/api29`） |
 | `npm/` | npm 启动器和包模板。用 `scripts/build-npm.sh [版本] [--pack]` 交叉编译并组装所有包 |
+| `scripts/` | `build-npm.sh`（打 npm 包）、`e2e-report.sh`（在真机 / 模拟器上验证 `report` 的打码） |
 | `validation/` | 在 API 29 模拟器上的实测记录：结论、触发脚本、测试 App 源码、MCP 工具的实际输出（v1 在 `mcp/`，v2 在 `mcp-v2/`） |
 | `docs/` | 调研和设计文档 |
 | `.github/workflows/` | CI（测试）和 release（打 `v*` tag 时发布到 npm） |
 
 ## 发布（维护者）
 
-1. 修改 `npm/VERSION`，然后打 tag 并 push：`git tag v0.1.0 && git push origin v0.1.0`。
+1. 修改 `npm/VERSION`（以及 `server/internal/mcpserver/server.go` 里的默认 `Version`），然后打 tag 并 push：`git tag v0.2.0 && git push origin v0.2.0`。
 2. `release.yml` 会依次跑测试、交叉编译、`npm publish --provenance`。先发 6 个平台包，再发主包。需要仓库里配置 secret `NPM_TOKEN`（npm 的 Automation 或 Granular token）。
 
-本地验证：`scripts/build-npm.sh 0.1.0 --pack`，生成的 tarball 在 `npm/dist/tarballs/`。
+本地验证：`scripts/build-npm.sh 0.2.0 --pack`，生成的 tarball 在 `npm/dist/tarballs/`。
 
 ## 第三方参考
 

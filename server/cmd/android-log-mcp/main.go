@@ -28,6 +28,7 @@ func main() {
 	}
 	home := flag.String("home", "", "data directory (default $ANDROID_LOG_MCP_HOME or <user cache dir>/android-log-mcp)")
 	version := flag.Bool("version", false, "print version and exit")
+	offline := flag.Bool("offline", false, "do not use adb: only browse recorded data (e.g. an unzipped report's store/ directory)")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `android-log-mcp %s — MCP stdio server for Android logcat
 
@@ -35,6 +36,9 @@ usage:
   android-log-mcp [--home DIR]                 run as MCP server on stdin/stdout
   android-log-mcp [--home DIR] call TOOL [JSON] debug: record for a few seconds, call one tool, print result
       env ANDROID_LOG_MCP_CALL_WAIT=5s controls how long to record before the call
+  android-log-mcp [--home DIR] report [flags]   pack logs + diagnostics into a redacted zip
+                                               (android-log-mcp report -h for flags)
+  android-log-mcp --home R/store --offline ...  browse an unzipped report (no adb, no recording)
 
 `, mcpserver.Version)
 		flag.PrintDefaults()
@@ -52,7 +56,14 @@ usage:
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	if flag.NArg() > 0 && flag.Arg(0) == "report" {
+		// reads the data directory only; must not start a recorder
+		code := runReport(ctx, *home, flag.Args()[1:])
+		cancel()
+		os.Exit(code)
+	}
 	m := device.NewManager(base, store.Config{})
+	m.NoADB = *offline
 	m.Start(ctx)
 	defer m.Close()
 	tools := &mcpserver.Tools{M: m}
@@ -63,6 +74,9 @@ usage:
 			os.Exit(2)
 		}
 		wait := 5 * time.Second
+		if *offline {
+			wait = 0
+		}
 		if v, err := time.ParseDuration(os.Getenv("ANDROID_LOG_MCP_CALL_WAIT")); err == nil {
 			wait = v
 		}

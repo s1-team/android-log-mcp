@@ -144,3 +144,7 @@ emulator -avd api29 -port 5556 -no-window -no-audio -no-boot-anim -gpu swiftshad
 - 快照恢复（TCG 下失败）、恢复后的时钟跳变和旧日志是否保留。
 - input 类型的 ANR，以及 WARM 启动。
 - `logcat -L` 失败，/data/anr 读不了，这两条与 design 的预期一致。
+
+## report 子命令（v0.2.0）
+
+`android-log-mcp report` 的打码端到端验证在 `report-e2e/`（`scripts/e2e-report.sh`）：在 emulator-5556 上注入 16 种假密钥（含域名），打包后全部打码，日志头完整，报告可以离线加载。

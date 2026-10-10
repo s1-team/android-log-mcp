@@ -1,0 +1,153 @@
+{
+  "format": "android-log-mcp-report/1",
+  "tool": "android-log-mcp",
+  "version": "0.2.0",
+  "generated_at": "2026-10-10T13:17:41+08:00",
+  "args": [
+    "report",
+    "--serial",
+    "emulator-5556",
+    "--since",
+    "20m",
+    "-o",
+    "/tmp/tmp.JaoRhMZ5Ss/report.zip",
+    "--note",
+    "<omitted>"
+  ],
+  "params": {
+    "serials": [
+      "emulator-5556"
+    ],
+    "since": "20m0s",
+    "max_bytes": 52428800,
+    "note": true,
+    "redact": true
+  },
+  "devices": [
+    {
+      "serial": "emulator-5556",
+      "dir": "emulator-5556",
+      "zone": "Asia/Kuching",
+      "device_now": "2026-10-10 13:17:44 +0800",
+      "window_from": "2026-10-10 12:57:44.816 +0800",
+      "boots": [
+        "ccb368e7"
+      ],
+      "records_in_window": 759,
+      "records": 759,
+      "first_record": "2026-10-10 12:58:00.025385",
+      "last_record": "2026-10-10 13:17:47.411151",
+      "crashes": 0,
+      "procs": 171,
+      "device_info": "live"
+    }
+  ],
+  "limits": {
+    "max_bytes": 52428800,
+    "log_bytes": 272209,
+    "dropped_records": 0,
+    "dropped_bytes": 0
+  },
+  "redaction": {
+    "enabled": true,
+    "placeholder": "[REDACTED:<type>#<n>] — the same value maps to the same n within this report; the mapping key is random and discarded, so values cannot be recovered",
+    "hits": {
+      "bank_card": 8,
+      "cookie": 4,
+      "credential": 13,
+      "device_id": 4,
+      "domain": 13,
+      "email": 5,
+      "id_card": 4,
+      "ipv4": 4,
+      "ipv6": 4,
+      "jwt": 4,
+      "mac": 4,
+      "password": 4,
+      "phone": 8,
+      "secret": 16,
+      "token": 5,
+      "url_param": 4
+    },
+    "unique_values": {
+      "bank_card": 2,
+      "cookie": 1,
+      "credential": 4,
+      "device_id": 1,
+      "domain": 6,
+      "email": 1,
+      "id_card": 1,
+      "ipv4": 1,
+      "ipv6": 1,
+      "jwt": 1,
+      "mac": 1,
+      "password": 1,
+      "phone": 2,
+      "secret": 4,
+      "token": 1,
+      "url_param": 1
+    },
+    "rules": [
+      "bank_card",
+      "cookie",
+      "credential",
+      "device_id",
+      "domain",
+      "email",
+      "id_card",
+      "ipv4",
+      "ipv6",
+      "jwt",
+      "mac",
+      "password",
+      "phone",
+      "secret",
+      "token",
+      "url_param"
+    ],
+    "scope": "log messages, crash/ANR/tombstone texts, DropBox bodies, am start output and the note. Not redacted: timestamps, pid/tid/uid, level, tag, package and process names, device properties."
+  },
+  "files": [
+    {
+      "path": "store/emulator-5556/seg-00000000000000000001.jsonl",
+      "bytes": 168698
+    },
+    {
+      "path": "devices/emulator-5556/logcat/ccb368e7.txt",
+      "bytes": 103511
+    },
+    {
+      "path": "store/emulator-5556/crashes.jsonl",
+      "bytes": 0
+    },
+    {
+      "path": "store/emulator-5556/procs.jsonl",
+      "bytes": 31736
+    },
+    {
+      "path": "store/emulator-5556/packages.json",
+      "bytes": 7617
+    },
+    {
+      "path": "store/emulator-5556/meta.json",
+      "bytes": 650
+    },
+    {
+      "path": "devices/emulator-5556/device.json",
+      "bytes": 598
+    },
+    {
+      "path": "note.txt",
+      "bytes": 77
+    },
+    {
+      "path": "README.txt",
+      "bytes": 1024
+    }
+  ],
+  "how_to_load": [
+    "unzip REPORT.zip -d r && android-log-mcp --home r/store --offline call logcat_crashes '{}'",
+    "or point an MCP client at: android-log-mcp --home r/store --offline",
+    "raw logcat text for replay tests: devices/<serial>/logcat/<boot>.txt (device.Pipeline.ReplayText), DropBox: devices/<serial>/dropbox/<tag>.txt (Pipeline.ApplyDropbox)"
+  ]
+}

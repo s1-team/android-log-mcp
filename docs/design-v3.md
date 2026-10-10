@@ -462,3 +462,18 @@ agent 可以借此发现自己写的 `message:foo message:bar` 实际被解释�
 7. **冷/温/热判定规则**和 `wm_on_*_called` 在旧版本上是否存在（这些事件在 main 分支中存在，最早出现的版本 **[未知]**）。
 8. **工具 description 用英文**是否可以接受；如有需要可以加中文别名说明。
 9. 多设备时 crash ID 的格式。
+
+## 8. 诊断包：`report` 子命令（v0.2.0，issue #1）
+
+目的：用户把诊断数据发给维护者，用来回放、复现和补回归测试。用法和打码规则见 README「诊断包」一节，这里只记设计取舍。
+
+- **不是 MCP 工具，而是 CLI 子命令**：打包要写本地文件、可能启动 App（`--am-start`），不适合交给 agent 随手调用。子命令只用 `store.OpenReadOnly` 读数据目录，不抢 writer 锁、不开始录制，和正在运行的录制进程互不影响。
+- **日志以两种形式放进包里**：
+  - `store/<serial>/`：本工具自己的格式，按窗口 / 包名裁剪，序号重排为 1..N（崩溃的 `seq` 和会话的 `first_seq` 按下界映射过去），只写一个分段（最后一个分段永不被 prune，所以过了 7 天再打开也不会被删）。`--home <解压目录>/store --offline` 直接加载，4 个工具照常可用。
+  - `devices/<serial>/logcat/<boot>.txt`：同一批记录按录制时的 `logcat -v threadtime -v epoch -v uid -v usec -v printable` 格式重新输出，每个 boot 一个文件；DropBox 条目保持 `dumpsys dropbox --print` 格式。回放测试的 `Pipeline.ReplayText` / `ApplyDropbox` 可以原样加载，崩溃识别和启动分析会重新跑一遍。已知限制：头部完全相同的相邻两条记录在回放时会被合并（与 README「合并多行消息」相同）。
+- **打码只作用于正文**：日志的 message、崩溃 / ANR / tombstone 文本、DropBox 正文、`am start` 输出和 note。时间、pid、tid、uid、级别、tag、包名、进程名和设备属性是结构化字段，不经过打码器，所以结构不可能被破坏；规则本身再排除时间戳、十六进制、堆栈帧、版本号等（单元测试 + API 29 全量 fixture 回归）。
+- **占位符 `[REDACTED:<类型>#n]`**：编号按首次出现顺序分配，同值同号；映射用每个包随机生成、用完即丢的 HMAC 密钥，内存里也只存 HMAC，包里不保存原值。`--redact-extra` 的正则、`--keep-domain` 的域名和 `--note` 的内容不写进 manifest（只记条数 / 是否有）。
+- **域名**：URL 里的主机不论顶级域名都打码（只换主机，保留 scheme / 端口 / 路径）；裸主机名只认精选公共顶级域名、且第一段不是反向域名前缀（`com.`、`android.`、`java.`、`ro.`、`persist.`…），以避免把包名、类名、文件名、属性名、intent action 当成域名。代价是以 `.so` `.md` `.sh` `.py` `.rs` `.id` `.top` `.online`… 这类既是文件扩展名 / 常用词又是 TLD 结尾的裸主机名会漏掉，URL 里的不受影响；可用 `--redact-extra` 补。在 API 29 全量 fixture 上，域名规则命中的只有 11 个真实主机（`connectivitycheck.gstatic.com`、`time.android.com`、`www.google.com` 等），测试里固定了这份清单，多出任何一个都算误判。
+- **大小上限**：按「未压缩的 JSONL + logcat 文本」计算，多台设备共用一个上限，从最旧的记录开始丢；丢弃数写进 manifest，并在包内 `meta.json` 加一个 `report size cap` 缺口，`logcat_status` 会显示。
+- **`--package`**：保留该 App 的记录（按 ingest 时解析出的包名 / 进程名），以及正文里提到包名的系统记录（`START u0`、`am_proc_start`、`Displayed`、`ANR in` 等），这样启动时间线和崩溃上下文在包里仍然完整。`packages.json` 也只保留该 App 的 uid，避免把整个已安装应用列表带出去。
+- **`--am-start`**：先执行再收集日志；执行后最多等 8 秒，直到录制进程落盘了 am start 开始之后的日志。没有录制进程时在 `am-start.txt` 里注明。组件名用正则校验，防止 shell 注入。
