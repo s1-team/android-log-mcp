@@ -29,7 +29,7 @@ func collect(s *Store, after, before uint64, desc bool, limit int) []uint64 {
 }
 
 func TestAppendScanReopen(t *testing.T) {
-	base := t.TempDir()
+	base := tempDir(t)
 	cfg := Config{SegmentBytes: 2000, MemRecords: 50}
 	s, err := Open(base, "emulator-5554", cfg)
 	if err != nil {
@@ -89,7 +89,7 @@ func TestAppendScanReopen(t *testing.T) {
 }
 
 func TestTornLineRepair(t *testing.T) {
-	base := t.TempDir()
+	base := tempDir(t)
 	s, _ := Open(base, "x", Config{})
 	s.Append(mk(3, 1))
 	s.Close()
@@ -111,7 +111,7 @@ func TestTornLineRepair(t *testing.T) {
 }
 
 func TestFollowerTailsWriter(t *testing.T) {
-	base := t.TempDir()
+	base := tempDir(t)
 	w, _ := Open(base, "dev", Config{})
 	f, _ := Open(base, "dev", Config{})
 	if !w.IsWriter() || f.IsWriter() {
@@ -144,7 +144,8 @@ func TestFollowerTailsWriter(t *testing.T) {
 }
 
 func TestWaitTimeoutAndNotify(t *testing.T) {
-	s, _ := Open(t.TempDir(), "d", Config{})
+	s, _ := Open(tempDir(t), "d", Config{})
+	t.Cleanup(s.Close)
 	start := time.Now()
 	if s.Wait(context.Background(), 0, 200*time.Millisecond) {
 		t.Fatal("should time out")
@@ -159,8 +160,9 @@ func TestWaitTimeoutAndNotify(t *testing.T) {
 }
 
 func TestRetentionBySize(t *testing.T) {
-	base := t.TempDir()
+	base := tempDir(t)
 	s, _ := Open(base, "d", Config{SegmentBytes: 1000, MaxBytes: 5000})
+	t.Cleanup(s.Close)
 	s.Append(mk(500, 1))
 	s.Flush()
 	var total int64
@@ -193,7 +195,8 @@ func TestCursor(t *testing.T) {
 }
 
 func TestAux(t *testing.T) {
-	s, _ := Open(t.TempDir(), "d", Config{})
+	s, _ := Open(tempDir(t), "d", Config{})
+	t.Cleanup(s.Close)
 	s.AppendAux("crashes", map[string]int{"a": 1})
 	s.AppendAux("crashes", map[string]int{"a": 2})
 	if n := len(s.ReadAux("crashes")); n != 2 {
@@ -206,7 +209,7 @@ func TestAux(t *testing.T) {
 // the writer's periodic Flush, including across a large backlog import and
 // a fresh follower process opening mid-stream.
 func TestFollowerSeesAppendsWithoutFlush(t *testing.T) {
-	base := t.TempDir()
+	base := tempDir(t)
 	w, _ := Open(base, "dev", Config{SegmentBytes: 64 << 10})
 	defer w.Close()
 	for i := 0; i < 50; i++ { // backlog import in batches, spanning several segments

@@ -216,8 +216,13 @@ func (s *Store) UpdateMeta(fn func(m *Meta)) {
 func (s *Store) saveMetaLocked() {
 	b, _ := json.MarshalIndent(&s.meta, "", " ")
 	tmp := filepath.Join(s.Dir, "meta.json.tmp")
-	if os.WriteFile(tmp, b, 0o644) == nil {
-		os.Rename(tmp, filepath.Join(s.Dir, "meta.json"))
+	if os.WriteFile(tmp, b, 0o644) != nil {
+		return // stay dirty: retried on the next Flush
+	}
+	// On Windows the rename fails while another process (a follower, a
+	// report) has meta.json open; stay dirty and retry on the next Flush.
+	if os.Rename(tmp, filepath.Join(s.Dir, "meta.json")) != nil {
+		return
 	}
 	s.dirty = false
 }
@@ -537,7 +542,12 @@ func (s *Store) pruneLocked() {
 		if total <= s.cfg.MaxBytes && !tooOld {
 			break
 		}
-		os.Remove(old.path)
+		// On Windows a segment a follower is reading right now cannot be
+		// deleted; keep it and retry on the next rotation instead of
+		// forgetting it on disk.
+		if err := os.Remove(old.path); err != nil && !os.IsNotExist(err) {
+			break
+		}
 		total -= old.size
 		s.segs = s.segs[1:]
 		s.dropCache(old.path)
