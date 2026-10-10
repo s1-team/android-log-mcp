@@ -1,0 +1,14 @@
+$ android-log-mcp call logcat_status '{"device":"emulator-5556","package":"com.example.logtest"}'
+adb: ok (/home/box/android-sdk/platform-tools/adb, version 1.0.41)
+store: /home/box/.cache/android-log-mcp
+devices (1):
+  emulator-5556  device  Android_SDK_built_for_x86_64  android 10 (sdk 29)  tz Asia/Kuching (+08:00)
+    recorded by another android-log-mcp process (pid 79104)
+    device time now: 2026-10-10 03:00:31   recording since 2026-10-10 02:55:56   history from 2026-10-10 02:35:13 to 2026-10-10 02:56:57
+    stored 25,387 lines (6.4 MB)
+cursor (now, emulator-5556): c1.ZW11bGF0b3ItNTU1Ng.07a6d2d3.25387
+package com.example.logtest: installed (uid 10146)
+  running: pid 6713 com.example.logtest (since 2026-10-10 02:56:33), pid 6713 <pre-initialized> (since before recording), pid 7182 com.example.logtest (since before recording)
+  recently dead: pid 6713 com.example.logtest (?–02:56:33, pid reused)
+
+[exit 0]

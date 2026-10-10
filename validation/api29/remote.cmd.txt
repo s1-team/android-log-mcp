@@ -1,0 +1,5 @@
+### host 2026-10-10 03:07:03 +0800 device 2026-10-10_03:07:03.668584216_+0800
+$ adb shell am broadcast -n com.example.logtest/.TriggerReceiver --es what remote
+Broadcasting: Intent { flg=0x400000 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+Broadcast completed: result=0
+### exit=0 end device 2026-10-10_03:07:05.689872252

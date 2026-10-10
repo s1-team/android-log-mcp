@@ -1,0 +1,206 @@
+$ android-log-mcp call logcat_search '{"device":"emulator-5556","filter":"level:E"}'
+device emulator-5556 · times are device-local Asia/Kuching (+08:00) · date 2026-10-10
+filter parsed as: level >= ERROR
+matched 2,306 lines; showing newest 200 (03:01:20.871–03:08:57.504)
+format: time level pid/tid process tag: message
+03:01:20.871 E 4944/4971 system_server memtrack: Couldn't load memtrack module
+  ↳ ×81 identical until 03:01:28.717
+03:01:32.402 E 7182/7182 com.example.logtest AndroidRuntime: FATAL EXCEPTION: main
+    Process: com.example.logtest, PID: 7182
+    java.lang.RuntimeException: LogTest wrapped crash
+    	at com.example.logtest.Triggers.run(Triggers.java:22)
+    	at com.example.logtest.MainActivity.lambda$onResume$1$com-example-logtest-MainActivity(MainActivity.java:42)
+    	at com.example.logtest.MainActivity$$ExternalSyntheticLambda0.run(D8$$SyntheticClass:0)
+    	at android.os.Handler.handleCallback(Handler.java:883)
+    	at android.os.Handler.dispatchMessage(Handler.java:100)
+    	at android.os.Looper.loop(Looper.java:214)
+    	at android.app.ActivityThread.main(ActivityThread.java:7356)
+    	at java.lang.reflect.Method.invoke(Native Method)
+    	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+    	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+    Caused by: java.lang.IllegalStateException: repo not ready
+    	at com.example.logtest.Triggers$Repo.load(Triggers.java:53)
+    	at com.example.logtest.Triggers.run(Triggers.java:21)
+    	... 9 more
+03:01:33.813 E 4944/5035 system_server InputDispatcher: channel 'c655f18 com.example.logtest/com.example.logtest.MainActivity (server)' ~ Channel is unrecoverably broken and will be disposed!
+03:01:36.186 E 4885/4885 mediaserver MediaPlayerService: Couldn't open fd for content://settings/system/notification_sound
+03:01:36.188 E 5118/7697 com.android.systemui MediaPlayerNative: Unable to create media player
+03:01:36.240 E 4944/4944 system_server NotificationService: Muting recently noisy 0|com.google.android.apps.nexuslauncher|10436|null|10108
+03:01:38.124 E 4944/5756 system_server TaskPersister: File error accessing recents directory (directory doesn't exist?).
+03:01:45.859 E 1821/1821 wifi_forwarder wifi_forwarder: RemoteConnection failed to initialize: RemoteConnection failed to open pipe
+03:01:53.670 E 1800/1800 netmgr netmgr: Failed to open QEMU pipe 'qemud:network': Invalid argument
+03:02:09.045 E 4944/4971 system_server memtrack: Couldn't load memtrack module
+  ↳ ×2 identical until 03:02:09.287
+03:02:14.730 E 4886/7711 netd ResolverController: No valid NAT64 prefix (100, <unspecified>/0)
+03:02:15.096 E 7318/7318 com.google.android.apps.wallpaper ActivityThread: Failed to find provider info for com.google.android.gsf.gservices
+  ↳ ×1 identical until 03:02:15.140
+03:02:15.152 E 7318/7318 com.google.android.apps.wallpaper ActivityThread: Failed to find provider info for com.google.android.gms.phenotype
+03:02:15.172 E 7318/7318 com.google.android.apps.wallpaper ActivityThread: Failed to find provider info for com.google.android.gsf.gservices
+03:02:16.117 E 4885/4885 mediaserver MediaPlayerService: Couldn't open fd for content://settings/system/notification_sound
+03:02:16.123 E 5118/7718 com.android.systemui MediaPlayerNative: Unable to create media player
+03:02:28.506 E 4944/4967 system_server system_server: Invalid ID 0x00000000.
+03:02:31.516 E 7736/7736 com.example.logtest example.logtes: Unknown bits set in runtime_flags: 0x8000
+03:02:31.667 E 4944/5756 system_server TaskPersister: File error accessing recents directory (directory doesn't exist?).
+03:02:34.514 E 1792/1858 surfaceflinger SurfaceFlinger: ro.sf.lcd_density must be defined as a build property
+  ↳ ×1 identical until 03:02:34.558
+03:02:34.925 E 7736/7736 com.example.logtest LogTest: multi-line message
+    line two
+    	line three (tab)
+03:02:36.541 E 4944/5756 system_server TaskPersister: File error accessing recents directory (directory doesn't exist?).
+03:02:37.181 E 4944/6184 system_server memtrack: Couldn't load memtrack module
+03:02:39.885 E 7736/7736 com.example.logtest LogTestNative: about to SIGSEGV
+03:02:39.901 F 7736/7736 com.example.logtest libc: Fatal signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0 in tid 7736 (example.logtest), pid 7736 (example.logtest)
+03:02:41.471 F 7763/7763 com.example.logtest(?) DEBUG: *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+03:02:41.473 F 7763/7763 com.example.logtest(?) DEBUG: Build fingerprint: 'google/sdk_gphone_x86_64/generic_x86_64:10/QSR1.211112.011/13135432:userdebug/dev-keys'
+03:02:41.473 F 7763/7763 com.example.logtest(?) DEBUG: Revision: '0'
+03:02:41.473 F 7763/7763 com.example.logtest(?) DEBUG: ABI: 'x86_64'
+03:02:41.490 F 7763/7763 com.example.logtest(?) DEBUG: Timestamp: 2026-10-10 03:02:41+0800
+03:02:41.491 F 7763/7763 com.example.logtest(?) DEBUG: pid: 7736, tid: 7736, name: example.logtest  >>> com.example.logtest <<<
+03:02:41.491 F 7763/7763 com.example.logtest(?) DEBUG: uid: 10146
+03:02:41.492 F 7763/7763 com.example.logtest(?) DEBUG: signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0
+03:02:41.492 F 7763/7763 com.example.logtest(?) DEBUG: Cause: null pointer dereference
+03:02:41.494 F 7763/7763 com.example.logtest(?) DEBUG:     rax 0000000000000000  rbx 00007ef862cd4000  rcx 81c28a362e54aee9  rdx 0000000000000004
+03:02:41.495 F 7763/7763 com.example.logtest(?) DEBUG:     r8  0000000000000000  r9  0000000000000007  r10 00007ef8605d3050  r11 0000000000000206
+03:02:41.496 F 7763/7763 com.example.logtest(?) DEBUG:     r12 00007fffa68447d0  r13 00007ef7d5f027db  r14 0000000000000000  r15 00007fffa68449b8
+03:02:41.498 F 7763/7763 com.example.logtest(?) DEBUG:     rdi 0000000000000000  rsi 00007fffa6843e30
+03:02:41.499 F 7763/7763 com.example.logtest(?) DEBUG:     rbp 00007fffa68444f0  rsp 00007fffa68444f0  rip 00007ef787efc7fc
+03:02:41.931 F 7763/7763 com.example.logtest(?) DEBUG: 
+    backtrace:
+03:02:41.932 F 7763/7763 com.example.logtest(?) DEBUG:       #00 pc 00000000000007fc  /data/app/com.example.logtest-EXHrd52nNpS4jel8iYKCOQ==/lib/x86_64/liblogtest.so
+03:02:44.572 E 4885/5356 mediaserver MediaPlayerService: Couldn't open fd for content://settings/system/notification_sound
+03:02:44.580 E 5118/7771 com.android.systemui MediaPlayerNative: Unable to create media player
+03:02:44.835 E 4944/4971 system_server memtrack: Couldn't load memtrack module
+03:02:45.926 E 1821/1821 wifi_forwarder wifi_forwarder: RemoteConnection failed to initialize: RemoteConnection failed to open pipe
+03:02:50.473 E 1872/1872 tombstoned /system/bin/tombstoned: Tombstone written to: /data/tombstones/tombstone_00
+03:02:52.769 E 4944/5035 system_server InputDispatcher: channel 'a0bbc1d com.example.logtest/com.example.logtest.MainActivity (server)' ~ Channel is unrecoverably broken and will be disposed!
+03:02:53.746 E 1800/1800 netmgr netmgr: Failed to open QEMU pipe 'qemud:network': Invalid argument
+03:02:53.885 E 4886/7782 netd ResolverController: No valid NAT64 prefix (100, <unspecified>/0)
+03:02:55.266 E 4885/5356 mediaserver MediaPlayerService: Couldn't open fd for content://settings/system/notification_sound
+03:02:55.270 E 5118/7785 com.android.systemui MediaPlayerNative: Unable to create media player
+03:02:55.496 E 4944/4944 system_server NotificationService: Muting recently noisy 0|com.google.android.apps.nexuslauncher|10436|null|10108
+03:02:56.762 E 4944/5756 system_server TaskPersister: File error accessing recents directory (directory doesn't exist?).
+03:02:59.183 E 4944/7781 system_server NtpTimeHelper: requestTime failed
+03:03:13.752 E 7529/7529 com.google.android.projection.gearhead:shared ActivityThread: Failed to find provider info for com.google.android.gsf.gservices
+03:03:19.900 E 4886/7792 netd ResolverController: No valid NAT64 prefix (100, <unspecified>/0)
+03:03:43.314 E 4944/4967 system_server system_server: Invalid ID 0x00000000.
+03:03:44.776 E 7815/7815 com.example.logtest example.logtes: Unknown bits set in runtime_flags: 0x8000
+03:03:45.992 E 1821/1821 wifi_forwarder wifi_forwarder: RemoteConnection failed to initialize: RemoteConnection failed to open pipe
+03:03:47.967 E 1792/1860 surfaceflinger SurfaceFlinger: ro.sf.lcd_density must be defined as a build property
+03:03:47.963 E 4944/5756 system_server TaskPersister: File error accessing recents directory (directory doesn't exist?).
+03:03:47.994 E 1792/1860 surfaceflinger SurfaceFlinger: ro.sf.lcd_density must be defined as a build property
+03:03:48.298 E 7815/7815 com.example.logtest LogTest: multi-line message
+    line two
+    	line three (tab)
+03:03:53.873 E 1800/1800 netmgr netmgr: Failed to open QEMU pipe 'qemud:network': Invalid argument
+03:03:55.865 E 4944/4971 system_server memtrack: Couldn't load memtrack module
+03:03:56.293 E 4885/5356 mediaserver MediaPlayerService: Couldn't open fd for content://settings/system/notification_sound
+03:03:56.298 E 5118/7842 com.android.systemui MediaPlayerNative: Unable to create media player
+03:03:59.727 E 7845/7845 ? libc: Access denied finding property "persist.device_config.runtime_native_boot.enable_apex_image"
+03:03:59.746 E 7845/7845 ? libc: Access denied finding property "persist.device_config.runtime_native_boot.disable_lock_profiling"
+03:03:59.759 E 7845/7845 ? libc: Access denied finding property "persist.device_config.runtime_native_boot.enable_generational_cc"
+03:04:06.311 E 4944/5324 system_server InputDispatcher: Window handle Window{9f372ab u0 Application Not Responding: com.android.systemui} has no registered input channel
+  ↳ ×3 identical until 03:04:06.525
+03:04:07.370 E 1859/1859 media.codec OMXNodeInstance: getConfig(0xf5818fc0:google.vorbis.decoder, ConfigAndroidVendorExtension(0x6f100004)) ERROR: Undefined(0x80001001)
+03:04:08.298 E 1859/3117 media.codec OMXNodeInstance: getConfig(0xf58190e0:google.vorbis.decoder, ConfigAndroidVendorExtension(0x6f100004)) ERROR: Undefined(0x80001001)
+03:04:08.755 E 1859/1859 media.codec OMXNodeInstance: getConfig(0xf5819440:google.vorbis.decoder, ConfigAndroidVendorExtension(0x6f100004)) ERROR: Undefined(0x80001001)
+  ↳ ×3 identical until 03:04:10.138
+03:04:13.311 E 7881/7881 ? libc: Access denied finding property "persist.device_config.runtime_native_boot.enable_apex_image"
+03:04:13.329 E 7881/7881 ? libc: Access denied finding property "persist.device_config.runtime_native_boot.disable_lock_profiling"
+03:04:13.347 E 7881/7881 ? libc: Access denied finding property "persist.device_config.runtime_native_boot.enable_generational_cc"
+03:04:24.055 E 4944/4971 system_server memtrack: Couldn't load memtrack module
+03:04:27.175 E 7907/7907 ? libc: Access denied finding property "persist.device_config.runtime_native_boot.enable_apex_image"
+03:04:27.178 E 7907/7907 ? libc: Access denied finding property "persist.device_config.runtime_native_boot.disable_lock_profiling"
+03:04:27.189 E 7907/7907 ? libc: Access denied finding property "persist.device_config.runtime_native_boot.enable_generational_cc"
+03:04:46.049 E 1821/1821 wifi_forwarder wifi_forwarder: RemoteConnection failed to initialize: RemoteConnection failed to open pipe
+03:04:53.957 E 1800/1800 netmgr netmgr: Failed to open QEMU pipe 'qemud:network': Invalid argument
+03:04:56.298 E 4944/4977 system_server BluetoothAdapter: Bluetooth binder is null
+03:04:56.364 E 4944/4977 system_server KernelCpuUidFreqTimeReader: Failed to read /proc/uid_time_in_state: java.nio.file.NoSuchFileException: /proc/uid_time_in_state
+03:05:32.132 E 4944/4971 system_server memtrack: Couldn't load memtrack module
+03:05:46.108 E 1821/1821 wifi_forwarder wifi_forwarder: RemoteConnection failed to initialize: RemoteConnection failed to open pipe
+03:05:54.017 E 1800/1800 netmgr netmgr: Failed to open QEMU pipe 'qemud:network': Invalid argument
+03:06:10.819 E 4944/4972 system_server ActivityManager: ANR in com.example.logtest
+    PID: 7815
+    Reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+    Load: 1.41 / 8.65 / 11.61
+    CPU usage from 128ms to -17580ms ago (2026-10-10 03:05:52.878 to 2026-10-10 03:06:10.586):
+      77% 4944/system_server: 28% user + 48% kernel / faults: 2381 minor 1 major
+      21% 1742/android.system.suspend@1.0-service: 7.1% user + 14% kernel
+      18% 2674/android.hardware.sensors@1.0-service: 4.1% user + 14% kernel
+      17% 5752/adbd: 2.6% user + 15% kernel / faults: 393 minor
+      15% 5118/com.android.systemui: 6.3% user + 8.7% kernel / faults: 1541 minor
+      6.7% 1608/logd: 1% user + 5.6% kernel / faults: 10 minor
+      3.4% 1792/surfaceflinger: 1.5% user + 1.9% kernel / faults: 38 minor 2 major
+      4.9% 1764/android.hardware.graphics.composer@2.1-service: 1.3% user + 3.5% kernel
+      3.7% 6394/com.android.phone: 1.9% user + 1.8% kernel / faults: 841 minor
+      0.8% 1859/media.codec: 0.2% user + 0.5% kernel / faults: 2844 minor
+      1.5% 352/khugepaged: 0% user + 1.5% kernel
+      0.7% 5256/com.google.android.networkstack: 0.3% user + 0.4% kernel / faults: 702 minor
+      0.1% 5822/com.android.ims.rcsservice: 0% user + 0% kernel / faults: 716 minor
+      0.5% 1844/media.extractor: 0.1% user + 0.3% kernel / faults: 1552 minor 13 major
+      2.2% 7815/com.example.logtest: 1.6% user + 0.5% kernel / faults: 834 minor
+      1.8% 8/rcu_preempt: 0% user + 1.8% kernel
+      0.9% 1791/lmkd: 0.3% user + 0.5% kernel
+      0.4% 1872/tombstoned: 0.1% user + 0.2% kernel
+      0% 5765/com.android.se: 0% user + 0% kernel / faults: 728 minor
+      1.6% 7930/logcat: 0.5% user + 1.1% kernel
+      1.5% 6595/logcat: 0.6% user + 0.9% kernel
+      0.8% 6620/logcat: 0.2% user + 0.5% kernel
+      0% 5841/com.android.emulator.multidisplay: 0% user + 0% kernel / faults: 719 minor
+      0.7% 1807/logcat: 0.3% user + 0.3% kernel
+      0.2% 4883/audioserver: 0% user + 0.2% kernel / faults: 52 minor
+      0% 1868/media.swcodec: 0% user + 0% kernel / faults: 690 minor 15 major
+      0.9% 1852/statsd: 0.3% user + 0.5% kernel / …[+2050 chars; narrow with filter pid:4944 and from/to around this time to see it whole]
+03:06:11.401 E 4944/4964 system_server system_server: Invalid ID 0x00000000.
+03:06:46.171 E 1821/1821 wifi_forwarder wifi_forwarder: RemoteConnection failed to initialize: RemoteConnection failed to open pipe
+03:06:53.317 E 4885/5356 mediaserver MediaPlayerService: Couldn't open fd for content://settings/system/notification_sound
+03:06:53.321 E 5118/8012 com.android.systemui MediaPlayerNative: Unable to create media player
+03:06:54.064 E 1800/1800 netmgr netmgr: Failed to open QEMU pipe 'qemud:network': Invalid argument
+03:07:04.329 E 4944/4971 system_server memtrack: Couldn't load memtrack module
+  ↳ ×1 identical until 03:07:04.502
+03:07:05.508 E 8029/8029 com.example.logtest:remote .logtest:remot: Unknown bits set in runtime_flags: 0x8000
+03:07:37.990 E 4944/7083 system_server memtrack: Couldn't load memtrack module
+  ↳ ×2 identical until 03:07:39.624
+03:07:39.669 E 8029/8029 com.example.logtest:remote AndroidRuntime: FATAL EXCEPTION: main
+    Process: com.example.logtest:remote, PID: 8029
+    java.lang.RuntimeException: Unable to start service com.example.logtest.RemoteService@a11d0f9 with Intent { cmp=com.example.logtest/.RemoteService (has extras) }: java.lang.IllegalStateException: LogTest crash in :remote
+    	at android.app.ActivityThread.handleServiceArgs(ActivityThread.java:4105)
+    	at android.app.ActivityThread.access$1800(ActivityThread.java:219)
+    	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:1891)
+    	at android.os.Handler.dispatchMessage(Handler.java:107)
+    	at android.os.Looper.loop(Looper.java:214)
+    	at android.app.ActivityThread.main(ActivityThread.java:7356)
+    	at java.lang.reflect.Method.invoke(Native Method)
+    	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+    	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+    Caused by: java.lang.IllegalStateException: LogTest crash in :remote
+    	at com.example.logtest.RemoteService.onStartCommand(RemoteService.java:16)
+    	at android.app.ActivityThread.handleServiceArgs(ActivityThread.java:4087)
+    	... 8 more
+03:07:39.687 E 4944/4971 system_server memtrack: Couldn't load memtrack module
+03:07:42.495 E 8076/8076 com.example.logtest:remote .logtest:remot: Unknown bits set in runtime_flags: 0x8000
+03:07:43.264 E 8076/8076 com.example.logtest:remote AndroidRuntime: FATAL EXCEPTION: main
+    Process: com.example.logtest:remote, PID: 8076
+    java.lang.RuntimeException: Unable to start service com.example.logtest.RemoteService@a11d0f9 with Intent { cmp=com.example.logtest/.RemoteService (has extras) }: java.lang.IllegalStateException: LogTest crash in :remote
+    	at android.app.ActivityThread.handleServiceArgs(ActivityThread.java:4105)
+    	at android.app.ActivityThread.access$1800(ActivityThread.java:219)
+    	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:1891)
+    	at android.os.Handler.dispatchMessage(Handler.java:107)
+    	at android.os.Looper.loop(Looper.java:214)
+    	at android.app.ActivityThread.main(ActivityThread.java:7356)
+    	at java.lang.reflect.Method.invoke(Native Method)
+    	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+    	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+    Caused by: java.lang.IllegalStateException: LogTest crash in :remote
+    	at com.example.logtest.RemoteService.onStartCommand(RemoteService.java:16)
+    	at android.app.ActivityThread.handleServiceArgs(ActivityThread.java:4087)
+    	... 8 more
+03:07:46.229 E 1821/1821 wifi_forwarder wifi_forwarder: RemoteConnection failed to initialize: RemoteConnection failed to open pipe
+03:07:54.087 E 1800/1800 netmgr netmgr: Failed to open QEMU pipe 'qemud:network': Invalid argument
+03:08:46.302 E 1821/1821 wifi_forwarder wifi_forwarder: RemoteConnection failed to initialize: RemoteConnection failed to open pipe
+03:08:54.120 E 1800/1800 netmgr netmgr: Failed to open QEMU pipe 'qemud:network': Invalid argument
+03:08:57.504 E 8183/8183 ? LOGMCP_MARK: error mark
+[truncated: 2,106 older matches not shown]
+more: before="c1.ZW11bGF0b3ItNTU1Ng.07a6d2d3.28897"  ·  newer/wait: after="c1.ZW11bGF0b3ItNTU1Ng.07a6d2d3.30516"
+top tags in all 2,306 matches: memtrack 620 · ActivityThread 402 · OMXNodeInstance 116 · system_server 111 · PackageManager 48 · …(142 more) · narrow with e.g. -message:<noise>, min_level=info, or a smaller from/to
+
+[exit 0]

@@ -1,0 +1,55 @@
+$ android-log-mcp call logcat_search '{"device":"emulator-5556","package":"com.example.logtest","min_level":"warn","from":"2026-10-10 03:02:30","to":"2026-10-10 03:02:45"}'
+device emulator-5556 · times are device-local Asia/Kuching (+08:00) · date 2026-10-10
+filter parsed as: package == com.example.logtest AND level >= WARN AND time in [2026-10-10 03:02:30, 2026-10-10 03:02:45)
+matched 25 lines; showing newest 25 (03:02:31.516–03:02:41.932)
+format: time level pid/tid process tag: message
+03:02:31.516 E 7736/7736 com.example.logtest example.logtes: Unknown bits set in runtime_flags: 0x8000
+03:02:31.563 W 7736/7736 com.example.logtest example.logtes: Unexpected CPU variant for X86 using defaults: x86_64
+03:02:34.629 W 7736/7736 com.example.logtest RenderThread: type=1400 audit(0.0:80): avc: denied { write } for name="property_service" dev="tmpfs" ino=540 scontext=u:r:untrusted_app:s0:c146,c256,c512,c768 tcontext=u:object_r:property_socket:s0 tclass=sock_file permissive=0 app=com.example.logtest
+03:02:34.652 W 7736/7760 com.example.logtest libc: Unable to set property "qemu.gles" to "1": connection failed; errno=13 (Permission denied)
+03:02:34.924 W 7736/7736 com.example.logtest MyRepo: token refresh failed
+    java.io.IOException: token endpoint failed
+    	at com.example.logtest.MainActivity.onCreate(MainActivity.java:20)
+    	at android.app.Activity.performCreate(Activity.java:7802)
+    	at android.app.Activity.performCreate(Activity.java:7791)
+    	at android.app.Instrumentation.callActivityOnCreate(Instrumentation.java:1299)
+    	at android.app.ActivityThread.performLaunchActivity(ActivityThread.java:3245)
+    	at android.app.ActivityThread.handleLaunchActivity(ActivityThread.java:3409)
+    	at android.app.servertransaction.LaunchActivityItem.execute(LaunchActivityItem.java:83)
+    	at android.app.servertransaction.TransactionExecutor.executeCallbacks(TransactionExecutor.java:135)
+    	at android.app.servertransaction.TransactionExecutor.execute(TransactionExecutor.java:95)
+    	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2016)
+    	at android.os.Handler.dispatchMessage(Handler.java:107)
+    	at android.os.Looper.loop(Looper.java:214)
+    	at android.app.ActivityThread.main(ActivityThread.java:7356)
+    	at java.lang.reflect.Method.invoke(Native Method)
+    	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+    	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+    Caused by: java.lang.IllegalStateException: Unable to resolve host "push.example.com"
+    	... 16 more
+03:02:34.925 E 7736/7736 com.example.logtest LogTest: multi-line message
+    line two
+    	line three (tab)
+03:02:38.333 W 7736/7758 com.example.logtest Gralloc3: mapper 3.x is not supported
+03:02:39.885 E 7736/7736 com.example.logtest LogTestNative: about to SIGSEGV
+03:02:39.901 F 7736/7736 com.example.logtest libc: Fatal signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0 in tid 7736 (example.logtest), pid 7736 (example.logtest)
+03:02:41.471 F 7763/7763 com.example.logtest(?) DEBUG: *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+03:02:41.473 F 7763/7763 com.example.logtest(?) DEBUG: Build fingerprint: 'google/sdk_gphone_x86_64/generic_x86_64:10/QSR1.211112.011/13135432:userdebug/dev-keys'
+03:02:41.473 F 7763/7763 com.example.logtest(?) DEBUG: Revision: '0'
+03:02:41.473 F 7763/7763 com.example.logtest(?) DEBUG: ABI: 'x86_64'
+03:02:41.490 F 7763/7763 com.example.logtest(?) DEBUG: Timestamp: 2026-10-10 03:02:41+0800
+03:02:41.491 F 7763/7763 com.example.logtest(?) DEBUG: pid: 7736, tid: 7736, name: example.logtest  >>> com.example.logtest <<<
+03:02:41.491 F 7763/7763 com.example.logtest(?) DEBUG: uid: 10146
+03:02:41.492 F 7763/7763 com.example.logtest(?) DEBUG: signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0
+03:02:41.492 F 7763/7763 com.example.logtest(?) DEBUG: Cause: null pointer dereference
+03:02:41.494 F 7763/7763 com.example.logtest(?) DEBUG:     rax 0000000000000000  rbx 00007ef862cd4000  rcx 81c28a362e54aee9  rdx 0000000000000004
+03:02:41.495 F 7763/7763 com.example.logtest(?) DEBUG:     r8  0000000000000000  r9  0000000000000007  r10 00007ef8605d3050  r11 0000000000000206
+03:02:41.496 F 7763/7763 com.example.logtest(?) DEBUG:     r12 00007fffa68447d0  r13 00007ef7d5f027db  r14 0000000000000000  r15 00007fffa68449b8
+03:02:41.498 F 7763/7763 com.example.logtest(?) DEBUG:     rdi 0000000000000000  rsi 00007fffa6843e30
+03:02:41.499 F 7763/7763 com.example.logtest(?) DEBUG:     rbp 00007fffa68444f0  rsp 00007fffa68444f0  rip 00007ef787efc7fc
+03:02:41.931 F 7763/7763 com.example.logtest(?) DEBUG: 
+    backtrace:
+03:02:41.932 F 7763/7763 com.example.logtest(?) DEBUG:       #00 pc 00000000000007fc  /data/app/com.example.logtest-EXHrd52nNpS4jel8iYKCOQ==/lib/x86_64/liblogtest.so
+more: before="c1.ZW11bGF0b3ItNTU1Ng.07a6d2d3.29421"  ·  newer/wait: after="c1.ZW11bGF0b3ItNTU1Ng.07a6d2d3.30516"
+
+[exit 0]

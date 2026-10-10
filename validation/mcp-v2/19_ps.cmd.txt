@@ -1,0 +1,4 @@
+### host 2026-10-10 04:10:02 +0800 device 2026-10-10_04:08:18.223313778_+0800
+$ adb shell ps -A -o PID,UID,NAME | grep -E "logtest|crash_dump|PID"
+  PID   UID NAME                       
+### exit=0 end device 2026-10-10_04:08:19.282393863

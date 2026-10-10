@@ -1,0 +1,23 @@
+### host 2026-10-10 03:53:58 +0800  call logcat_search {"package":"com.example.logtest","filter":"tag:DEBUG","from":"2026-10-10 03:42:30","limit":12}
+device emulator-5556 · times are device-local Asia/Kuching (+08:00) · date 2026-10-10
+filter parsed as: package == com.example.logtest AND tag contains "DEBUG" AND time in [2026-10-10 03:42:30, now)
+matched 34 lines; showing newest 12 (03:45:39.394–03:45:39.668)
+format: time level pid/tid process tag: message
+03:45:39.394 F 4690/4690 crash_dump DEBUG: uid: 10146
+03:45:39.395 F 4690/4690 crash_dump DEBUG: signal 6 (SIGABRT), code -1 (SI_QUEUE), fault addr --------
+03:45:39.398 F 4690/4690 crash_dump DEBUG: Abort message: 'LogTest deliberate abort()'
+03:45:39.400 F 4690/4690 crash_dump DEBUG:     rax 0000000000000000  rbx 000000000000123c  rcx 000076b9426e33f8  rdx 0000000000000006
+03:45:39.401 F 4690/4690 crash_dump DEBUG:     r8  0000000010090008  r9  0000000000000000  r10 00007ffe9ef49880  r11 0000000000000246
+03:45:39.402 F 4690/4690 crash_dump DEBUG:     r12 00007ffe9ef49c40  r13 000076b86b8d2816  r14 00007ffe9ef49908  r15 000000000000123c
+03:45:39.403 F 4690/4690 crash_dump DEBUG:     rdi 000000000000123c  rsi 000000000000123c
+03:45:39.403 F 4690/4690 crash_dump DEBUG:     rbp 00007ffe9ef49970  rsp 00007ffe9ef49878  rip 000076b9426e33f8
+03:45:39.666 F 4690/4690 crash_dump DEBUG: 
+    backtrace:
+03:45:39.667 F 4690/4690 crash_dump DEBUG:       #00 pc 00000000000943f8  /apex/com.android.runtime/lib64/bionic/libc.so (syscall+24) (BuildId: b5c6019a3b4ea61b5e9a2f56319b584e)
+03:45:39.668 F 4690/4690 crash_dump DEBUG:       #01 pc 0000000000097146  /apex/com.android.runtime/lib64/bionic/libc.so (abort+182) (BuildId: b5c6019a3b4ea61b5e9a2f56319b584e)
+03:45:39.668 F 4690/4690 crash_dump DEBUG:       #02 pc 000000000000086f  /data/app/com.example.logtest-EXHrd52nNpS4jel8iYKCOQ==/lib/x86_64/liblogtest.so
+[truncated: 22 older matches not shown]
+more: before="c1.ZW11bGF0b3ItNTU1Ng.ccb368e7.12480"  ·  newer/wait: after="c1.ZW11bGF0b3ItNTU1Ng.ccb368e7.12630"
+top tags in all 34 matches: DEBUG 34 · narrow with e.g. -message:<noise>, min_level=info, or a smaller from/to
+
+[exit 0]

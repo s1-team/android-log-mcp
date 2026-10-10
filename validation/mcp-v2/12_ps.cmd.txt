@@ -1,0 +1,4 @@
+### host 2026-10-10 03:50:20 +0800 device 2026-10-10_03:49:00.675474279_+0800
+$ adb shell ps -A -o PID,UID,NAME | grep -E "logtest|PID"
+  PID   UID NAME                       
+### exit=0 end device 2026-10-10_03:49:01.727685067

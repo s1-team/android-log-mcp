@@ -1,0 +1,11 @@
+### host 2026-10-10 03:44:09 +0800 device 2026-10-10_03:44:09.800120421_+0800
+$ adb shell am start -W -n com.example.logtest/.MainActivity
+Starting: Intent { cmp=com.example.logtest/.MainActivity }
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+Status: ok
+LaunchState: UNKNOWN (0)
+Activity: com.example.logtest/.MainActivity
+TotalTime: 0
+WaitTime: 71
+Complete
+### exit=0 end device 2026-10-10_03:44:11.011213012

@@ -1,0 +1,22 @@
+### host 2026-10-10 03:54:08 +0800  call logcat_search {"package":"com.example.logtest","view":"summary","from":"2026-10-10 03:42:30"}
+device emulator-5556 · Asia/Kuching (+08:00) · 2026-10-10 03:43:08–2026-10-10 03:45:39
+filter parsed as: package == com.example.logtest AND time in [2026-10-10 03:42:30, now)
+total 151 lines · by level: V 2 D 40 I 54 W 11 E 8 F 36
+top tags: DEBUG 34 · LogTest 18 · example.logtes 11 · HostConnection 10 · EGL_emulation 8 · libEGL 8 · OpenGLRenderer 5 · am_on_resume_called 5 · am_on_top_resumed_gained_called 5 · MyRepo 4 · …(18 more)
+top processes: com.example.logtest 111 · crash_dump 34 · crash_dump64 4 · ?(uid com.example.logtest) 2
+top repeated messages (digits normalized to #):
+  5× LogTest: onResume
+  5× OpenGLRenderer: Davey! duration=#ms; Flags=#, IntendedVsync=#, Vsync=#, OldestInputEvent=#, NewestInputEvent=#, HandleInputStart=#…
+  4× EGL_emulation: eglMakeCurrent: #x#b#b#a#: ver # # (tinfo #x#b#e#e#)
+  4× HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v# ANDROID_EMU_native_sync_v# ANDROID_EMU_dma_v# ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v# ANDROID_…
+  3× LogTest: onStart
+crashes in range: 3 (cr9 03:45:38 SIGABRT (SI_QUEUE) abort: 'LogTest deliberate abort()' in liblogtest.so [#02 pc 86f]; cr8 03:44:58 SIGSEGV (SEGV_MAPERR) fault addr 0x0 in liblogtest.so [#00 pc 7fc]; cr7 03:44:22 java.lang.RuntimeException) · ANRs: 0
+latest errors (5):
+  03:45:39.403 F 4690 crash_dump DEBUG:     rbp 00007ffe9ef49970  rsp 00007ffe9ef49878  rip 000076b9426e33f8
+  03:45:39.666 F 4690 crash_dump DEBUG: 
+  03:45:39.667 F 4690 crash_dump DEBUG:       #00 pc 00000000000943f8  /apex/com.android.runtime/lib64/bionic/libc.so (syscall+24) (BuildId: b5c6019a3b4ea61b5e9a2f56319b584e)
+  03:45:39.668 F 4690 crash_dump DEBUG:       #01 pc 0000000000097146  /apex/com.android.runtime/lib64/bionic/libc.so (abort+182) (BuildId: b5c6019a3b4ea61b5e9a2f56319b584e)
+  03:45:39.668 F 4690 crash_dump DEBUG:       #02 pc 000000000000086f  /data/app/com.example.logtest-EXHrd52nNpS4jel8iYKCOQ==/lib/x86_64/liblogtest.so
+next: logcat_search with filter/tags/package narrowed (view="lines"), or logcat_crashes id="cr9"
+
+[exit 0]

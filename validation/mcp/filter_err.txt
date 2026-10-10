@@ -1,0 +1,6 @@
+$ android-log-mcp call logcat_search '{"device":"emulator-5556","filter":"tag:OkHttp lvl:error"}'
+Filter error at col 12: unknown key "lvl". Keys: tag message package process line level age is pid tid buffer
+  tag:OkHttp lvl:error
+             ^
+Did you mean: level:error   (to search the literal text, quote it: "lvl:error")
+[exit 1]

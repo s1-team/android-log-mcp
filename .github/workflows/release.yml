@@ -1,0 +1,57 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write # npm provenance
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: test
+        working-directory: server
+        run: go vet ./... && go test ./...
+
+      - name: check version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          file="$(tr -d ' \n' < npm/VERSION)"
+          if [ "$tag" != "$file" ]; then echo "tag v$tag != npm/VERSION $file" >&2; exit 1; fi
+
+      - name: build
+        run: scripts/build-npm.sh "${GITHUB_REF_NAME#v}" --pack
+
+      - name: publish platform packages, then the main package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # npm provenance is only accepted for public source repositories
+          REPO_PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          set -e
+          PROVENANCE=--provenance
+          if [ "$REPO_PRIVATE" = "true" ]; then PROVENANCE=""; fi
+          tag=latest
+          case "${GITHUB_REF_NAME}" in *-*) tag=next ;; esac   # v0.2.0-rc.1 → dist-tag next
+          for d in npm/dist/android-log-mcp-*/; do
+            npm publish "$d" --access public $PROVENANCE --tag "$tag"
+          done
+          npm publish npm/dist/android-log-mcp --access public $PROVENANCE --tag "$tag"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-tarballs
+          path: npm/dist/tarballs/*.tgz

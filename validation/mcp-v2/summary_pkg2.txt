@@ -1,0 +1,22 @@
+### host 2026-10-10 04:04:45 +0800  call logcat_search {"package":"com.example.logtest","view":"summary","from":"2026-10-10 03:56:00"}
+device emulator-5556 · Asia/Kuching (+08:00) · 2026-10-10 03:57:27–2026-10-10 03:59:51
+filter parsed as: package == com.example.logtest AND time in [2026-10-10 03:56:00, now)
+total 66 lines · by level: V 1 D 23 I 27 W 9 E 6 F 0
+top tags: LogTest 13 · example.logtes 8 · .logtest:remot 6 · HostConnection 5 · MyRepo 5 · AndroidRuntime 4 · libEGL 4 · EGL_emulation 3 · OkHttp 2 · OpenGLRenderer 2 · …(13 more)
+top processes: com.example.logtest 50 · com.example.logtest:remote 16
+top repeated messages (digits normalized to #):
+  3× MyRepo: remote onStartCommand startId=#
+  2× .logtest:remot: Late-enabling -Xcheck:jni
+  2× .logtest:remot: Unexpected CPU variant for X# using defaults: x#_#
+  2× .logtest:remot: Unknown bits set in runtime_flags: #x#
+  2× AndroidRuntime: FATAL EXCEPTION: main
+crashes in range: 2 (cr11 03:58:22 java.lang.RuntimeException; cr10 03:58:19 java.lang.RuntimeException) · ANRs: 1 (anr7 03:59:31 Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) })
+latest errors (5):
+  03:57:32.751 E 4871 com.example.logtest LogTest: multi-line message
+  03:57:57.558 E 4929 com.example.logtest:remote .logtest:remot: Unknown bits set in runtime_flags: 0x8000
+  03:58:19.265 E 4929 com.example.logtest:remote AndroidRuntime: FATAL EXCEPTION: main
+  03:58:21.883 E 4968 com.example.logtest:remote .logtest:remot: Unknown bits set in runtime_flags: 0x8000
+  03:58:22.615 E 4968 com.example.logtest:remote AndroidRuntime: FATAL EXCEPTION: main
+next: logcat_search with filter/tags/package narrowed (view="lines"), or logcat_crashes id="cr11"
+
+[exit 0]

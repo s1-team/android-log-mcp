@@ -1,0 +1,9 @@
+### host 2026-10-10 03:53:27 +0800  call logcat_search {"filter":"tag=:LogTest tag=:MyRepo level:I","from":"2026-10-10 03:46:00","limit":15}
+device emulator-5556 · times are device-local Asia/Kuching (+08:00) · date 2026-10-10
+filter parsed as: (tag == "LogTest" OR tag == "MyRepo") AND level >= INFO AND time in [2026-10-10 03:46:00, now)
+note: same-key terms are ORed: tag == "LogTest" | tag == "MyRepo" (use & for AND)
+matched 0 lines
+hint: check the 'filter parsed as' line above — e.g. same-key terms are ORed, =: is exact and case-sensitive, ~: regexes are case-sensitive.
+more: before="c1.ZW11bGF0b3ItNTU1Ng.ccb368e7.11038"  ·  newer/wait: after="c1.ZW11bGF0b3ItNTU1Ng.ccb368e7.12630"
+
+[exit 0]

@@ -1,0 +1,755 @@
+--------- beginning of main
+         1791572345.424741  1000  4944  4957 I system_server: Background young concurrent copying GC freed 364774(10MB) AllocSpace objects, 29(2148KB) LOS objects, 36% free, 10MB/16MB, paused 46.026ms total 4.306s
+--------- beginning of events
+         1791572345.527612  1000  4944  4984 I commit_sys_config_file: [package-user-0,665]
+         1791572345.532851  1000  4944  6058 W system_server: Long monitor contention with owner PackageManager (4984) at void com.android.server.pm.PackageManagerService$PackageHandler.doHandleMessage(android.os.Message)(PackageManagerService.java:1566) waiters=0 in java.lang.String com.android.server.pm.PackageManagerService.getInstantAppPackageName(int) for 612ms
+         1791572345.541640  1000  4944  6058 I dvm_lock_sample: [system_server,1,Binder:4944_10,612,PackageManagerService.java,7178,java.lang.String com.android.server.pm.PackageManagerService.getInstantAppPackageName(int),-,1566,void com.android.server.pm.PackageManagerService$PackageHandler.doHandleMessage(android.os.Message),100]
+         1791572345.545538  1000  4944  6180 W system_server: Long monitor contention with owner PackageManager (4984) at void com.android.server.pm.PackageManagerService$PackageHandler.doHandleMessage(android.os.Message)(PackageManagerService.java:1566) waiters=1 in int com.android.server.pm.PackageManagerService.checkUidPermission(java.lang.String, int) for 617ms
+         1791572345.606015  1000  4944  6180 I dvm_lock_sample: [system_server,1,Binder:4944_12,617,PackageManagerService.java,5627,int com.android.server.pm.PackageManagerService.checkUidPermission(java.lang.String, int),-,1566,void com.android.server.pm.PackageManagerService$PackageHandler.doHandleMessage(android.os.Message),100]
+         1791572345.801334 10074  5287  7056 W ExclusiveDefaultHolderMixin: Cannot get ApplicationInfo for default holder, config: config_defaultSms, package: com.android.messaging
+         1791572345.882599  1000  4944  4971 I commit_sys_config_file: [roles-0,753]
+--------- beginning of system
+         1791572345.883248  1000  4944  4971 I RoleUserState: Wrote roles.xml successfully
+         1791572346.023905  1000  4944  6180 I dvm_lock_sample: [system_server,1,Binder:4944_12,15,PackageManagerService.java,5627,int com.android.server.pm.PackageManagerService.checkUidPermission(java.lang.String, int),-,5627,int com.android.server.pm.PackageManagerService.checkUidPermission(java.lang.String, int),3]
+         1791572346.289292  1000  4944  6058 D PackageManager: Instant App installer not found with android.intent.action.INSTALL_INSTANT_APP_PACKAGE
+         1791572346.290428  1000  4944  6058 D PackageManager: Clear ephemeral installer activity
+         1791572346.367030  1000  4944  4984 I am_uid_stopped: 1027
+         1791572346.382055  1000  4944  4984 I ActivityManager: Killing 7109:com.android.nfc/1027 (adj 0): change com.android.nfc
+         1791572346.383048  1000  4944  4984 I am_kill : [0,7109,com.android.nfc,0,change com.android.nfc]
+         1791572346.419691  1000  4944  4984 I am_broadcast_discard_app: [0,2173391,android.intent.action.BOOT_COMPLETED,18,ResolveInfo{b997dd4 com.android.nfc/.NfcBootCompletedReceiver m=0x108000}]
+         1791572346.494664  1000  4944  6058 W system_server: Long monitor contention with owner PackageManager (4984) at int com.android.server.am.ActivityManagerService.broadcastIntent(android.app.IApplicationThread, android.content.Intent, java.lang.String, android.content.IIntentReceiver, int, java.lang.String, android.os.Bundle, java.lang.String[], int, android.os.Bundle, boolean, boolean, int)(ActivityManagerService.java:15557) waiters=0 in void com.android.server.am.ActivityManagerService.finishReceiver(android.os.IBinder, int, java.lang.String, android.os.Bundle, boolean, int) for 178ms
+         1791572346.501883  1000  4944  6058 I dvm_lock_sample: [system_server,0,Binder:4944_10,178,ActivityManagerService.java,15663,void com.android.server.am.ActivityManagerService.finishReceiver(android.os.IBinder, int, java.lang.String, android.os.Bundle, boolean, int),-,15557,int com.android.server.am.ActivityManagerService.broadcastIntent(android.app.IApplicationThread, android.content.Intent, java.lang.String, android.content.IIntentReceiver, int, java.lang.String, android.os.Bundle, java.lang.String[], int, android.os.Bundle, boolean, boolean, int),35]
+         1791572346.522920  1000  4944  4964 W Looper  : Slow dispatch took 157ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=null m=53
+         1791572346.847403  1000  4944  4972 I am_uid_running: 10115
+         1791572346.904373  1000  4944  5036 I InputReader: Reconfiguring input devices.  changes=0x00000010
+         1791572346.851664  1000  4944  4944 I RoleManagerService: Granting default permissions...
+         1791572346.947833  1000  4944  4944 W Looper  : Slow dispatch took 413ms main h=android.app.ActivityThread$H c=android.app.-$$Lambda$LoadedApk$ReceiverDispatcher$Args$_BumDX2UKsnxLVrE6UJsJZkotuA@3aa3a72 m=0
+         1791572346.951373  1000  4944  4944 W Looper  : Slow delivery took 420ms main h=android.app.ActivityThread$H c=android.app.-$$Lambda$LoadedApk$ReceiverDispatcher$Args$_BumDX2UKsnxLVrE6UJsJZkotuA@375cec3 m=0
+         1791572346.957378  1000  4944  4972 W ActivityManager: Slow operation: 111ms so far, now at startProcess: done starting proc!
+         1791572346.960657  1000  4944  4971 W system_server: Long monitor contention with owner ActivityManager (4972) at void com.android.server.am.BroadcastQueue.processNextBroadcast(boolean)(BroadcastQueue.java:948) waiters=0 in void com.android.server.am.ActivityManagerService$5.handleMessage(android.os.Message) for 427ms
+         1791572346.963975  1000  4944  4971 I dvm_lock_sample: [system_server,0,android.bg,427,ActivityManagerService.java,1913,void com.android.server.am.ActivityManagerService$5.handleMessage(android.os.Message),BroadcastQueue.java,948,void com.android.server.am.BroadcastQueue.processNextBroadcast(boolean),85]
+         1791572347.006335 radio  6394  6394 I service_manager_slow: [11,phone]
+         1791572347.120830 radio  6394  6394 D CarrierSvcBindHelper: No carrier app for: 0
+         1791572347.132125  1000  4944  4944 W Looper  : Slow dispatch took 137ms main h=android.app.ActivityThread$H c=android.app.-$$Lambda$LoadedApk$ReceiverDispatcher$Args$_BumDX2UKsnxLVrE6UJsJZkotuA@bfaa340 m=0
+         1791572347.251396  1000  4944  4944 I Telecom : DefaultDialerCache: Refreshing default dialer for user 0: now com.android.dialer: DDC.oR@AG0
+         1791572347.271929  1000  4944  4944 I notification_cancel_all: [1000,4944,com.android.nfc,0,0,0,5,NULL]
+         1791572347.327659  1000  4944  4971 E memtrack: Couldn't load memtrack module
+         1791572347.357495  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+         1791572347.932174  root  4882  4882 I Zygote  : Process 7109 exited due to signal 9 (Killed)
+         1791572348.054422  1000  4944  4974 I libprocessgroup: Successfully killed process cgroup uid 1027 pid 7109 in 1647ms
+         1791572348.286516  root  4881  4881 D Zygote  : Forked child process 7149
+         1791572348.504836  1000  4944  4971 I am_pss  : [7050,1000,com.android.dynsystem,6608896,3067904,0,99557376,0,20,24]
+         1791572348.587734 10074  5287  7056 W ExclusiveDefaultHolderMixin: Default holder does not qualify for the role, config: config_defaultAssistant, package: com.google.android.googlequicksearchbox
+         1791572348.603291  1000  4944  4973 W ActivityManager: Slow operation: 1718ms so far, now at startProcess: returned from zygote!
+         1791572348.626068  1000  4944  4973 I dvm_lock_sample: [system_server,1,ActivityManager:procStart,17,ProcessList.java,1671,void com.android.server.am.ProcessList.lambda$startProcessLocked$0$ProcessList(com.android.server.am.ProcessRecord, java.lang.String, int[], int, int, java.lang.String, java.lang.String, java.lang.String, long),ActivityManagerService.java,1961,void com.android.server.am.ActivityManagerService$5.handleMessage(android.os.Message),3]
+         1791572348.632196  1000  4944  4973 W ActivityManager: Slow operation: 1747ms so far, now at startProcess: done updating battery stats
+         1791572348.640626  1000  4944  4973 I am_proc_start: [0,7149,10115,com.android.omadm.service,broadcast,{com.android.omadm.service/com.android.omadm.service.DMIntentReceiver}]
+         1791572348.829755  1000  4944  4973 W system_server: Long monitor contention with owner android.bg (4971) at android.content.pm.ApplicationInfo com.android.server.pm.PackageManagerService.getApplicationInfoInternal(java.lang.String, int, int, int)(PackageManagerService.java:4693) waiters=1 in java.lang.String com.android.server.pm.PackageManagerService.getInstantAppPackageName(int) for 162ms
+         1791572348.832867  1000  4944  4973 I dvm_lock_sample: [system_server,1,ActivityManager:procStart,162,PackageManagerService.java,7178,java.lang.String com.android.server.pm.PackageManagerService.getInstantAppPackageName(int),-,4693,android.content.pm.ApplicationInfo com.android.server.pm.PackageManagerService.getApplicationInfoInternal(java.lang.String, int, int, int),32]
+         1791572348.833742  1000  4944  4973 W ActivityManager: Slow operation: 1948ms so far, now at startProcess: building log message
+         1791572348.834190  1000  4944  4973 I ActivityManager: Start proc 7149:com.android.omadm.service/u0a115 for broadcast {com.android.omadm.service/com.android.omadm.service.DMIntentReceiver}
+         1791572348.834472  1000  4944  4973 W ActivityManager: Slow operation: 1949ms so far, now at startProcess: starting to update pids map
+         1791572348.863306  1000  4944  4973 W ActivityManager: Slow operation: 1978ms so far, now at startProcess: done updating pids map
+         1791572349.423187  1000  4944  4971 W system_server: Long monitor contention with owner Binder:4944_4 (5158) at android.content.pm.ParceledListSlice com.android.server.pm.PackageManagerService.getInstalledPackages(int, int)(PackageManagerService.java:8526) waiters=0 in java.lang.String com.android.server.pm.PackageManagerService.getInstantAppPackageName(int) for 195ms
+         1791572349.454736 10115  7149  7149 W d.omadm.servic: Unexpected CPU variant for X86 using defaults: x86_64
+         1791572349.577265  1000  4944  4971 I dvm_lock_sample: [system_server,0,android.bg,195,PackageManagerService.java,7178,java.lang.String com.android.server.pm.PackageManagerService.getInstantAppPackageName(int),-,8526,android.content.pm.ParceledListSlice com.android.server.pm.PackageManagerService.getInstalledPackages(int, int),39]
+         1791572349.857590  1000  4944  4965 I dvm_lock_sample: [system_server,0,android.io,31,MessageQueue.java,338,android.os.Message android.os.MessageQueue.next(),-,556,boolean android.os.MessageQueue.enqueueMessage(android.os.Message, long),6]
+         1791572349.905980  1000  4944  4944 W Looper  : Drained
+         1791572350.391422  1000  4944  4944 W system_server: Long monitor contention with owner android.bg (4971) at void com.android.server.accessibility.AccessibilityManagerService$1.onSomePackagesChanged()(AccessibilityManagerService.java:380) waiters=0 in java.util.List com.android.server.accessibility.AccessibilityManagerService.getEnabledAccessibilityServiceList(int, int) for 481ms
+         1791572350.398260  1000  4944  4944 I dvm_lock_sample: [system_server,0,main,481,AccessibilityManagerService.java,655,java.util.List com.android.server.accessibility.AccessibilityManagerService.getEnabledAccessibilityServiceList(int, int),-,380,void com.android.server.accessibility.AccessibilityManagerService$1.onSomePackagesChanged(),96]
+         1791572350.402150  1000  4944  4944 W Looper  : Slow dispatch took 495ms main h=android.os.Handler c=android.view.accessibility.-$$Lambda$AccessibilityManager$1$o7fCplskH9NlBwJvkl6NoZ0L_BA@25d8bbe m=0
+         1791572350.503504 10115  7149  7149 W d.omadm.servic: Verification of void com.android.org.conscrypt.TrustedCertificateStore$PreloadHolder.<clinit>() took 109.402ms
+         1791572350.924824 10115  7149  7149 I service_manager_slow: [55,activity]
+         1791572351.080000  1000  4944  6180 I dvm_lock_sample: [system_server,1,Binder:4944_12,37,PackageManagerService.java,5627,int com.android.server.pm.PackageManagerService.checkUidPermission(java.lang.String, int),-,7269,java.util.List com.android.server.pm.PackageManagerService.queryIntentActivitiesInternal(android.content.Intent, java.lang.String, int, int, int, boolean, boolean),7]
+         1791572351.084980  1000  4944  5324 I am_proc_bound: [0,7149,com.android.omadm.service]
+         1791572351.146974  1000  4944  5324 W ActivityManager: Slow operation: 63ms so far, now at attachApplicationLocked: immediately after bindApplication
+         1791572351.147894  1000  4944  5324 W ActivityManager: Slow operation: 64ms so far, now at attachApplicationLocked: after updateLruProcessLocked
+         1791572351.183278  1000  4944  5324 W ActivityManager: Slow operation: 99ms so far, now at attachApplicationLocked: after mServices.attachApplicationLocked
+         1791572351.310612  1000  4944  5324 W ActivityManager: Slow operation: 226ms so far, now at attachApplicationLocked: after sendPendingBroadcastsLocked
+         1791572351.346758  1000  4944  4964 W Looper  : Slow dispatch took 103ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=null m=53
+         1791572351.854270  1000  4944  7083 I ActivityTaskManager: START u0 {flg=0x10000000 cmp=com.example.logtest/.MainActivity} from uid 2000
+         1791572352.044640  1000  4944  4965 I dvm_lock_sample: [system_server,0,android.io,13,MessageQueue.java,338,android.os.Message android.os.MessageQueue.next(),-,556,boolean android.os.MessageQueue.enqueueMessage(android.os.Message, long),2]
+         1791572352.381686  1000  4944  7083 I wm_stack_created: 2
+         1791572352.402384 10115  7149  7149 D ApplicationLoaders: Returning zygote-cached class loader: /system/framework/android.hidl.base-V1.0-java.jar
+         1791572352.514979 10115  7149  7149 D ApplicationLoaders: Returning zygote-cached class loader: /system/framework/android.hidl.manager-V1.0-java.jar
+         1791572352.554963 10115  7149  7149 D ApplicationLoaders: Returning zygote-cached class loader: /system/framework/android.hidl.base-V1.0-java.jar
+         1791572352.720822  1000  4944  7083 I wm_task_created: [5,2]
+         1791572352.758344  1000  4944  7083 I wm_task_moved: [5,0,2147483647]
+         1791572352.773646  1000  4944  7083 I am_focused_stack: [0,0,2,0,reuseOrNewTask]
+         1791572352.852721 10108  5353  5353 I am_on_top_resumed_lost_called: [0,com.google.android.apps.nexuslauncher.NexusLauncherActivity,topStateChangedWhenResumed]
+         1791572352.959207  1000  4944  4971 W Searchables: No global search activity found
+         1791572352.962471  1000  4944  5511 W system_server: Long monitor contention with owner android.bg (4971) at java.util.List com.android.server.pm.PackageManagerService.queryIntentActivitiesInternal(android.content.Intent, java.lang.String, int, int, int, boolean, boolean)(PackageManagerService.java:7269) waiters=0 in int com.android.server.pm.PackageManagerService.checkUidPermission(java.lang.String, int) for 452ms
+         1791572353.009222  1000  4944  5511 I dvm_lock_sample: [system_server,1,Binder:4944_8,452,PackageManagerService.java,5627,int com.android.server.pm.PackageManagerService.checkUidPermission(java.lang.String, int),-,7269,java.util.List com.android.server.pm.PackageManagerService.queryIntentActivitiesInternal(android.content.Intent, java.lang.String, int, int, int, boolean, boolean),90]
+         1791572353.032182  1000  4944  7083 I am_create_task: [0,5]
+         1791572353.033589  1000  4944  7083 I am_create_activity: [0,119912369,5,com.example.logtest/.MainActivity,NULL,NULL,NULL,268435456]
+         1791572353.052869  1000  4944  7083 I wm_task_moved: [5,0,2147483647]
+         1791572353.136111  1000  4944  7083 I am_pause_activity: [0,161434653,com.google.android.apps.nexuslauncher/.NexusLauncherActivity,userLeaving=true]
+         1791572353.309974  1000  4944  4967 W system_server: Long monitor contention with owner Binder:4944_17 (7083) at android.app.WaitResult com.android.server.wm.ActivityTaskManagerService.startActivityAndWait(android.app.IApplicationThread, java.lang.String, android.content.Intent, java.lang.String, android.os.IBinder, java.lang.String, int, int, android.app.ProfilerInfo, android.os.Bundle, int)(ActivityTaskManagerService.java:1214) waiters=0 in void com.android.server.wm.WindowAnimator.lambda$new$1$WindowAnimator(long) for 854ms
+         1791572353.312592  1000  4944  4967 I dvm_lock_sample: [system_server,1,android.anim,854,WindowAnimator.java,96,void com.android.server.wm.WindowAnimator.lambda$new$1$WindowAnimator(long),ActivityTaskManagerService.java,1214,android.app.WaitResult com.android.server.wm.ActivityTaskManagerService.startActivityAndWait(android.app.IApplicationThread, java.lang.String, android.content.Intent, java.lang.String, android.os.IBinder, java.lang.String, int, int, android.app.ProfilerInfo, android.os.Bundle, int),100]
+         1791572353.322579  1000  4944  4966 W system_server: Long monitor contention with owner Binder:4944_17 (7083) at android.app.WaitResult com.android.server.wm.ActivityTaskManagerService.startActivityAndWait(android.app.IApplicationThread, java.lang.String, android.content.Intent, java.lang.String, android.os.IBinder, java.lang.String, int, int, android.app.ProfilerInfo, android.os.Bundle, int)(ActivityTaskManagerService.java:1214) waiters=1 in void com.android.server.wm.TaskChangeNotificationController.forAllRemoteListeners(com.android.server.wm.TaskChangeNotificationController$TaskStackConsumer, android.os.Message) for 607ms
+         1791572353.323681  1000  4944  4966 I dvm_lock_sample: [system_server,1,android.display,607,TaskChangeNotificationController.java,282,void com.android.server.wm.TaskChangeNotificationController.forAllRemoteListeners(com.android.server.wm.TaskChangeNotificationController$TaskStackConsumer, android.os.Message),ActivityTaskManagerService.java,1214,android.app.WaitResult com.android.server.wm.ActivityTaskManagerService.startActivityAndWait(android.app.IApplicationThread, java.lang.String, android.content.Intent, java.lang.String, android.os.IBinder, java.lang.String, int, int, android.app.ProfilerInfo, android.os.Bundle, int),100]
+         1791572353.337644  1000  4944  6180 W system_server: Long monitor contention with owner Binder:4944_17 (7083) at android.app.WaitResult com.android.server.wm.ActivityTaskManagerService.startActivityAndWait(android.app.IApplicationThread, java.lang.String, android.content.Intent, java.lang.String, android.os.IBinder, java.lang.String, int, int, android.app.ProfilerInfo, android.os.Bundle, int)(ActivityTaskManagerService.java:1214) waiters=2 in void com.android.server.wm.ActivityTaskManagerService.activityTopResumedStateLost() for 478ms
+         1791572353.340312  1000  4944  6180 I dvm_lock_sample: [system_server,1,Binder:4944_12,478,ActivityTaskManagerService.java,1687,void com.android.server.wm.ActivityTaskManagerService.activityTopResumedStateLost(),-,1214,android.app.WaitResult com.android.server.wm.ActivityTaskManagerService.startActivityAndWait(android.app.IApplicationThread, java.lang.String, android.content.Intent, java.lang.String, android.os.IBinder, java.lang.String, int, int, android.app.ProfilerInfo, android.os.Bundle, int),95]
+         1791572353.361340 10108  5353  5353 I am_on_paused_called: [0,com.google.android.apps.nexuslauncher.NexusLauncherActivity,performPause]
+         1791572353.427209  1000  4944  6180 W InputReader: Device has associated, but no associated display id.
+         1791572353.437702  1000  4944  6180 I am_add_to_stopping: [0,161434653,com.google.android.apps.nexuslauncher/.NexusLauncherActivity,makeInvisible]
+         1791572353.468217  1000  4944  4967 I dvm_lock_sample: [system_server,1,android.anim,62,WindowAnimator.java,141,void com.android.server.wm.WindowAnimator.animate(long),ActivityTaskManagerService.java,1696,void com.android.server.wm.ActivityTaskManagerService.activityPaused(android.os.IBinder),12]
+         1791572353.565387  1000  4944  4966 I am_uid_running: 10146
+         1791572353.429004  1000  4944  6180 I chatty  : uid=1000(system) Binder:4944_12 identical 8 lines
+         1791572353.429080  1000  4944  6180 W InputReader: Device has associated, but no associated display id.
+         1791572353.581179  1000  4944  4967 E system_server: Invalid ID 0x00000000.
+         1791572353.686804  1000  4944  4973 W ActivityManager: Slow operation: 117ms so far, now at startProcess: asking zygote to start proc
+         1791572353.704309  1000  4944  4966 W ActivityManager: Slow operation: 140ms so far, now at startProcess: done starting proc!
+         1791572353.708833  1000  4944  4966 I sysui_multi_action: [757,803,799,window_time_0,802,41]
+         1791572353.829034 10115  7149  7149 I d.omadm.servic: The ClassLoaderContext is a special shared library.
+         1791572353.900499  1000  4944  4971 W Searchables: No global search activity found
+         1791572354.197009  1000  4944  4967 I Choreographer: Skipped 47 frames!  The application may be doing too much work on its main thread.
+         1791572354.520549  1000  4944  4966 W system_server: Long monitor contention with owner android.anim (4967) at int com.android.server.wm.WindowManagerService.relayoutWindow(com.android.server.wm.Session, android.view.IWindow, int, android.view.WindowManager$LayoutParams, int, int, int, int, long, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.view.DisplayCutout$ParcelableWrapper, android.util.MergedConfiguration, android.view.SurfaceControl, android.view.InsetsState)(WindowManagerService.java:1982) waiters=1 in void com.android.server.wm.WindowManagerService$H.handleMessage(android.os.Message) for 162ms
+         1791572354.523111  1000  4944  4966 I dvm_lock_sample: [system_server,1,android.display,162,WindowManagerService.java,4876,void com.android.server.wm.WindowManagerService$H.handleMessage(android.os.Message),-,1982,int com.android.server.wm.WindowManagerService.relayoutWindow(com.android.server.wm.Session, android.view.IWindow, int, android.view.WindowManager$LayoutParams, int, int, int, int, long, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.view.DisplayCutout$ParcelableWrapper, android.util.MergedConfiguration, android.view.SurfaceControl, android.view.InsetsState),32]
+         1791572354.633378  1000  1763  1763 D gralloc_ranchu: gralloc_alloc: Creating ashmem region of size 9334784
+         1791572354.760401  1000  4944  4971 W VoiceInteractionManagerService: no available voice interaction services found for user 0
+         1791572355.089637  root  4882  4882 D Zygote  : Forked child process 7182
+         1791572355.141605  1000  4944  4967 I Choreographer: Skipped 53 frames!  The application may be doing too much work on its main thread.
+         1791572355.340254  1000  4944  4966 I dvm_lock_sample: [system_server,1,android.display,77,WindowManagerService.java,4876,void com.android.server.wm.WindowManagerService$H.handleMessage(android.os.Message),WindowSurfacePlacer.java,61,void com.android.server.wm.WindowSurfacePlacer.lambda$new$0$WindowSurfacePlacer(),15]
+         1791572355.474477  1000  4944  6393 W system_server: Long monitor contention with owner android.bg (4971) at android.content.pm.PackageInfo com.android.server.pm.PackageManagerService.getPackageInfoInternal(java.lang.String, long, int, int, int)(PackageManagerService.java:4214) waiters=0 in int com.android.server.pm.PackageManagerService.checkUidPermission(java.lang.String, int) for 475ms
+         1791572355.477879  1000  4944  6393 I dvm_lock_sample: [system_server,1,Binder:4944_16,475,PackageManagerService.java,5627,int com.android.server.pm.PackageManagerService.checkUidPermission(java.lang.String, int),-,4214,android.content.pm.PackageInfo com.android.server.pm.PackageManagerService.getPackageInfoInternal(java.lang.String, long, int, int, int),95]
+         1791572355.489082  1000  4944  5511 W system_server: Long monitor contention with owner android.bg (4971) at android.content.pm.PackageInfo com.android.server.pm.PackageManagerService.getPackageInfoInternal(java.lang.String, long, int, int, int)(PackageManagerService.java:4214) waiters=1 in java.lang.String com.android.server.pm.PackageManagerService.getInstantAppPackageName(int) for 247ms
+         1791572355.494705  1000  4944  5511 I dvm_lock_sample: [system_server,1,Binder:4944_8,247,PackageManagerService.java,7178,java.lang.String com.android.server.pm.PackageManagerService.getInstantAppPackageName(int),-,4214,android.content.pm.PackageInfo com.android.server.pm.PackageManagerService.getPackageInfoInternal(java.lang.String, long, int, int, int),49]
+         1791572355.575065  1000  4944  4973 W ActivityManager: Slow operation: 2005ms so far, now at startProcess: returned from zygote!
+         1791572355.576822  1000  4944  4973 W ActivityManager: Slow operation: 2007ms so far, now at startProcess: done updating battery stats
+         1791572355.577098  1000  4944  4973 I am_proc_start: [0,7182,10146,com.example.logtest,activity,{com.example.logtest/com.example.logtest.MainActivity}]
+         1791572355.577653  1000  4944  4973 W ActivityManager: Slow operation: 2007ms so far, now at startProcess: building log message
+         1791572355.578010  1000  4944  4973 I ActivityManager: Start proc 7182:com.example.logtest/u0a146 for activity {com.example.logtest/com.example.logtest.MainActivity}
+         1791572355.578233  1000  4944  4973 W ActivityManager: Slow operation: 2008ms so far, now at startProcess: starting to update pids map
+         1791572355.583587  1000  4944  4973 W ActivityManager: Slow operation: 2013ms so far, now at startProcess: done updating pids map
+         1791572355.814787 10146  7182  7182 I example.logtes: Late-enabling -Xcheck:jni
+         1791572355.872287 10110  5118  5137 I ndroid.systemu: Background concurrent copying GC freed 69740(4209KB) AllocSpace objects, 0(0B) LOS objects, 49% free, 6301KB/12MB, paused 8.311ms total 8.288s
+         1791572356.441688  1000  4944  4971 E memtrack: Couldn't load memtrack module
+         1791572356.442318  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+         1791572356.508271  1000  4944  4971 I am_pss  : [6546,10059,com.android.cellbroadcastreceiver,14588928,10743808,0,110034944,0,20,27]
+         1791572356.622939 10115  7149  7149 D DMIntentReceiver: action intent: android.intent.action.BOOT_COMPLETED, subId: 1
+         1791572356.685611  1000  4944  4984 I commit_sys_config_file: [package-user-0,139]
+         1791572356.740389  1000  4944  6058 W system_server: Long monitor contention with owner PackageManager (4984) at void com.android.server.pm.PackageManagerService$PackageHandler.doHandleMessage(android.os.Message)(PackageManagerService.java:1566) waiters=0 in int com.android.server.pm.PackageManagerService.checkUidPermission(java.lang.String, int) for 181ms
+         1791572356.743441  1000  4944  6058 I dvm_lock_sample: [system_server,1,Binder:4944_10,181,PackageManagerService.java,5627,int com.android.server.pm.PackageManagerService.checkUidPermission(java.lang.String, int),-,1566,void com.android.server.pm.PackageManagerService$PackageHandler.doHandleMessage(android.os.Message),36]
+         1791572356.739397 10115  7149  7149 I service_manager_slow: [67,isub]
+         1791572356.851226 10115  7149  7149 I service_manager_slow: [78,isub]
+         1791572356.933864 10115  7149  7149 D DMIntentReceiver: Ignoring Intent.ACTION_BOOT_COMPLETED
+         1791572356.937333  1000  4944  5756 E TaskPersister: File error accessing recents directory (directory doesn't exist?).
+         1791572357.255407 10108  5353  5375 I s.nexuslaunche: Background young concurrent copying GC freed 20412(1119KB) AllocSpace objects, 24(1612KB) LOS objects, 46% free, 3260KB/6052KB, paused 1.169ms total 3.042s
+         1791572357.308011  1000  4944  5725 I ActivityManager: Killing 6117:com.android.mtp/u0a56 (adj 985): empty #17
+         1791572357.309120  1000  4944  5725 I am_kill : [0,6117,com.android.mtp,985,empty #17]
+         1791572357.432296 radio  6394  6394 I m.android.phon: The ClassLoaderContext is a special shared library.
+         1791572357.782410  1000  4944  4971 I sysui_multi_action: [757,1717,758,1,759,0]
+         1791572357.858558  1000  4944  4971 I sysui_multi_action: [757,1717,758,2,759,0]
+         1791572358.001281  root  4882  4882 I Zygote  : Process 6117 exited due to signal 9 (Killed)
+         1791572358.033177  1000  4944  5158 I am_proc_died: [0,6117,com.android.mtp,985,20]
+         1791572357.951985  1000  4944  4971 I sysui_multi_action: [757,1717,758,3,759,0]
+         1791572358.075994 10146  7182  7182 E example.logtes: Unknown bits set in runtime_flags: 0x8000
+         1791572358.216808 10146  7182  7182 W example.logtes: Unexpected CPU variant for X86 using defaults: x86_64
+         1791572358.080021  1000  4944  4974 I libprocessgroup: Successfully killed process cgroup uid 10056 pid 6117 in 751ms
+         1791572358.509440 radio  6394  6394 I service_manager_slow: [30,telephony.registry]
+         1791572358.620185  1000  4944  4966 W InputReader: Device has associated, but no associated display id.
+         1791572358.622535  1000  4944  4966 I chatty  : uid=1000(system) android.display identical 8 lines
+         1791572358.622648  1000  4944  4966 W InputReader: Device has associated, but no associated display id.
+         1791572359.070239 10108  5353  5977 D EGL_emulation: eglMakeCurrent: 0x7ef787e9f200: ver 3 0 (tinfo 0x7ef7d15f91e0)
+         1791572359.111538  1000  4944  4964 W Looper  : Slow dispatch took 117ms android.ui h=com.android.server.wm.BarController$BarHandler c=com.android.server.wm.-$$Lambda$StatusBarController$1$3FiQ0kybPCSlgcNJkCsNm5M12iA@5cbac29 m=0
+         1791572359.261869 radio  6394  6394 I service_manager_slow: [91,ions]
+         1791572359.402513 radio  6394  6394 I VvmSimStateTracker: android.intent.action.BOOT_COMPLETED
+         1791572359.583374  1000  4944  5158 W system_server: Long monitor contention with owner android.anim (4967) at void com.android.server.wm.WindowAnimator.animate(long)(WindowAnimator.java:141) waiters=2 in com.android.server.wm.WindowProcessController com.android.server.wm.ActivityTaskManagerService$LocalService.getTopApp() for 137ms
+         1791572359.588251  1000  4944  5158 I dvm_lock_sample: [system_server,0,Binder:4944_4,137,ActivityTaskManagerService.java,7195,com.android.server.wm.WindowProcessController com.android.server.wm.ActivityTaskManagerService$LocalService.getTopApp(),WindowAnimator.java,141,void com.android.server.wm.WindowAnimator.animate(long),27]
+         1791572359.885430  1000  4944  6058 I system_server: IncrementDisableThreadFlip blocked for 37.706ms
+         1791572360.017524  1000  4944  5725 I am_proc_bound: [0,7182,com.example.logtest]
+         1791572360.084976  1000  4944  5725 W ActivityManager: Slow operation: 68ms so far, now at attachApplicationLocked: immediately after bindApplication
+         1791572360.106746  1000  4944  5725 W ActivityManager: Slow operation: 90ms so far, now at attachApplicationLocked: after updateLruProcessLocked
+         1791572360.161803  1000  4944  5725 W InputReader: Device has associated, but no associated display id.
+         1791572360.435975  1000  4944  5725 I am_restart_activity: [0,119912369,5,com.example.logtest/.MainActivity]
+         1791572360.542347  1000  4944  5725 I am_set_resumed_activity: [0,com.example.logtest/.MainActivity,minimalResumeActivityLocked]
+         1791572360.626200  1000  4944  5725 W ActivityManager: Slow operation: 610ms so far, now at attachApplicationLocked: after mServices.attachApplicationLocked
+         1791572360.165574  1000  4944  5725 I chatty  : uid=1000(system) Binder:4944_E identical 8 lines
+         1791572360.172610  1000  4944  5725 W InputReader: Device has associated, but no associated display id.
+         1791572360.640902  1000  4944  6035 W system_server: Long monitor contention with owner Binder:4944_E (5725) at void com.android.server.am.ActivityManagerService.attachApplication(android.app.IApplicationThread, long)(ActivityManagerService.java:5176) waiters=0 in java.lang.String com.android.server.am.ActivityManagerService.getTagForIntentSender(android.content.IIntentSender, java.lang.String) for 604ms
+         1791572360.660408  1000  4944  6035 I dvm_lock_sample: [system_server,1,Binder:4944_F,604,ActivityManagerService.java,5579,java.lang.String com.android.server.am.ActivityManagerService.getTagForIntentSender(android.content.IIntentSender, java.lang.String),-,5176,void com.android.server.am.ActivityManagerService.attachApplication(android.app.IApplicationThread, long),100]
+         1791572360.778997  1000  4944  4966 I am_uid_active: 10146
+         1791572360.862091 10146  7182  7201 I example.logtes: Background young concurrent copying GC freed 5520(3090KB) AllocSpace objects, 0(0B) LOS objects, 86% free, 961KB/7105KB, paused 4.614ms total 783.527ms
+         1791572361.009552  1000  4944  4964 W Looper  : Slow dispatch took 187ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=null m=53
+         1791572361.926769  1000  4944  4963 W GrantDefaultRolesRequest: timed out after 15000 ms
+         1791572362.458194  1000  4944  4957 I system_server: Background young concurrent copying GC freed 135412(4452KB) AllocSpace objects, 20(1296KB) LOS objects, 30% free, 11MB/16MB, paused 12.683ms total 2.782s
+         1791572363.163567  1000  1792  2127 E SurfaceFlinger: ro.sf.lcd_density must be defined as a build property
+         1791572363.174924  1000  4944  4966 W ActivityTaskManager: Launch timeout has expired, giving up wake lock!
+         1791572363.198220  1000  1792  3378 E SurfaceFlinger: ro.sf.lcd_density must be defined as a build property
+         1791572363.291739 10146  7182  7214 D libEGL  : Emulator has host GPU support, qemu.gles is set to 1.
+         1791572363.289000 10146  7182  7182 I auditd  : type=1400 audit(0.0:79): avc: denied { write } for comm="RenderThread" name="property_service" dev="tmpfs" ino=540 scontext=u:r:untrusted_app:s0:c146,c256,c512,c768 tcontext=u:object_r:property_socket:s0 tclass=sock_file permissive=0 app=com.example.logtest
+         1791572363.289000 10146  7182  7182 W RenderThread: type=1400 audit(0.0:79): avc: denied { write } for name="property_service" dev="tmpfs" ino=540 scontext=u:r:untrusted_app:s0:c146,c256,c512,c768 tcontext=u:object_r:property_socket:s0 tclass=sock_file permissive=0 app=com.example.logtest
+         1791572363.310114 10146  7182  7214 W libc    : Unable to set property "qemu.gles" to "1": connection failed; errno=13 (Permission denied)
+         1791572363.439101 10146  7182  7182 V LogTest : onCreate verbose
+         1791572363.442155 10146  7182  7182 D LogTest : onCreate debug pid=7182 uid=10146
+         1791572363.442842 10146  7182  7182 I MyRepo  : feed loaded items=20
+         1791572363.443544 10146  7182  7182 D OkHttp  : --> GET https://api.example.com/v1/feed
+         1791572363.443949 10146  7182  7182 D OkHttp  : <-- 200 https://api.example.com/v1/feed (312ms)
+         1791572363.484470 10146  7182  7182 W MyRepo  : token refresh failed
+         1791572363.484470 10146  7182  7182 W MyRepo  : java.io.IOException: token endpoint failed
+         1791572363.484470 10146  7182  7182 W MyRepo  : 	at com.example.logtest.MainActivity.onCreate(MainActivity.java:20)
+         1791572363.484470 10146  7182  7182 W MyRepo  : 	at android.app.Activity.performCreate(Activity.java:7802)
+         1791572363.484470 10146  7182  7182 W MyRepo  : 	at android.app.Activity.performCreate(Activity.java:7791)
+         1791572363.484470 10146  7182  7182 W MyRepo  : 	at android.app.Instrumentation.callActivityOnCreate(Instrumentation.java:1299)
+         1791572363.484470 10146  7182  7182 W MyRepo  : 	at android.app.ActivityThread.performLaunchActivity(ActivityThread.java:3245)
+         1791572363.484470 10146  7182  7182 W MyRepo  : 	at android.app.ActivityThread.handleLaunchActivity(ActivityThread.java:3409)
+         1791572363.484470 10146  7182  7182 W MyRepo  : 	at android.app.servertransaction.LaunchActivityItem.execute(LaunchActivityItem.java:83)
+         1791572363.484470 10146  7182  7182 W MyRepo  : 	at android.app.servertransaction.TransactionExecutor.executeCallbacks(TransactionExecutor.java:135)
+         1791572363.484470 10146  7182  7182 W MyRepo  : 	at android.app.servertransaction.TransactionExecutor.execute(TransactionExecutor.java:95)
+         1791572363.484470 10146  7182  7182 W MyRepo  : 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2016)
+         1791572363.484470 10146  7182  7182 W MyRepo  : 	at android.os.Handler.dispatchMessage(Handler.java:107)
+         1791572363.484470 10146  7182  7182 W MyRepo  : 	at android.os.Looper.loop(Looper.java:214)
+         1791572363.484470 10146  7182  7182 W MyRepo  : 	at android.app.ActivityThread.main(ActivityThread.java:7356)
+         1791572363.484470 10146  7182  7182 W MyRepo  : 	at java.lang.reflect.Method.invoke(Native Method)
+         1791572363.484470 10146  7182  7182 W MyRepo  : 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+         1791572363.484470 10146  7182  7182 W MyRepo  : 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+         1791572363.484470 10146  7182  7182 W MyRepo  : Caused by: java.lang.IllegalStateException: Unable to resolve host "push.example.com"
+         1791572363.484470 10146  7182  7182 W MyRepo  : 	... 16 more
+         1791572363.485581 10146  7182  7182 E LogTest : multi-line message
+         1791572363.485581 10146  7182  7182 E LogTest : line two
+         1791572363.485581 10146  7182  7182 E LogTest : 	line three (tab)
+         1791572363.724397 10146  7182  7214 D libEGL  : loaded /vendor/lib64/egl/libEGL_emulation.so
+         1791572363.918911 10146  7182  7214 D libEGL  : loaded /vendor/lib64/egl/libGLESv1_CM_emulation.so
+         1791572364.151794 10146  7182  7214 D libEGL  : loaded /vendor/lib64/egl/libGLESv2_emulation.so
+         1791572365.343406  1000  4944  5756 E TaskPersister: File error accessing recents directory (directory doesn't exist?).
+         1791572365.323697 10146  7182  7182 I am_on_create_called: [0,com.example.logtest.MainActivity,performCreate]
+         1791572365.417901 10146  7182  7182 D LogTest : onStart
+         1791572365.419678 10146  7182  7182 I am_on_start_called: [0,com.example.logtest.MainActivity,handleStartActivity]
+         1791572365.534262 10146  7182  7182 I LogTest : onResume
+         1791572365.536192 10146  7182  7182 I am_on_resume_called: [0,com.example.logtest.MainActivity,RESUME_ACTIVITY]
+         1791572366.023011  1000  4944  4966 I dvm_lock_sample: [system_server,1,android.display,26,ActivityStack.java,456,void com.android.server.wm.ActivityStack$ActivityStackHandler.handleMessage(android.os.Message),InputMonitor.java,117,void com.android.server.wm.InputMonitor$1.run(),5]
+         1791572366.032797 10146  7182  7182 I am_on_top_resumed_gained_called: [0,com.example.logtest.MainActivity,topStateChangedWhenResumed]
+         1791572366.079577  1000  4944  4963 W Looper  : Slow dispatch took 179ms android.fg h=android.os.Handler c=com.android.server.Watchdog$HandlerChecker@c648efd m=0
+         1791572367.407434  1000  4944  4965 I dvm_lock_sample: [system_server,0,android.io,57,MessageQueue.java,338,android.os.Message android.os.MessageQueue.next(),-,556,boolean android.os.MessageQueue.enqueueMessage(android.os.Message, long),11]
+         1791572367.624242 10146  7182  7212 D HostConnection: HostConnection::get() New Host Connection established 0x7ef7d1714c20, tid 7212
+         1791572367.734061 10146  7182  7212 D HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_hwc_color_transform GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+         1791572368.009461 10146  7182  7212 D EGL_emulation: eglCreateContext: 0x7ef7d1715a80: maj 3 min 0 rcv 3
+         1791572368.036830 10146  7182  7212 D EGL_emulation: eglMakeCurrent: 0x7ef7d1715a80: ver 3 0 (tinfo 0x7ef862db9460)
+         1791572368.263165  1000  1763  1763 D gralloc_ranchu: gralloc_alloc: Creating ashmem region of size 9334784
+         1791572368.287004 10074  5287  7056 W ExclusiveDefaultHolderMixin: Cannot get ApplicationInfo for default holder, config: config_defaultSms, package: com.android.messaging
+         1791572368.297968  1000  1610  1610 I hwservicemanager: getTransport: Cannot find entry android.hardware.graphics.mapper@3.0::IMapper/default in either framework or device manifest.
+         1791572368.304261 10146  7182  7212 W Gralloc3: mapper 3.x is not supported
+         1791572368.499926 10146  7182  7212 D HostConnection: createUnique: call
+         1791572368.504323 10146  7182  7212 D HostConnection: HostConnection::get() New Host Connection established 0x7ef7d1715bc0, tid 7212
+         1791572368.525282 10146  7182  7212 D HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_hwc_color_transform GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+         1791572368.530192 10146  7182  7212 D eglCodecCommon: allocate: Ask for block of size 0x1000
+         1791572368.531508 10146  7182  7212 D eglCodecCommon: allocate: ioctl allocate returned offset 0x3ff70a000 size 0x2000
+         1791572368.574671  1000  1763  1763 D gralloc_ranchu: gralloc_alloc: Creating ashmem region of size 9334784
+         1791572368.610222  1000  1763  1763 D gralloc_ranchu: gralloc_alloc: Creating ashmem region of size 9334784
+         1791572369.291765 10146  7182  7212 D EGL_emulation: eglMakeCurrent: 0x7ef7d1715a80: ver 3 0 (tinfo 0x7ef862db9460)
+         1791572370.158940 10146  7182  7212 I OpenGLRenderer: Davey! duration=4323ms; Flags=1, IntendedVsync=1469615600069, Vsync=1469832266727, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=1469848627146, AnimationStart=1469851199073, PerformTraversalsStart=1469851505999, DrawStart=1472381203804, SyncQueued=1473083856142, SyncStart=1473099941440, IssueDrawCommandsStart=1473103484467, SwapBuffers=1473846520807, FrameCompleted=1473955135175, DequeueBufferDuration=2241000, QueueBufferDuration=18046000, 
+         1791572370.473411 10146  7182  7182 I Choreographer: Skipped 255 frames!  The application may be doing too much work on its main thread.
+         1791572370.664637  1000  4944  4966 W system_server: Long monitor contention with owner android.anim (4967) at void com.android.server.wm.WindowSurfacePlacer.lambda$new$0$WindowSurfacePlacer()(WindowSurfacePlacer.java:61) waiters=1 in void com.android.server.wm.WindowManagerService$H.handleMessage(android.os.Message) for 424ms
+         1791572370.667679  1000  4944  4966 I dvm_lock_sample: [system_server,1,android.display,424,WindowManagerService.java,4876,void com.android.server.wm.WindowManagerService$H.handleMessage(android.os.Message),WindowSurfacePlacer.java,61,void com.android.server.wm.WindowSurfacePlacer.lambda$new$0$WindowSurfacePlacer(),84]
+         1791572370.731210 10146  7182  7212 I OpenGLRenderer: Davey! duration=4510ms; Flags=0, IntendedVsync=1470015612081, Vsync=1474265611911, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=1474280806821, AnimationStart=1474282080328, PerformTraversalsStart=1474314515533, DrawStart=1474386862543, SyncQueued=1474410989003, SyncStart=1474415441390, IssueDrawCommandsStart=1474416290328, SwapBuffers=1474476462359, FrameCompleted=1474530097726, DequeueBufferDuration=5109000, QueueBufferDuration=12234000, 
+         1791572370.757683  1000  4944  4963 W Looper  : Slow dispatch took 105ms android.fg h=com.android.server.location.GnssLocationProvider$ProviderHandler c=null m=18
+         1791572370.882598  1000  4944  6248 I am_stop_activity: [0,161434653,com.google.android.apps.nexuslauncher/.NexusLauncherActivity]
+         1791572370.968399 10074  5287  7056 W ExclusiveDefaultHolderMixin: Default holder does not qualify for the role, config: config_defaultAssistant, package: com.google.android.googlequicksearchbox
+         1791572371.144403 10108  5353  5353 I am_on_stop_called: [0,com.google.android.apps.nexuslauncher.NexusLauncherActivity,STOP_ACTIVITY_ITEM]
+         1791572371.225035  1000  4944  4971 I sysui_multi_action: [319,6861,321,3435,322,18692,325,1457,757,761,758,7,759,3,806,com.example.logtest,871,com.example.logtest.MainActivity,905,0,945,8222,1320,12,1321,1]
+         1791572371.530486  1000  4944  4966 W system_server: Long monitor contention with owner android.anim (4967) at void com.android.server.wm.WindowAnimator.animate(long)(WindowAnimator.java:141) waiters=0 in boolean com.android.server.wm.ActivityTaskManagerService$LocalService.isSleeping() for 165ms
+         1791572371.534446  1000  4944  4966 I dvm_lock_sample: [system_server,1,android.display,165,ActivityTaskManagerService.java,6415,boolean com.android.server.wm.ActivityTaskManagerService$LocalService.isSleeping(),WindowAnimator.java,141,void com.android.server.wm.WindowAnimator.animate(long),33]
+         1791572371.622534  1000  4944  6393 W system_server: Long monitor contention with owner android.display (4966) at void com.android.server.am.ActivityManagerService.trimApplications(java.lang.String)(ActivityManagerService.java:17233) waiters=2 in void com.android.server.am.ActivityManagerService.trimApplications(java.lang.String) for 260ms
+         1791572371.625471  1000  4944  6393 I dvm_lock_sample: [system_server,1,Binder:4944_16,260,ActivityManagerService.java,17233,void com.android.server.am.ActivityManagerService.trimApplications(java.lang.String),-,17233,void com.android.server.am.ActivityManagerService.trimApplications(java.lang.String),52]
+         1791572371.692213  1000  4944  4966 I dvm_lock_sample: [system_server,1,android.display,96,WindowManagerService.java,4876,void com.android.server.wm.WindowManagerService$H.handleMessage(android.os.Message),SurfaceAnimator.java,75,void com.android.server.wm.SurfaceAnimator.lambda$getFinishedCallback$1$SurfaceAnimator(java.lang.Runnable, com.android.server.wm.AnimationAdapter),19]
+         1791572371.786285  1000  4944  6393 I dvm_lock_sample: [system_server,1,Binder:4944_16,90,ActivityTaskManagerService.java,7195,com.android.server.wm.WindowProcessController com.android.server.wm.ActivityTaskManagerService$LocalService.getTopApp(),WindowAnimator.java,132,void com.android.server.wm.WindowAnimator.animate(long),18]
+         1791572371.956136  1000  4944  4964 W Looper  : Slow dispatch took 789ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=null m=53
+         1791572372.198294  1000  5468  5468 I service_manager_slow: [37,stats]
+         1791572372.279387  1000  4944  4971 I am_activity_launch_time: [0,119912369,com.example.logtest/.MainActivity,18692]
+         1791572372.317503  1000  4944  4971 I ActivityTaskManager: Displayed com.example.logtest/.MainActivity: +18s692ms
+         1791572372.542549  1000  4944  4971 E memtrack: Couldn't load memtrack module
+         1791572372.544334  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+         1791572372.579931  1000  4944  4963 I dvm_lock_sample: [system_server,0,android.fg,13,MessageQueue.java,338,android.os.Message android.os.MessageQueue.next(),-,556,boolean android.os.MessageQueue.enqueueMessage(android.os.Message, long),2]
+         1791572372.608861 radio  6394  6394 I m.android.phon: The ClassLoaderContext is a special shared library.
+         1791572372.962575  1000  4944  4971 I am_pss  : [7182,10146,com.example.logtest,26077184,19808256,0,129077248,0,2,39]
+         1791572373.038647  1000  4944  4944 I notification_enqueue: [10108,5353,com.google.android.apps.nexuslauncher,10436,NULL,0,Notification(channel=com.google.android.gms.availability pri=0 contentView=null vibrate=null sound=null tick defaults=0x0 flags=0x110 color=0x00000000 vis=PRIVATE),1]
+         1791572373.126731  1000  4944  4971 E memtrack: Couldn't load memtrack module
+         1791572373.127425  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+         1791572373.234058  1000  4944  6393 I am_uid_running: 10081
+         1791572373.280325  1000  4944  6393 W ActivityManager: Slow operation: 53ms so far, now at startProcess: done creating new process record
+         1791572373.281162  1000  4944  6393 W ActivityManager: Slow operation: 54ms so far, now at startProcess: stepping in to startProcess
+         1791572373.331371  1000  4944  6393 W ActivityManager: Slow operation: 104ms so far, now at startProcess: done starting proc!
+         1791572373.358868  1000  4944  4944 I sysui_multi_action: [757,1501,758,1,793,359255,794,0,795,428,796,10436,806,com.google.android.apps.nexuslauncher,857,com.google.android.gms.availability,858,4,947,0,1500,0,1688,1,1745,2098068913]
+         1791572373.390959  1000  4944  4944 I sysui_multi_action: [757,804,799,note_interruptive,801,0,802,1]
+         1791572373.401190  1000  4944  4944 I sysui_multi_action: [757,199,758,1,759,2,793,359293,794,0,795,466,796,10436,806,com.google.android.apps.nexuslauncher,857,com.google.android.gms.availability,858,4,947,0,1500,38,1688,1,1745,2098068913]
+         1791572373.448391  1000  4944  4944 I notification_alert: [0|com.google.android.apps.nexuslauncher|10436|null|10108,0,1,0]
+         1791572373.512291  1000  4944  4944 W Looper  : Slow dispatch took 351ms main h=com.android.server.notification.NotificationManagerService$WorkerHandler c=com.android.server.notification.NotificationManagerService$PostNotificationRunnable@9362e1d m=0
+         1791572373.513091  1000  4944  6248 W system_server: Long monitor contention with owner main (4944) at void com.android.server.notification.NotificationManagerService$PostNotificationRunnable.run()(NotificationManagerService.java:5345) waiters=0 in void com.android.server.notification.NotificationManagerService$10.applyEnqueuedAdjustmentFromAssistant(android.service.notification.INotificationListener, android.service.notification.Adjustment) for 230ms
+         1791572373.515059  1000  4944  6248 I dvm_lock_sample: [system_server,1,Binder:4944_15,230,NotificationManagerService.java,3951,void com.android.server.notification.NotificationManagerService$10.applyEnqueuedAdjustmentFromAssistant(android.service.notification.INotificationListener, android.service.notification.Adjustment),-,5345,void com.android.server.notification.NotificationManagerService$PostNotificationRunnable.run(),46]
+         1791572373.740197  1000  4944  6393 D PackageManager: Instant App installer not found with android.intent.action.INSTALL_INSTANT_APP_PACKAGE
+         1791572373.740881  1000  4944  6393 D PackageManager: Clear ephemeral installer activity
+         1791572373.755648 10108  5353  6101 E ActivityThread: Failed to find provider info for com.google.android.apps.wellbeing.api
+         1791572374.052057 10110  5118  7222 W MediaPlayer: Couldn't open content://0@settings/system/notification_sound_cache
+         1791572374.052057 10110  5118  7222 W MediaPlayer: java.io.FileNotFoundException: open failed: ENOENT (No such file or directory)
+         1791572374.052057 10110  5118  7222 W MediaPlayer: 	at android.database.DatabaseUtils.readExceptionWithFileNotFoundExceptionFromParcel(DatabaseUtils.java:149)
+         1791572374.052057 10110  5118  7222 W MediaPlayer: 	at android.content.ContentProviderProxy.openTypedAssetFile(ContentProviderNative.java:705)
+         1791572374.052057 10110  5118  7222 W MediaPlayer: 	at android.content.ContentResolver.openTypedAssetFileDescriptor(ContentResolver.java:1687)
+         1791572374.052057 10110  5118  7222 W MediaPlayer: 	at android.content.ContentResolver.openAssetFileDescriptor(ContentResolver.java:1503)
+         1791572374.052057 10110  5118  7222 W MediaPlayer: 	at android.content.ContentResolver.openAssetFileDescriptor(ContentResolver.java:1420)
+         1791572374.052057 10110  5118  7222 W MediaPlayer: 	at android.media.MediaPlayer.attemptDataSource(MediaPlayer.java:1101)
+         1791572374.052057 10110  5118  7222 W MediaPlayer: 	at android.media.MediaPlayer.setDataSource(MediaPlayer.java:1064)
+         1791572374.052057 10110  5118  7222 W MediaPlayer: 	at android.media.MediaPlayer.setDataSource(MediaPlayer.java:1001)
+         1791572374.052057 10110  5118  7222 W MediaPlayer: 	at com.android.systemui.media.NotificationPlayer$CreationAndCompletionThread.run(NotificationPlayer.java:102)
+         1791572374.089338 10110  5118  7222 W MediaPlayer: Couldn't open null uri
+         1791572374.089338 10110  5118  7222 W MediaPlayer: java.lang.NullPointerException: uri
+         1791572374.089338 10110  5118  7222 W MediaPlayer: 	at com.android.internal.util.Preconditions.checkNotNull(Preconditions.java:133)
+         1791572374.089338 10110  5118  7222 W MediaPlayer: 	at android.content.ContentResolver.openAssetFileDescriptor(ContentResolver.java:1477)
+         1791572374.089338 10110  5118  7222 W MediaPlayer: 	at android.content.ContentResolver.openAssetFileDescriptor(ContentResolver.java:1420)
+         1791572374.089338 10110  5118  7222 W MediaPlayer: 	at android.media.MediaPlayer.attemptDataSource(MediaPlayer.java:1101)
+         1791572374.089338 10110  5118  7222 W MediaPlayer: 	at android.media.MediaPlayer.setDataSource(MediaPlayer.java:1066)
+         1791572374.089338 10110  5118  7222 W MediaPlayer: 	at android.media.MediaPlayer.setDataSource(MediaPlayer.java:1001)
+         1791572374.089338 10110  5118  7222 W MediaPlayer: 	at com.android.systemui.media.NotificationPlayer$CreationAndCompletionThread.run(NotificationPlayer.java:102)
+         1791572374.140634  root  4882  4882 D Zygote  : Forked child process 7223
+         1791572374.254835  1000  4944  4965 I commit_sys_config_file: [jobs,240]
+         1791572374.310297  1000  4944  4973 W ActivityManager: Slow operation: 1029ms so far, now at startProcess: returned from zygote!
+         1791572374.319646  1000  4944  4973 W ActivityManager: Slow operation: 1038ms so far, now at startProcess: done updating battery stats
+         1791572374.320345  1000  4944  4973 I am_proc_start: [0,7223,10081,com.android.traceur,broadcast,{com.android.traceur/com.android.traceur.Receiver}]
+         1791572374.324333  1000  4944  4973 W ActivityManager: Slow operation: 1043ms so far, now at startProcess: building log message
+         1791572374.325022  1000  4944  4973 I ActivityManager: Start proc 7223:com.android.traceur/u0a81 for broadcast {com.android.traceur/com.android.traceur.Receiver}
+         1791572374.325333  1000  4944  4973 W ActivityManager: Slow operation: 1044ms so far, now at startProcess: starting to update pids map
+         1791572374.336531  1000  4944  4973 W ActivityManager: Slow operation: 1055ms so far, now at startProcess: done updating pids map
+         1791572374.404309 media  4885  5356 E MediaPlayerService: Couldn't open fd for content://settings/system/notification_sound
+         1791572374.424507 10110  5118  7222 E MediaPlayerNative: Unable to create media player
+         1791572374.430111 10110  5118  7222 V MediaPlayer: resetDrmState:  mDrmInfo=null mDrmProvisioningThread=null mPrepareDrmInProgress=false mActiveDrmScheme=false
+         1791572374.430916 10110  5118  7222 V MediaPlayer: cleanDrmObj: mDrmObj=null mDrmSessionId=null
+         1791572374.439294  1000  4944  4971 I am_pss  : [7050,1000,com.android.dynsystem,6556672,3072000,0,99557376,0,20,35]
+         1791572374.460480 10110  5118  7222 W RingtonePlayer: error loading sound for content://settings/system/notification_sound
+         1791572374.460480 10110  5118  7222 W RingtonePlayer: java.io.IOException: setDataSource failed.: status=0x80000000
+         1791572374.460480 10110  5118  7222 W RingtonePlayer: 	at android.media.MediaPlayer.nativeSetDataSource(Native Method)
+         1791572374.460480 10110  5118  7222 W RingtonePlayer: 	at android.media.MediaPlayer.setDataSource(MediaPlayer.java:1173)
+         1791572374.460480 10110  5118  7222 W RingtonePlayer: 	at android.media.MediaPlayer.setDataSource(MediaPlayer.java:1160)
+         1791572374.460480 10110  5118  7222 W RingtonePlayer: 	at android.media.MediaPlayer.setDataSource(MediaPlayer.java:1069)
+         1791572374.460480 10110  5118  7222 W RingtonePlayer: 	at android.media.MediaPlayer.setDataSource(MediaPlayer.java:1001)
+         1791572374.460480 10110  5118  7222 W RingtonePlayer: 	at com.android.systemui.media.NotificationPlayer$CreationAndCompletionThread.run(NotificationPlayer.java:102)
+         1791572374.493123 10110  5118  7221 W RingtonePlayer: Notification sound delayed by 1083msecs
+         1791572374.506899  1000  4944  4971 E memtrack: Couldn't load memtrack module
+         1791572374.507493  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+         1791572374.557706 10081  7223  7223 W android.traceu: Unexpected CPU variant for X86 using defaults: x86_64
+         1791572374.676404 radio  6394  6394 I service_manager_slow: [12,carrier_config]
+         1791572374.902661  1000  4944  4971 I am_pss  : [7149,10115,com.android.omadm.service,20549632,4235264,0,85696512,0,20,24]
+         1791572374.948973  1000  4944  4971 E memtrack: Couldn't load memtrack module
+         1791572374.949505  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+         1791572375.188536  1000  4944  4944 I RoleManagerService: Granting default permissions...
+         1791572375.190641  1000  4944  4944 W Looper  : Slow dispatch took 167ms main h=android.app.ActivityThread$H c=android.app.-$$Lambda$LoadedApk$ReceiverDispatcher$Args$_BumDX2UKsnxLVrE6UJsJZkotuA@e8c8f19 m=0
+         1791572375.211869  1000  4944  5036 I InputReader: Reconfiguring input devices.  changes=0x00000010
+         1791572375.262859  1000  4944  7083 I am_proc_bound: [0,7223,com.android.traceur]
+         1791572375.345280  1000  4944  7083 W ActivityManager: Slow operation: 84ms so far, now at attachApplicationLocked: after mServices.attachApplicationLocked
+         1791572375.436459  1000  4944  7083 W ActivityManager: Slow operation: 171ms so far, now at attachApplicationLocked: after sendPendingBroadcastsLocked
+         1791572375.445105  1000  4944  4971 W system_server: Long monitor contention with owner ActivityManager (4972) at void com.android.server.am.BroadcastQueue.processNextBroadcast(boolean)(BroadcastQueue.java:948) waiters=1 in void com.android.server.am.ActivityManagerService$5.handleMessage(android.os.Message) for 310ms
+         1791572375.450111  1000  4944  4971 I dvm_lock_sample: [system_server,0,android.bg,310,ActivityManagerService.java,1992,void com.android.server.am.ActivityManagerService$5.handleMessage(android.os.Message),BroadcastQueue.java,948,void com.android.server.am.BroadcastQueue.processNextBroadcast(boolean),62]
+         1791572375.467710  1000  4944  4971 I am_pss  : [6546,10059,com.android.cellbroadcastreceiver,14542848,10743808,0,110034944,0,20,36]
+         1791572375.492259 radio  6394  6394 D CarrierSvcBindHelper: No carrier app for: 0
+         1791572375.525092  1000  4944  4964 W Looper  : Slow dispatch took 115ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=null m=53
+         1791572375.532487  1000  4944  4944 W Looper  : Slow dispatch took 277ms main h=android.app.ActivityThread$H c=android.app.-$$Lambda$LoadedApk$ReceiverDispatcher$Args$_BumDX2UKsnxLVrE6UJsJZkotuA@8b0b08c m=0
+         1791572375.535311  1000  4944  4944 W Looper  : Slow delivery took 373ms main h=android.os.Handler c=android.app.-$$Lambda$LoadedApk$ReceiverDispatcher$Args$_BumDX2UKsnxLVrE6UJsJZkotuA@f20b7ea m=0
+         1791572375.578318  1000  4944  4944 I Telecom : DefaultDialerCache: Refreshing default dialer for user 0: now com.android.dialer: DDC.oR@AG4
+         1791572375.852941 10081  7223  7223 I android.traceu: The ClassLoaderContext is a special shared library.
+         1791572375.967864  1000  4944  4971 W Searchables: No global search activity found
+         1791572376.181545  1000  4944  4971 W VoiceInteractionManagerService: no available voice interaction services found for user 0
+         1791572376.951302  1000  4944  5725 I sysui_multi_action: [757,856,758,1,806,com.android.traceur,857,trace-is-being-recorded,858,4]
+         1791572377.033677  1000  4944  6248 I sysui_multi_action: [757,856,758,1,806,com.android.traceur,857,system-tracing,858,4]
+         1791572377.086293  1000  4944  4971 I service_manager_slow: [21,companiondevice]
+         1791572377.116749  1000  4944  4965 I commit_sys_config_file: [notification-policy,117]
+         1791572377.225502  1000  4944  4965 I commit_sys_config_file: [notification-policy,85]
+         1791572377.319597  1000  4944  6248 D PackageManager: Instant App installer not found with android.intent.action.INSTALL_INSTANT_APP_PACKAGE
+         1791572377.321929  1000  4944  6248 D PackageManager: Clear ephemeral installer activity
+         1791572377.495623  1000  4944  7083 D PackageManager: Instant App installer not found with android.intent.action.INSTALL_INSTANT_APP_PACKAGE
+         1791572377.510361  1000  4944  7083 D PackageManager: Clear ephemeral installer activity
+         1791572377.654409  1000  4944  6248 I am_uid_running: 10105
+         1791572377.744150  1000  4944  6248 I ActivityManager: Killing 6158:com.android.localtransport/1000 (adj 985): empty #17
+         1791572377.744659  1000  4944  6248 I am_kill : [0,6158,com.android.localtransport,985,empty #17]
+         1791572377.798411  1000  4944  4964 I dvm_lock_sample: [system_server,1,android.ui,25,ActivityManagerService.java,3308,void com.android.server.am.ActivityManagerService.dispatchUidsChanged(),-,15663,void com.android.server.am.ActivityManagerService.finishReceiver(android.os.IBinder, int, java.lang.String, android.os.Bundle, boolean, int),5]
+         1791572377.817101  1000  4944  4944 V SettingsProvider: Notifying for 0: content://settings/secure/sysui_qs_tiles
+         1791572377.817764  1000  4944  4944 W Looper  : Drained
+         1791572377.818138  1000  4944  4944 W Looper  : Slow dispatch took 129ms main h=com.android.providers.settings.SettingsProvider$SettingsRegistry$MyHandler c=null m=1
+         1791572377.894874  1000  4944  4964 W Looper  : Slow dispatch took 123ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=null m=53
+         1791572378.320093  root  4882  4882 D Zygote  : Forked child process 7245
+         1791572378.338606  1000  4944  6248 I am_proc_died: [0,6158,com.android.localtransport,985,20]
+         1791572378.364405  root  4882  4882 I Zygote  : Process 6158 exited due to signal 9 (Killed)
+         1791572378.424891  1000  4944  4974 E libprocessgroup: getpgid(6158) failed: No such process
+         1791572378.483034  1000  4944  4974 I libprocessgroup: Successfully killed process cgroup uid 1000 pid 6158 in 639ms
+         1791572378.534632  1000  4944  4973 W ActivityManager: Slow operation: 866ms so far, now at startProcess: returned from zygote!
+         1791572378.537105  1000  4944  4973 W ActivityManager: Slow operation: 869ms so far, now at startProcess: done updating battery stats
+         1791572378.537570  1000  4944  4973 I am_proc_start: [0,7245,10105,com.google.android.angle,broadcast,{com.google.android.angle/com.android.angle.common.Receiver}]
+         1791572378.538546  1000  4944  4973 W ActivityManager: Slow operation: 870ms so far, now at startProcess: building log message
+         1791572378.539059  1000  4944  4973 I ActivityManager: Start proc 7245:com.google.android.angle/u0a105 for broadcast {com.google.android.angle/com.android.angle.common.Receiver}
+         1791572378.540508  1000  4944  4973 W ActivityManager: Slow operation: 872ms so far, now at startProcess: starting to update pids map
+         1791572378.557202  1000  4944  4973 W ActivityManager: Slow operation: 889ms so far, now at startProcess: done updating pids map
+         1791572378.764281  1000  4944  6035 D WificondControl: Scan result ready event
+         1791572378.840591 10105  7245  7245 W e.android.angl: Unexpected CPU variant for X86 using defaults: x86_64
+         1791572378.942412  1000  4944  5027 I commit_sys_config_file: [settings-2-0,1010]
+         1791572379.005179  1000  4944  4944 I RoleManagerService: Granting default permissions...
+         1791572379.022049  1000  4944  4944 W Looper  : Slow dispatch took 257ms main h=android.app.ActivityThread$H c=android.app.-$$Lambda$LoadedApk$ReceiverDispatcher$Args$_BumDX2UKsnxLVrE6UJsJZkotuA@70754bc m=0
+         1791572379.023774  1000  4944  4944 W Looper  : Slow delivery took 258ms main h=android.app.ActivityThread$H c=android.app.-$$Lambda$LoadedApk$ReceiverDispatcher$Args$_BumDX2UKsnxLVrE6UJsJZkotuA@f588c45 m=0
+         1791572379.076460  1000  4944  5036 I InputReader: Reconfiguring input devices.  changes=0x00000010
+         1791572379.114693  1000  4944  5044 W system_server: Long monitor contention with owner ActivityManager (4972) at void com.android.server.am.BroadcastQueue.processNextBroadcast(boolean)(BroadcastQueue.java:948) waiters=0 in int com.android.server.am.ActivityManagerService.broadcastIntent(android.app.IApplicationThread, android.content.Intent, java.lang.String, android.content.IIntentReceiver, int, java.lang.String, android.os.Bundle, java.lang.String[], int, android.os.Bundle, boolean, boolean, int) for 195ms
+         1791572379.117324  1000  4944  5044 I dvm_lock_sample: [system_server,0,ClientModeImpl,195,ActivityManagerService.java,15557,int com.android.server.am.ActivityManagerService.broadcastIntent(android.app.IApplicationThread, android.content.Intent, java.lang.String, android.content.IIntentReceiver, int, java.lang.String, android.os.Bundle, java.lang.String[], int, android.os.Bundle, boolean, boolean, int),BroadcastQueue.java,948,void com.android.server.am.BroadcastQueue.processNextBroadcast(boolean),39]
+         1791572379.252312  1000  4944  4944 I Telecom : DefaultDialerCache: Refreshing default dialer for user 0: now com.android.dialer: DDC.oR@AG8
+         1791572379.371815 radio  6394  6394 I service_manager_slow: [20,phone]
+         1791572379.544235 radio  6394  6394 D CarrierSvcBindHelper: No carrier app for: 0
+         1791572379.472611  1000  4944  4971 W Searchables: No global search activity found
+         1791572379.670693  1000  4944  6248 I am_proc_bound: [0,7245,com.google.android.angle]
+         1791572379.763781  1000  4944  6248 W ActivityManager: Slow operation: 93ms so far, now at attachApplicationLocked: after sendPendingBroadcastsLocked
+         1791572379.794040  1000  4944  4944 W Looper  : Drained
+         1791572379.907158  1000  4944  4971 W VoiceInteractionManagerService: no available voice interaction services found for user 0
+         1791572379.924229 10131  5652  6089 I SuperDelight: SuperDelightMergingStrategy#merge(): selected[[]] synced[[main_en_us_20180802_1]]
+         1791572380.000389 10131  5652  6089 I SP      : Sync for delight succeeded in 279348 ms: {added: [main_en_us_20180802_1], metadata: false
+         1791572380.455528 10105  7245  7245 I e.android.angl: The ClassLoaderContext is a special shared library.
+         1791572380.803137 10105  7245  7245 I e.android.angl: Waiting for a blocking GC ClassLinker
+         1791572381.190798 10105  7245  7245 I e.android.angl: WaitForGcToComplete blocked ClassLinker on HeapTrim for 387.194ms
+         1791572381.812271 10105  7245  7245 V AngleReceiver: Received intent: 'android.intent.action.BOOT_COMPLETED'
+         1791572381.919656 10105  7245  7245 V AngleReceiver: Skipping Rules entry with no Applications
+         1791572381.923361 10105  7245  7245 V AngleReceiver: Parsed the following package names from a4a_rules.json: com.android.angle,com.google.android.angle
+         1791572382.313365  1000  4944  4944 V SettingsProvider: Notifying for 0: content://settings/global/angle_whitelist
+         1791572382.314222  1000  4944  4944 W Looper  : Slow dispatch took 275ms main h=com.android.providers.settings.SettingsProvider$SettingsRegistry$MyHandler c=null m=1
+         1791572382.320373  1000  4944  4944 W Looper  : Slow delivery took 273ms main h=android.os.Handler c=android.database.ContentObserver$NotificationRunnable@87aa7c1 m=0
+         1791572382.419513 10105  7245  7245 V AngleReceiver: Developer Options enabled value changed: developerOptionsEnabled = false
+         1791572383.044203  1000  4944  4944 W system_server: Long monitor contention with owner ActivityManager (4972) at void com.android.server.am.CoreSettingsObserver.onChange(boolean)(CoreSettingsObserver.java:106) waiters=0 in int com.android.server.am.ActivityManagerService.getUidState(int) for 233ms
+         1791572383.047691  1000  4944  4944 I dvm_lock_sample: [system_server,0,main,233,ActivityManagerService.java,5714,int com.android.server.am.ActivityManagerService.getUidState(int),CoreSettingsObserver.java,106,void com.android.server.am.CoreSettingsObserver.onChange(boolean),46]
+         1791572383.056295  1000  4944  6248 I am_uid_running: 10126
+         1791572383.109236  1000  4944  6248 I ActivityManager: Killing 6277:com.google.android.packageinstaller/u0a72 (adj 985): empty #17
+         1791572383.109739  1000  4944  6248 I am_kill : [0,6277,com.google.android.packageinstaller,985,empty #17]
+         1791572383.035399  1000  4944  5027 I commit_sys_config_file: [settings-0-0,776]
+         1791572383.185392  1000  4944  4944 V SettingsProvider: Notifying for 0: content://settings/global/angle_gl_driver_all_angle
+         1791572383.186205  1000  4944  4944 W Looper  : Drained
+         1791572383.186693  1000  4944  4944 W Looper  : Slow dispatch took 425ms main h=com.android.providers.settings.SettingsProvider$SettingsRegistry$MyHandler c=null m=1
+         1791572383.190801  1000  4944  4944 W Looper  : Slow delivery took 427ms main h=com.android.providers.settings.SettingsProvider$SettingsRegistry$MyHandler c=null m=2
+         1791572383.269616  1000  4944  4964 I dvm_lock_sample: [system_server,1,android.ui,92,ActivityManagerService.java,3308,void com.android.server.am.ActivityManagerService.dispatchUidsChanged(),-,15663,void com.android.server.am.ActivityManagerService.finishReceiver(android.os.IBinder, int, java.lang.String, android.os.Bundle, boolean, int),18]
+         1791572383.593179  1000  4944  4944 W system_server: Long monitor contention with owner ActivityManager (4972) at void com.android.server.am.CoreSettingsObserver.onChange(boolean)(CoreSettingsObserver.java:106) waiters=0 in int com.android.server.am.ActivityManagerService.getUidState(int) for 317ms
+         1791572383.596229  1000  4944  4944 I dvm_lock_sample: [system_server,0,main,317,ActivityManagerService.java,5714,int com.android.server.am.ActivityManagerService.getUidState(int),CoreSettingsObserver.java,106,void com.android.server.am.CoreSettingsObserver.onChange(boolean),63]
+         1791572383.598751  1000  4944  5042 W system_server: Long monitor contention with owner ActivityManager (4972) at void com.android.server.am.CoreSettingsObserver.onChange(boolean)(CoreSettingsObserver.java:106) waiters=1 in void com.android.server.am.ActivityManagerService$LocalService.notifyNetworkPolicyRulesUpdated(int, long) for 318ms
+         1791572383.599418  1000  4944  4944 V SettingsProvider: Notifying for 0: content://settings/global/show_angle_in_use_dialog_box
+         1791572383.599544  1000  4944  4964 W system_server: Long monitor contention with owner ActivityManager (4972) at void com.android.server.am.CoreSettingsObserver.onChange(boolean)(CoreSettingsObserver.java:106) waiters=2 in void com.android.server.am.ActivityManagerService.dispatchUidsChanged() for 314ms
+         1791572383.600096  1000  4944  4944 W Looper  : Slow dispatch took 403ms main h=com.android.providers.settings.SettingsProvider$SettingsRegistry$MyHandler c=null m=1
+         1791572383.601219  1000  4944  5042 I dvm_lock_sample: [system_server,1,NetworkPolicy.uid,318,ActivityManagerService.java,17904,void com.android.server.am.ActivityManagerService$LocalService.notifyNetworkPolicyRulesUpdated(int, long),CoreSettingsObserver.java,106,void com.android.server.am.CoreSettingsObserver.onChange(boolean),63]
+         1791572383.601744  1000  4944  4964 I dvm_lock_sample: [system_server,1,android.ui,314,ActivityManagerService.java,3357,void com.android.server.am.ActivityManagerService.dispatchUidsChanged(),CoreSettingsObserver.java,106,void com.android.server.am.CoreSettingsObserver.onChange(boolean),62]
+         1791572383.603100  1000  4944  4964 W Looper  : Slow dispatch took 429ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=null m=53
+         1791572383.603136  1000  4944  6248 W system_server: Long monitor contention with owner ActivityManager (4972) at void com.android.server.am.CoreSettingsObserver.onChange(boolean)(CoreSettingsObserver.java:106) waiters=3 in boolean com.android.server.am.ActivityManagerService.isUidActive(int, java.lang.String) for 317ms
+         1791572383.604660  1000  4944  6248 I dvm_lock_sample: [system_server,1,Binder:4944_15,317,ActivityManagerService.java,8297,boolean com.android.server.am.ActivityManagerService.isUidActive(int, java.lang.String),CoreSettingsObserver.java,106,void com.android.server.am.CoreSettingsObserver.onChange(boolean),63]
+         1791572383.617397  1000  4944  4971 W system_server: Long monitor contention with owner ActivityManager (4972) at void com.android.server.am.CoreSettingsObserver.onChange(boolean)(CoreSettingsObserver.java:106) waiters=4 in void com.android.server.am.ActivityManagerService$5.handleMessage(android.os.Message) for 326ms
+         1791572383.620600  1000  4944  4971 I dvm_lock_sample: [system_server,0,android.bg,326,ActivityManagerService.java,1961,void com.android.server.am.ActivityManagerService$5.handleMessage(android.os.Message),CoreSettingsObserver.java,106,void com.android.server.am.CoreSettingsObserver.onChange(boolean),65]
+         1791572383.634366  1000  4944  4971 E memtrack: Couldn't load memtrack module
+         1791572383.634899  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+         1791572383.639252  1000  4944  5027 I commit_sys_config_file: [settings-0-0,516]
+         1791572383.648280  1000  4944  4944 V SettingsProvider: Notifying for 0: content://settings/global/angle_gl_driver_selection_pkgs
+         1791572383.869491  root  4882  4882 D Zygote  : Forked child process 7279
+         1791572384.084736  1000  4944  4973 W ActivityManager: Slow operation: 1026ms so far, now at startProcess: returned from zygote!
+         1791572384.113550  1000  4944  4971 W system_server: Long monitor contention with owner ActivityManager (4972) at void com.android.server.am.CoreSettingsObserver.onChange(boolean)(CoreSettingsObserver.java:106) waiters=1 in void com.android.server.am.ActivityManagerService$5.handleMessage(android.os.Message) for 242ms
+         1791572384.116841  1000  4944  4984 I commit_sys_config_file: [package-user-0,216]
+         1791572384.120793  1000  4944  4944 V SettingsProvider: Notifying for 0: content://settings/global/angle_gl_driver_selection_values
+         1791572384.179955 10074  5287  7056 W ExclusiveDefaultHolderMixin: Cannot get ApplicationInfo for default holder, config: config_defaultSms, package: com.android.messaging
+         1791572384.241404 10126  7279  7279 W erprise.dmagen: Unexpected CPU variant for X86 using defaults: x86_64
+         1791572384.250727  1000  4944  4944 W Looper  : Slow dispatch took 467ms main h=com.android.providers.settings.SettingsProvider$SettingsRegistry$MyHandler c=null m=1
+         1791572384.273782  1000  4944  4971 I dvm_lock_sample: [system_server,0,android.bg,242,ActivityManagerService.java,1992,void com.android.server.am.ActivityManagerService$5.handleMessage(android.os.Message),CoreSettingsObserver.java,106,void com.android.server.am.CoreSettingsObserver.onChange(boolean),48]
+         1791572384.357904  1000  4944  4973 W system_server: Long monitor contention with owner ActivityManager (4972) at void com.android.server.am.CoreSettingsObserver.onChange(boolean)(CoreSettingsObserver.java:106) waiters=1 in void com.android.server.am.ProcessList.lambda$startProcessLocked$0$ProcessList(com.android.server.am.ProcessRecord, java.lang.String, int[], int, int, java.lang.String, java.lang.String, java.lang.String, long) for 260ms
+         1791572384.364720  1000  4944  4973 I dvm_lock_sample: [system_server,1,ActivityManager:procStart,260,ProcessList.java,1671,void com.android.server.am.ProcessList.lambda$startProcessLocked$0$ProcessList(com.android.server.am.ProcessRecord, java.lang.String, int[], int, int, java.lang.String, java.lang.String, java.lang.String, long),CoreSettingsObserver.java,106,void com.android.server.am.CoreSettingsObserver.onChange(boolean),52]
+         1791572384.367616  1000  4944  4973 W ActivityManager: Slow operation: 1309ms so far, now at startProcess: done updating battery stats
+         1791572384.370986  1000  4944  4973 I am_proc_start: [0,7279,10126,com.google.android.apps.enterprise.dmagent,broadcast,{com.google.android.apps.enterprise.dmagent/com.google.android.apps.enterprise.dmagent.BootReceiver}]
+         1791572384.373099  1000  4944  4973 W ActivityManager: Slow operation: 1315ms so far, now at startProcess: building log message
+         1791572384.373893  1000  4944  4973 I ActivityManager: Start proc 7279:com.google.android.apps.enterprise.dmagent/u0a126 for broadcast {com.google.android.apps.enterprise.dmagent/com.google.android.apps.enterprise.dmagent.BootReceiver}
+         1791572384.374258  1000  4944  4973 W ActivityManager: Slow operation: 1316ms so far, now at startProcess: starting to update pids map
+         1791572384.379356  1000  4944  4973 W ActivityManager: Slow operation: 1321ms so far, now at startProcess: done updating pids map
+         1791572384.382311  1000  4944  4944 V SettingsProvider: Notifying for 0: content://settings/global/angle_debug_package
+         1791572384.382604  1000  4944  4944 W Looper  : Slow dispatch took 126ms main h=com.android.providers.settings.SettingsProvider$SettingsRegistry$MyHandler c=null m=1
+         1791572384.393463  1000  4944  4971 W system_server: Long monitor contention with owner ActivityManager (4972) at void com.android.server.am.CoreSettingsObserver.onChange(boolean)(CoreSettingsObserver.java:106) waiters=2 in void com.android.server.am.ActivityManagerService$5.handleMessage(android.os.Message) for 104ms
+         1791572384.401772  1000  4944  4971 I dvm_lock_sample: [system_server,0,android.bg,104,ActivityManagerService.java,1992,void com.android.server.am.ActivityManagerService$5.handleMessage(android.os.Message),CoreSettingsObserver.java,106,void com.android.server.am.CoreSettingsObserver.onChange(boolean),20]
+         1791572384.579863  1000  4944  6248 I system_server: IncrementDisableThreadFlip blocked for 78.968ms
+         1791572384.684287  1000  4944  4944 W system_server: Long monitor contention with owner ActivityManager (4972) at void com.android.server.am.CoreSettingsObserver.onChange(boolean)(CoreSettingsObserver.java:106) waiters=1 in int com.android.server.am.ActivityManagerService.getMemoryTrimLevel() for 231ms
+         1791572384.686162  1000  4944  4944 I dvm_lock_sample: [system_server,0,main,231,ActivityManagerService.java,9765,int com.android.server.am.ActivityManagerService.getMemoryTrimLevel(),CoreSettingsObserver.java,106,void com.android.server.am.CoreSettingsObserver.onChange(boolean),46]
+         1791572384.688429  1000  4944  4944 W Looper  : Slow dispatch took 301ms main h=com.android.server.job.JobSchedulerService$JobHandler c=null m=7
+         1791572384.703357  1000  4944  4971 W system_server: Long monitor contention with owner ActivityManager (4972) at void com.android.server.am.CoreSettingsObserver.onChange(boolean)(CoreSettingsObserver.java:106) waiters=1 in void com.android.server.am.ActivityManagerService$5.handleMessage(android.os.Message) for 300ms
+         1791572384.790831  1000  4944  4971 I dvm_lock_sample: [system_server,0,android.bg,300,ActivityManagerService.java,1992,void com.android.server.am.ActivityManagerService$5.handleMessage(android.os.Message),CoreSettingsObserver.java,106,void com.android.server.am.CoreSettingsObserver.onChange(boolean),60]
+         1791572384.812227  1000  4944  4971 I am_pss  : [7182,10146,com.example.logtest,25942016,19824640,0,129077248,0,2,58]
+         1791572384.989351  1000  4944  6248 I am_proc_bound: [0,7279,com.google.android.apps.enterprise.dmagent]
+         1791572385.064194  1000  4944  6248 W ActivityManager: Slow operation: 78ms so far, now at attachApplicationLocked: immediately after bindApplication
+         1791572385.065371  1000  4944  6248 W ActivityManager: Slow operation: 79ms so far, now at attachApplicationLocked: after updateLruProcessLocked
+         1791572385.108719  1000  4944  6248 W ActivityManager: Slow operation: 122ms so far, now at attachApplicationLocked: after mServices.attachApplicationLocked
+         1791572385.185858  1000  4944  6248 W ActivityManager: Slow operation: 195ms so far, now at attachApplicationLocked: after sendPendingBroadcastsLocked
+         1791572385.194680  1000  4944  4944 W Looper  : Drained
+         1791572385.322791  1000  4944  7296 W system_server: Long monitor contention with owner Binder:4944_E (5725) at void com.android.server.DropBoxManagerService.dump(java.io.FileDescriptor, java.io.PrintWriter, java.lang.String[])(DropBoxManagerService.java:-1) waiters=0 in void com.android.server.DropBoxManagerService.init() for 607ms
+         1791572385.324951  1000  4944  7296 I dvm_lock_sample: [system_server,0,Thread-29,607,DropBoxManagerService.java,-1,void com.android.server.DropBoxManagerService.init(),-,-1,void com.android.server.DropBoxManagerService.dump(java.io.FileDescriptor, java.io.PrintWriter, java.lang.String[]),100]
+         1791572385.327737  1000  4944  7298 W system_server: Long monitor contention with owner Binder:4944_E (5725) at void com.android.server.DropBoxManagerService.dump(java.io.FileDescriptor, java.io.PrintWriter, java.lang.String[])(DropBoxManagerService.java:-1) waiters=1 in void com.android.server.DropBoxManagerService.init() for 548ms
+         1791572385.336738  1000  4944  7298 I dvm_lock_sample: [system_server,0,Thread-31,548,DropBoxManagerService.java,-1,void com.android.server.DropBoxManagerService.init(),-,-1,void com.android.server.DropBoxManagerService.dump(java.io.FileDescriptor, java.io.PrintWriter, java.lang.String[]),100]
+         1791572385.391688  1000  4944  7297 W system_server: Long monitor contention with owner Binder:4944_E (5725) at void com.android.server.DropBoxManagerService.dump(java.io.FileDescriptor, java.io.PrintWriter, java.lang.String[])(DropBoxManagerService.java:-1) waiters=2 in void com.android.server.DropBoxManagerService.init() for 606ms
+         1791572385.399345  1000  4944  7297 I dvm_lock_sample: [system_server,0,Thread-30,606,DropBoxManagerService.java,-1,void com.android.server.DropBoxManagerService.init(),-,-1,void com.android.server.DropBoxManagerService.dump(java.io.FileDescriptor, java.io.PrintWriter, java.lang.String[]),100]
+         1791572385.404991  1000  4944  7300 W system_server: Long monitor contention with owner Binder:4944_E (5725) at void com.android.server.DropBoxManagerService.dump(java.io.FileDescriptor, java.io.PrintWriter, java.lang.String[])(DropBoxManagerService.java:-1) waiters=3 in void com.android.server.DropBoxManagerService.init() for 594ms
+         1791572385.429545  1000  4944  7300 I dvm_lock_sample: [system_server,0,Thread-32,594,DropBoxManagerService.java,-1,void com.android.server.DropBoxManagerService.init(),-,-1,void com.android.server.DropBoxManagerService.dump(java.io.FileDescriptor, java.io.PrintWriter, java.lang.String[]),100]
+         1791572385.567370 10126  7279  7279 D ApplicationLoaders: Returning zygote-cached class loader: /system/framework/android.hidl.base-V1.0-java.jar
+         1791572385.577530 10126  7279  7279 D ApplicationLoaders: Returning zygote-cached class loader: /system/framework/android.hidl.manager-V1.0-java.jar
+         1791572385.578041 10126  7279  7279 D ApplicationLoaders: Returning zygote-cached class loader: /system/framework/android.hidl.base-V1.0-java.jar
+         1791572385.846122  root  1821  1821 E wifi_forwarder: RemoteConnection failed to initialize: RemoteConnection failed to open pipe
+         1791572386.101966  1000  4944  4963 W Looper  : Slow dispatch took 299ms android.fg h=com.android.server.location.GnssLocationProvider$ProviderHandler c=null m=18
+         1791572386.268358 10126  7279  7279 I erprise.dmagen: The ClassLoaderContext is a special shared library.
+         1791572386.273087  1000  4944  4971 I commit_sys_config_file: [roles-0,1411]
+         1791572386.567095  1000  4944  4971 I RoleUserState: Wrote roles.xml successfully
+         1791572386.788906  1000  4944  4980 I dvm_lock_sample: [system_server,1,PowerManagerService,84,PowerManagerService.java,2286,void com.android.server.power.PowerManagerService.handleSandman(),-,1044,void com.android.server.power.PowerManagerService.acquireWakeLockInternal(android.os.IBinder, int, java.lang.String, java.lang.String, android.os.WorkSource, java.lang.String, int, int),16]
+         1791572387.060906  1000  4944  4961 I am_proc_died: [0,6277,com.google.android.packageinstaller,985,20]
+         1791572386.710318 10126  7279  7279 I erprise.dmagen: The ClassLoaderContext is a special shared library.
+         1791572387.135280  root  4882  4882 I Zygote  : Process 6277 exited due to signal 9 (Killed)
+         1791572387.182654  1000  4944  4961 I am_uid_stopped: 10072
+         1791572387.292996  1000  4944  4974 E libprocessgroup: getpgid(6277) failed: No such process
+         1791572387.339912  1000  4944  4964 W Looper  : Slow dispatch took 151ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=null m=53
+         1791572387.370508  1000  4944  4974 I libprocessgroup: Successfully killed process cgroup uid 10072 pid 6277 in 4169ms
+         1791572387.910572  1000  4944  4944 I notification_enqueue: [10131,5652,com.google.android.inputmethod.latin,10436,NULL,0,Notification(channel=com.google.android.gms.availability pri=0 contentView=null vibrate=null sound=null tick defaults=0x0 flags=0x110 color=0x00000000 vis=PRIVATE),1]
+         1791572388.027991 10074  5287  7056 W ExclusiveDefaultHolderMixin: Default holder does not qualify for the role, config: config_defaultAssistant, package: com.google.android.googlequicksearchbox
+         1791572388.159644  1000  4944  4957 I system_server: Background young concurrent copying GC freed 79019(3393KB) AllocSpace objects, 28(2224KB) LOS objects, 30% free, 11MB/16MB, paused 83.234ms total 3.740s
+         1791572388.248220  1000  4944  4944 I sysui_multi_action: [757,1501,758,1,793,363450,794,0,795,587,796,10436,806,com.google.android.inputmethod.latin,857,com.google.android.gms.availability,858,4,947,0,1500,0,1688,1,1745,2098068913]
+         1791572388.289053  1000  4944  4944 I sysui_multi_action: [757,804,799,note_interruptive,801,0,802,1]
+         1791572388.322362  1000  4944  4944 I sysui_multi_action: [757,199,758,1,759,2,793,363534,794,0,795,671,796,10436,806,com.google.android.inputmethod.latin,857,com.google.android.gms.availability,858,4,947,0,1500,84,1688,1,1745,2098068913]
+         1791572388.329536  1000  4944  4944 I notification_alert: [0|com.google.android.inputmethod.latin|10436|null|10131,0,1,0]
+         1791572388.357998  1000  4944  4944 W Looper  : Slow dispatch took 307ms main h=com.android.server.notification.NotificationManagerService$WorkerHandler c=com.android.server.notification.NotificationManagerService$PostNotificationRunnable@2bca16d m=0
+         1791572388.362330  1000  4944  5725 W system_server: Long monitor contention with owner main (4944) at void com.android.server.notification.NotificationManagerService$PostNotificationRunnable.run()(NotificationManagerService.java:5345) waiters=0 in void com.android.server.notification.NotificationManagerService$10.applyEnqueuedAdjustmentFromAssistant(android.service.notification.INotificationListener, android.service.notification.Adjustment) for 185ms
+         1791572388.365100  1000  4944  5725 I dvm_lock_sample: [system_server,1,Binder:4944_E,185,NotificationManagerService.java,3951,void com.android.server.notification.NotificationManagerService$10.applyEnqueuedAdjustmentFromAssistant(android.service.notification.INotificationListener, android.service.notification.Adjustment),-,5345,void com.android.server.notification.NotificationManagerService$PostNotificationRunnable.run(),37]
+         1791572388.679681  1000  4944  4971 W system_server: Long monitor contention with owner Binder:4944_15 (6248) at android.content.pm.ParceledListSlice com.android.server.pm.PackageManagerService.getInstalledPackages(int, int)(PackageManagerService.java:8526) waiters=0 in boolean com.android.server.pm.PackageManagerService$PackageManagerInternalImpl.isPackageEphemeral(int, java.lang.String) for 282ms
+         1791572388.683104  1000  4944  4971 I dvm_lock_sample: [system_server,0,android.bg,282,PackageManagerService.java,24532,boolean com.android.server.pm.PackageManagerService$PackageManagerInternalImpl.isPackageEphemeral(int, java.lang.String),-,8526,android.content.pm.ParceledListSlice com.android.server.pm.PackageManagerService.getInstalledPackages(int, int),56]
+         1791572388.695388  1000  4944  4961 I dvm_lock_sample: [system_server,1,Binder:4944_1,60,PackageManagerService.java,4693,android.content.pm.ApplicationInfo com.android.server.pm.PackageManagerService.getApplicationInfoInternal(java.lang.String, int, int, int),-,8526,android.content.pm.ParceledListSlice com.android.server.pm.PackageManagerService.getInstalledPackages(int, int),12]
+         1791572388.949024 10110  5118  7308 W MediaPlayer: Couldn't open content://0@settings/system/notification_sound_cache
+         1791572388.949024 10110  5118  7308 W MediaPlayer: java.io.FileNotFoundException: open failed: ENOENT (No such file or directory)
+         1791572388.949024 10110  5118  7308 W MediaPlayer: 	at android.database.DatabaseUtils.readExceptionWithFileNotFoundExceptionFromParcel(DatabaseUtils.java:149)
+         1791572388.949024 10110  5118  7308 W MediaPlayer: 	at android.content.ContentProviderProxy.openTypedAssetFile(ContentProviderNative.java:705)
+         1791572388.949024 10110  5118  7308 W MediaPlayer: 	at android.content.ContentResolver.openTypedAssetFileDescriptor(ContentResolver.java:1687)
+         1791572388.949024 10110  5118  7308 W MediaPlayer: 	at android.content.ContentResolver.openAssetFileDescriptor(ContentResolver.java:1503)
+         1791572388.949024 10110  5118  7308 W MediaPlayer: 	at android.content.ContentResolver.openAssetFileDescriptor(ContentResolver.java:1420)
+         1791572388.949024 10110  5118  7308 W MediaPlayer: 	at android.media.MediaPlayer.attemptDataSource(MediaPlayer.java:1101)
+         1791572388.949024 10110  5118  7308 W MediaPlayer: 	at android.media.MediaPlayer.setDataSource(MediaPlayer.java:1064)
+         1791572388.949024 10110  5118  7308 W MediaPlayer: 	at android.media.MediaPlayer.setDataSource(MediaPlayer.java:1001)
+         1791572388.949024 10110  5118  7308 W MediaPlayer: 	at com.android.systemui.media.NotificationPlayer$CreationAndCompletionThread.run(NotificationPlayer.java:102)
+         1791572388.959495 10110  5118  7308 W MediaPlayer: Couldn't open null uri
+         1791572388.959495 10110  5118  7308 W MediaPlayer: java.lang.NullPointerException: uri
+         1791572388.959495 10110  5118  7308 W MediaPlayer: 	at com.android.internal.util.Preconditions.checkNotNull(Preconditions.java:133)
+         1791572388.959495 10110  5118  7308 W MediaPlayer: 	at android.content.ContentResolver.openAssetFileDescriptor(ContentResolver.java:1477)
+         1791572388.959495 10110  5118  7308 W MediaPlayer: 	at android.content.ContentResolver.openAssetFileDescriptor(ContentResolver.java:1420)
+         1791572388.959495 10110  5118  7308 W MediaPlayer: 	at android.media.MediaPlayer.attemptDataSource(MediaPlayer.java:1101)
+         1791572388.959495 10110  5118  7308 W MediaPlayer: 	at android.media.MediaPlayer.setDataSource(MediaPlayer.java:1066)
+         1791572388.959495 10110  5118  7308 W MediaPlayer: 	at android.media.MediaPlayer.setDataSource(MediaPlayer.java:1001)
+         1791572388.959495 10110  5118  7308 W MediaPlayer: 	at com.android.systemui.media.NotificationPlayer$CreationAndCompletionThread.run(NotificationPlayer.java:102)
+         1791572389.183308 media  4885  4885 E MediaPlayerService: Couldn't open fd for content://settings/system/notification_sound
+         1791572389.206271 10110  5118  7308 E MediaPlayerNative: Unable to create media player
+         1791572389.227633 10110  5118  7308 V MediaPlayer: resetDrmState:  mDrmInfo=null mDrmProvisioningThread=null mPrepareDrmInProgress=false mActiveDrmScheme=false
+         1791572389.229600 10110  5118  7308 V MediaPlayer: cleanDrmObj: mDrmObj=null mDrmSessionId=null
+         1791572389.270059 10110  5118  7308 W RingtonePlayer: error loading sound for content://settings/system/notification_sound
+         1791572389.270059 10110  5118  7308 W RingtonePlayer: java.io.IOException: setDataSource failed.: status=0x80000000
+         1791572389.270059 10110  5118  7308 W RingtonePlayer: 	at android.media.MediaPlayer.nativeSetDataSource(Native Method)
+         1791572389.270059 10110  5118  7308 W RingtonePlayer: 	at android.media.MediaPlayer.setDataSource(MediaPlayer.java:1173)
+         1791572389.270059 10110  5118  7308 W RingtonePlayer: 	at android.media.MediaPlayer.setDataSource(MediaPlayer.java:1160)
+         1791572389.270059 10110  5118  7308 W RingtonePlayer: 	at android.media.MediaPlayer.setDataSource(MediaPlayer.java:1069)
+         1791572389.270059 10110  5118  7308 W RingtonePlayer: 	at android.media.MediaPlayer.setDataSource(MediaPlayer.java:1001)
+         1791572389.270059 10110  5118  7308 W RingtonePlayer: 	at com.android.systemui.media.NotificationPlayer$CreationAndCompletionThread.run(NotificationPlayer.java:102)
+         1791572389.439815 10074  5287  5315 I ssioncontrolle: Background young concurrent copying GC freed 26218(1544KB) AllocSpace objects, 0(0B) LOS objects, 33% free, 2293KB/3450KB, paused 698us total 574.333ms
+         1791572389.840008 10126  7279  7279 E ActivityThread: Failed to find provider info for com.google.android.gsf.gservices
+         1791572389.843857 10126  7279  7279 W DMAgent : GServices returned deviceID as 0
+         1791572390.192873  1000  4944  4963 W GrantDefaultRolesRequest: timed out after 15000 ms
+         1791572390.236790 10126  7279  7279 I service_manager_slow: [64,phone]
+         1791572390.430640 radio  6394  6414 I service_manager_slow: [35,phone]
+         1791572390.670912 radio  6394  6414 W TelephonyPermissions: reportAccessDeniedToReadIdentifiers:com.google.android.apps.enterprise.dmagent:getDeviceId:isPreinstalled=true:isPrivApp=false
+         1791572390.964302 10126  7279  7279 W DMAgent : READ_PHONE_STATE is not granted (yet) to get serial number of the device.
+         1791572391.982913 10126  7279  7279 I DMAgent : Accessibility listener is setup.
+         1791572392.603115 10126  7279  7292 I erprise.dmagen: WaitForGcToComplete blocked HeapTrim on ProfileSaver for 86.062ms
+         1791572392.899554 10126  7279  7279 I DMAgent : 2:59 AM: scheduled next service to run between 1 and 2 seconds
+         1791572393.053151  1000  4944  5324 I am_uid_running: 10106
+         1791572393.094661  1000  4944  5324 W ActivityManager: Slow operation: 59ms so far, now at startProcess: done starting proc!
+         1791572393.237289  1000  4944  5324 I ActivityManager: Killing 6433:com.android.printspooler/u0a79 (adj 985): empty #17
+         1791572393.238542  1000  4944  5324 I am_kill : [0,6433,com.android.printspooler,985,empty #17]
+         1791572393.360561  1000  4944  4971 E memtrack: Couldn't load memtrack module
+         1791572393.363963  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+         1791572393.387097  1000  4944  4964 W Looper  : Slow dispatch took 123ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=null m=53
+         1791572393.491458  1000  4944  4971 I am_pss  : [7149,10115,com.android.omadm.service,20548608,4251648,0,85708800,0,20,42]
+         1791572393.571429  root  1800  1800 E netmgr  : Failed to open QEMU pipe 'qemud:network': Invalid argument
+         1791572393.717592  root  4882  4882 D Zygote  : Forked child process 7318
+         1791572393.878535  1000  4944  4973 W ActivityManager: Slow operation: 803ms so far, now at startProcess: returned from zygote!
+         1791572393.882330  1000  4944  4973 W ActivityManager: Slow operation: 807ms so far, now at startProcess: done updating battery stats
+         1791572393.883033  1000  4944  4973 I am_proc_start: [0,7318,10106,com.google.android.apps.wallpaper,broadcast,{com.google.android.apps.wallpaper/com.android.wallpaper.module.RotationWallpaperMoveReceiver}]
+         1791572393.884720  1000  4944  4973 W ActivityManager: Slow operation: 809ms so far, now at startProcess: building log message
+         1791572393.891370  1000  4944  4973 I ActivityManager: Start proc 7318:com.google.android.apps.wallpaper/u0a106 for broadcast {com.google.android.apps.wallpaper/com.android.wallpaper.module.RotationWallpaperMoveReceiver}
+         1791572393.910260  1000  4944  4973 W ActivityManager: Slow operation: 835ms so far, now at startProcess: starting to update pids map
+         1791572393.924203  1000  4944  4973 W ActivityManager: Slow operation: 849ms so far, now at startProcess: done updating pids map
+         1791572394.027794  1000  4944  4963 W GrantDefaultRolesRequest: timed out after 15000 ms
+         1791572394.048924  1000  4944  7083 I am_proc_died: [0,6433,com.android.printspooler,985,20]
+         1791572394.085649  1000  4944  7083 I am_uid_stopped: 10079
+         1791572394.086734  root  4882  4882 I Zygote  : Process 6433 exited due to signal 9 (Killed)
+         1791572394.105453  1000  4944  4974 I libprocessgroup: Successfully killed process cgroup uid 10079 pid 6433 in 827ms
+         1791572394.470031  1000  4944  4964 I dvm_lock_sample: [system_server,1,android.ui,49,ActivityManagerService.java,3308,void com.android.server.am.ActivityManagerService.dispatchUidsChanged(),-,14067,int com.android.server.am.ActivityManagerService.bindIsolatedService(android.app.IApplicationThread, android.os.IBinder, android.content.Intent, java.lang.String, android.app.IServiceConnection, int, java.lang.String, java.lang.String, int),9]
+         1791572394.493290 10126  7279  7279 D DMAgent : Device Management Job Scheduler service created.
+         1791572394.502349  1000  4944  4944 W Looper  : Slow dispatch took 339ms main h=com.android.server.job.JobSchedulerService$JobHandler c=null m=0
+         1791572394.504226  1000  4944  4944 W Looper  : Slow delivery took 360ms main h=com.android.server.job.JobSchedulerService$JobHandler c=null m=5
+         1791572394.594506 10126  7279  7279 D DMAgent : Starting Device Management Task.
+         1791572394.606881  1000  4944  4944 W Looper  : Drained
+         1791572395.096366 10106  7318  7318 W .apps.wallpape: Unexpected CPU variant for X86 using defaults: x86_64
+         1791572395.123638 10126  7279  7324 D DMAgent : Number of managed accounts: 0
+         1791572395.643777  1000  4944  7083 I dvm_lock_sample: [system_server,1,Binder:4944_17,7,PackageManagerService.java,7178,java.lang.String com.android.server.pm.PackageManagerService.getInstantAppPackageName(int),-,4214,android.content.pm.PackageInfo com.android.server.pm.PackageManagerService.getPackageInfoInternal(java.lang.String, long, int, int, int),1]
+         1791572395.906765  1000  4944  5725 I am_proc_bound: [0,7318,com.google.android.apps.wallpaper]
+         1791572395.967294  1000  4944  5725 W ActivityManager: Slow operation: 62ms so far, now at attachApplicationLocked: immediately after bindApplication
+         1791572395.971053  1000  4944  5725 W ActivityManager: Slow operation: 66ms so far, now at attachApplicationLocked: after updateLruProcessLocked
+         1791572396.015582  1000  4944  5725 W ActivityManager: Slow operation: 110ms so far, now at attachApplicationLocked: after mServices.attachApplicationLocked
+         1791572396.062041  1000  4944  5725 W ActivityManager: Slow operation: 156ms so far, now at attachApplicationLocked: after sendPendingBroadcastsLocked
+         1791572396.202557  1000  4944  4963 W Looper  : Slow dispatch took 259ms android.fg h=android.os.Handler c=com.android.server.Watchdog$HandlerChecker@c648efd m=0
+         1791572396.405536  1000  4944  4971 E memtrack: Couldn't load memtrack module
+         1791572396.409808  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+         1791572396.503672  1000  4944  4971 I am_pss  : [7223,10081,com.android.traceur,9323520,6000640,0,100478976,0,20,37]
+         1791572396.533817  1000  4944  5725 E NotificationService: No Channel found for pkg=com.google.android.apps.enterprise.dmagent, channelId=null, id=10436, tag=null, opPkg=com.google.android.apps.enterprise.dmagent, callingUid=10126, userId=0, incomingUserId=0, notificationUid=10126, notification=Notification(channel=null pri=0 contentView=null vibrate=null sound=null tick defaults=0x0 flags=0x110 color=0x00000000 vis=PRIVATE)
+         1791572396.698436  1000  4944  5725 E system_server: Invalid ID 0x00000000.
+         1791572396.857248 10106  7318  7318 D ApplicationLoaders: Returning zygote-cached class loader: /system/framework/android.hidl.base-V1.0-java.jar
+         1791572396.866437 10106  7318  7318 D ApplicationLoaders: Returning zygote-cached class loader: /system/framework/android.hidl.manager-V1.0-java.jar
+         1791572396.866789 10106  7318  7318 D ApplicationLoaders: Returning zygote-cached class loader: /system/framework/android.hidl.base-V1.0-java.jar
+         1791572397.097208 10106  7318  7318 I .apps.wallpape: The ClassLoaderContext is a special shared library.
+         1791572397.435148 10106  7318  7318 I .apps.wallpape: The ClassLoaderContext is a special shared library.
+         1791572397.596474  1000  4944  5725 W system_server: Long monitor contention with owner android.anim (4967) at void com.android.server.wm.WindowAnimator.animate(long)(WindowAnimator.java:141) waiters=0 in com.android.server.wm.WindowProcessController com.android.server.wm.ActivityTaskManagerService$LocalService.getTopApp() for 142ms
+         1791572397.598928  1000  4944  5725 I dvm_lock_sample: [system_server,1,Binder:4944_E,142,ActivityTaskManagerService.java,7195,com.android.server.wm.WindowProcessController com.android.server.wm.ActivityTaskManagerService$LocalService.getTopApp(),WindowAnimator.java,141,void com.android.server.wm.WindowAnimator.animate(long),28]
+         1791572397.671922 10126  7279  7324 W DMAgent : Gms version is not updated, notification shown
+         1791572397.980226  1000  4944  4944 W Looper  : Slow dispatch took 318ms main h=android.widget.Toast$TN$1 c=null m=0
+         1791572398.744844  1000  4944  4967 W system_server: Long monitor contention with owner main (4944) at int com.android.server.wm.WindowManagerService.relayoutWindow(com.android.server.wm.Session, android.view.IWindow, int, android.view.WindowManager$LayoutParams, int, int, int, int, long, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.view.DisplayCutout$ParcelableWrapper, android.util.MergedConfiguration, android.view.SurfaceControl, android.view.InsetsState)(WindowManagerService.java:1982) waiters=1 in void com.android.server.wm.InputMonitor$1.run() for 199ms
+         1791572398.747434  1000  4944  4967 I dvm_lock_sample: [system_server,1,android.anim,199,InputMonitor.java,117,void com.android.server.wm.InputMonitor$1.run(),WindowManagerService.java,1982,int com.android.server.wm.WindowManagerService.relayoutWindow(com.android.server.wm.Session, android.view.IWindow, int, android.view.WindowManager$LayoutParams, int, int, int, int, long, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.view.DisplayCutout$ParcelableWrapper, android.util.MergedConfiguration, android.view.SurfaceControl, android.view.InsetsState),39]
+         1791572398.758140 10106  7318  7318 I MultiDex: VM with version 2.1.0 has multidex support
+         1791572398.759333 10106  7318  7318 I MultiDex: install
+         1791572398.759812 10106  7318  7318 I MultiDex: VM has multidex support, MultiDex support library is disabled.
+         1791572398.963783 10126  7279  7324 E GooglePlayServicesUtil: GooglePlayServices not available due to error 3
+         1791572399.088253 10126  7279  7324 W DMAgent : Exception in getAccounts: 
+         1791572399.088253 10126  7279  7324 W DMAgent : com.google.android.gms.common.GooglePlayServicesRepairableException: Google Play Services not available
+         1791572399.088253 10126  7279  7324 W DMAgent : 	at com.google.android.gms.common.e.d(Unknown Source:56)
+         1791572399.088253 10126  7279  7324 W DMAgent : 	at com.google.android.gms.common.c.b(Unknown Source:0)
+         1791572399.088253 10126  7279  7324 W DMAgent : 	at com.google.android.gms.auth.b.a(Unknown Source:3)
+         1791572399.088253 10126  7279  7324 W DMAgent : 	at com.google.android.gms.auth.b.b(Unknown Source:9)
+         1791572399.088253 10126  7279  7324 W DMAgent : 	at com.google.android.gms.auth.a.a(Unknown Source:0)
+         1791572399.088253 10126  7279  7324 W DMAgent : 	at com.google.android.apps.enterprise.dmagent.b.i.a(SourceFile:21)
+         1791572399.088253 10126  7279  7324 W DMAgent : 	at com.google.android.apps.enterprise.dmagent.b.a(SourceFile:1)
+         1791572399.088253 10126  7279  7324 W DMAgent : 	at com.google.android.apps.enterprise.dmagent.DeviceManagementService.a(SourceFile:113)
+         1791572399.088253 10126  7279  7324 W DMAgent : 	at com.google.android.apps.enterprise.dmagent.DeviceManagementJobService$a.doInBackground(SourceFile:14)
+         1791572399.088253 10126  7279  7324 W DMAgent : 	at android.os.AsyncTask$3.call(AsyncTask.java:378)
+         1791572399.088253 10126  7279  7324 W DMAgent : 	at java.util.concurrent.FutureTask.run(FutureTask.java:266)
+         1791572399.088253 10126  7279  7324 W DMAgent : 	at android.os.AsyncTask$SerialExecutor$1.run(AsyncTask.java:289)
+         1791572399.088253 10126  7279  7324 W DMAgent : 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1167)
+         1791572399.088253 10126  7279  7324 W DMAgent : 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:641)
+         1791572399.088253 10126  7279  7324 W DMAgent : 	at java.lang.Thread.run(Thread.java:919)
+         1791572399.148942 10126  7279  7324 I DMAgent : Service runs for: 0 accounts
+         1791572399.217180  1000  1763  1763 D gralloc_ranchu: gralloc_alloc: Creating ashmem region of size 983040
+         1791572399.450303  1000  1763  1763 D gralloc_ranchu: gralloc_alloc: Creating ashmem region of size 983040
+         1791572399.464277  1000  1763  1799 D gralloc_ranchu: gralloc_alloc: Creating ashmem region of size 983040
+         1791572399.681466 10126  7279  7279 D DMAgent : Device Management Job Scheduler service destroyed.
+         1791572399.762605  1000  4944  5599 D EGL_emulation: eglMakeCurrent: 0x7ef782406f00: ver 3 0 (tinfo 0x7ef7844ce740)
+         1791572399.778078  1000  4944  4964 I dvm_lock_sample: [system_server,1,android.ui,25,MessageQueue.java,338,android.os.Message android.os.MessageQueue.next(),-,556,boolean android.os.MessageQueue.enqueueMessage(android.os.Message, long),5]
+         1791572399.850515  1000  4944  4971 E memtrack: Couldn't load memtrack module
+         1791572399.851122  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+         1791572400.087490  1000  4944  5725 I am_uid_running: 10103
+         1791572400.135158  1000  4944  5725 I ActivityManager: Killing 6772:com.android.carrierconfig/u0a112 (adj 985): empty #17
+         1791572400.141377  1000  4944  5725 I am_kill : [0,6772,com.android.carrierconfig,985,empty #17]
+         1791572400.197621 10074  5287  7056 W ExclusiveDefaultHolderMixin: Cannot get ApplicationInfo for default holder, config: config_defaultSms, package: com.android.messaging
+         1791572400.624458  1000  4944  5725 I am_proc_died: [0,6772,com.android.carrierconfig,985,20]
+         1791572400.650507  1000  4944  5725 I am_uid_stopped: 10112
+         1791572400.682276  1000  4944  4974 I libprocessgroup: Successfully killed process cgroup uid 10112 pid 6772 in 494ms
+         1791572400.887078  1000  4944  4971 I am_pss  : [7245,10105,com.google.android.angle,9384960,5869568,0,104026112,0,20,43]
+         1791572400.959075  root  4882  4882 D Zygote  : Forked child process 7349
+         1791572400.965206  root  4882  4882 I Zygote  : Process 6772 exited due to signal 9 (Killed)
+         1791572401.228356  1000  4944  4973 W ActivityManager: Slow operation: 1127ms so far, now at startProcess: returned from zygote!
+         1791572401.241434  1000  4944  4973 W ActivityManager: Slow operation: 1138ms so far, now at startProcess: done updating battery stats
+         1791572401.242229  1000  4944  4973 I am_proc_start: [0,7349,10103,com.google.android.configupdater,broadcast,{com.google.android.configupdater/com.google.android.configupdater.MainReceiver}]
+         1791572401.242930  1000  4944  4973 W ActivityManager: Slow operation: 1142ms so far, now at startProcess: building log message
+         1791572401.243152  1000  4944  4973 I ActivityManager: Start proc 7349:com.google.android.configupdater/u0a103 for broadcast {com.google.android.configupdater/com.google.android.configupdater.MainReceiver}
+         1791572401.243305  1000  4944  4973 W ActivityManager: Slow operation: 1142ms so far, now at startProcess: starting to update pids map
+         1791572401.261799  1000  4944  4973 W ActivityManager: Slow operation: 1160ms so far, now at startProcess: done updating pids map
+         1791572401.425692 10103  7349  7349 W d.configupdate: Unexpected CPU variant for X86 using defaults: x86_64
+         1791572401.561577  1000  4944  4967 I dvm_lock_sample: [system_server,1,android.anim,74,WindowAnimator.java,96,void com.android.server.wm.WindowAnimator.lambda$new$1$WindowAnimator(long),WindowManagerService.java,4895,void com.android.server.wm.WindowManagerService$H.handleMessage(android.os.Message),14]
+         1791572401.717350  1000  4944  4963 W Looper  : Slow dispatch took 140ms android.fg h=com.android.server.location.GnssLocationProvider$ProviderHandler c=null m=18
+         1791572402.234531  1000  4944  4971 I commit_sys_config_file: [roles-0,1197]
+         1791572402.235277  1000  4944  4971 I RoleUserState: Wrote roles.xml successfully
+         1791572402.507922  1000  4944  6393 I am_proc_bound: [0,7349,com.google.android.configupdater]
+         1791572402.569737  1000  4944  6393 W ActivityManager: Slow operation: 62ms so far, now at attachApplicationLocked: immediately after bindApplication
+         1791572402.588136  1000  4944  6393 W ActivityManager: Slow operation: 81ms so far, now at attachApplicationLocked: after updateLruProcessLocked
+         1791572402.619203  1000  4944  6393 W ActivityManager: Slow operation: 112ms so far, now at attachApplicationLocked: after mServices.attachApplicationLocked
+         1791572402.668734  1000  4944  6393 W ActivityManager: Slow operation: 161ms so far, now at attachApplicationLocked: after sendPendingBroadcastsLocked
+         1791572403.053549 10074  5287  7056 W ExclusiveDefaultHolderMixin: Default holder does not qualify for the role, config: config_defaultAssistant, package: com.google.android.googlequicksearchbox
+         1791572403.065544 10103  7349  7349 D ApplicationLoaders: Returning zygote-cached class loader: /system/framework/android.hidl.base-V1.0-java.jar
+         1791572403.067309 10103  7349  7349 D ApplicationLoaders: Returning zygote-cached class loader: /system/framework/android.hidl.manager-V1.0-java.jar
+         1791572403.067594 10103  7349  7349 D ApplicationLoaders: Returning zygote-cached class loader: /system/framework/android.hidl.base-V1.0-java.jar
+         1791572403.196597 10103  7349  7349 I d.configupdate: The ClassLoaderContext is a special shared library.
+         1791572403.198802  1000  4944  4944 W Looper  : Slow delivery took 218ms main h=android.view.Choreographer$FrameHandler c=android.view.Choreographer$FrameDisplayEventReceiver@ae2108b m=0
+         1791572403.199557  1000  4944  4944 W Looper  : Slow dispatch took 5155ms main h=android.view.Choreographer$FrameHandler c=android.view.Choreographer$FrameDisplayEventReceiver@ae2108b m=0
+         1791572403.437346  1000  4944  4944 W Looper  : Slow dispatch took 127ms main h=com.android.server.job.JobSchedulerService$JobHandler c=null m=3
+         1791572403.570198 10110  5118  5118 D KeyguardClockSwitch: Updating clock: 3\356\270\20100
+         1791572403.789317  1000  4944  5599 D EGL_emulation: eglMakeCurrent: 0x7ef782406f00: ver 3 0 (tinfo 0x7ef7844ce740)
+         1791572404.049461  1000  4944  4944 W NotificationService: Toast already killed. pkg=android callback=android.widget.Toast$TN@deee26
+         1791572404.050901  1000  4944  4944 W Looper  : Slow dispatch took 515ms main h=android.widget.Toast$TN$1 c=null m=1
+         1791572404.057820  1000  4944  4944 I Choreographer: Skipped 30 frames!  The application may be doing too much work on its main thread.
+         1791572405.152405  1000  4944  5324 I am_uid_running: 10143
+         1791572405.194999  1000  4944  5324 W ActivityManager: Slow operation: 72ms so far, now at startProcess: done starting proc!
+         1791572405.337572  1000  4944  5324 I ActivityManager: Killing 6354:android.process.acore/u0a54 (adj 985): empty #17
+         1791572405.341863  1000  4944  5324 I am_kill : [0,6354,android.process.acore,985,empty #17]
+         1791572405.380637  1000  4944  4944 W Looper  : Drained
+         1791572405.607476  1000  4944  4980 I dvm_lock_sample: [system_server,1,PowerManagerService,26,MessageQueue.java,338,android.os.Message android.os.MessageQueue.next(),-,556,boolean android.os.MessageQueue.enqueueMessage(android.os.Message, long),5]
+         1791572405.693260  root  4882  4882 D Zygote  : Forked child process 7372
+         1791572405.856746  1000  4944  4973 W ActivityManager: Slow operation: 684ms so far, now at startProcess: returned from zygote!
+         1791572405.860906  1000  4944  4973 W ActivityManager: Slow operation: 690ms so far, now at startProcess: done updating battery stats
+         1791572405.861294  1000  4944  4973 I am_proc_start: [0,7372,10143,com.google.android.deskclock,broadcast,{com.google.android.deskclock/com.android.deskclock.AlarmInitReceiver}]
+         1791572405.865420  1000  4944  4973 W ActivityManager: Slow operation: 694ms so far, now at startProcess: building log message
+         1791572405.866062  1000  4944  4973 I ActivityManager: Start proc 7372:com.google.android.deskclock/u0a143 for broadcast {com.google.android.deskclock/com.android.deskclock.AlarmInitReceiver}
+         1791572405.866484  1000  4944  4973 W ActivityManager: Slow operation: 695ms so far, now at startProcess: starting to update pids map
+         1791572405.877000  1000  4944  4973 W ActivityManager: Slow operation: 706ms so far, now at startProcess: done updating pids map
+         1791572406.129157 10143  7372  7372 W droid.deskcloc: Unexpected CPU variant for X86 using defaults: x86_64
+         1791572407.255617 10074  5287  5315 I ssioncontrolle: Background young concurrent copying GC freed 3022(167KB) AllocSpace objects, 0(0B) LOS objects, 16% free, 2877KB/3450KB, paused 566us total 3.258s
+         1791572407.285985  1000  4944  7083 I am_proc_bound: [0,7372,com.google.android.deskclock]
+         1791572407.380932  1000  4944  7083 W ActivityManager: Slow operation: 95ms so far, now at attachApplicationLocked: after mServices.attachApplicationLocked
+         1791572407.501073  1000  4944  7083 W ActivityManager: Slow operation: 215ms so far, now at attachApplicationLocked: after sendPendingBroadcastsLocked
+         1791572407.549984  1000  4944  4964 I dvm_lock_sample: [system_server,1,android.ui,35,ActivityManagerService.java,3308,void com.android.server.am.ActivityManagerService.dispatchUidsChanged(),-,5176,void com.android.server.am.ActivityManagerService.attachApplication(android.app.IApplicationThread, long),7]
+         1791572407.587069  1000  4944  4964 W Looper  : Slow dispatch took 102ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=null m=53
+         1791572407.847101 10143  7372  7372 D ApplicationLoaders: Returning zygote-cached class loader: /system/framework/android.hidl.base-V1.0-java.jar
+         1791572407.848334 10143  7372  7372 D ApplicationLoaders: Returning zygote-cached class loader: /system/framework/android.hidl.manager-V1.0-java.jar
+         1791572407.848463 10143  7372  7372 D ApplicationLoaders: Returning zygote-cached class loader: /system/framework/android.hidl.base-V1.0-java.jar
+         1791572408.003241 10143  7372  7372 I droid.deskcloc: The ClassLoaderContext is a special shared library.
+         1791572408.536885 10143  7372  7372 I droid.deskcloc: Waiting for a blocking GC ClassLinker
+         1791572408.683649 10143  7372  7372 I droid.deskcloc: WaitForGcToComplete blocked ClassLinker on HeapTrim for 146.521ms
+         1791572409.247293  1000  4944  4963 W Looper  : Slow dispatch took 211ms android.fg h=android.os.Handler c=<recycled PooledLambda@f8d155b> m=2
+         1791572409.272148  1000  4944  7083 I ActivityManager: Killing 6912:com.android.camera2/u0a133 (adj 985): empty #17
+         1791572409.273239  1000  4944  7083 I am_kill : [0,6912,com.android.camera2,985,empty #17]
+         1791572409.746075  1000  4944  6393 I am_proc_died: [0,6912,com.android.camera2,985,20]
+         1791572409.761732  1000  4944  6393 I am_uid_stopped: 10133
+         1791572409.844664  root  4882  4882 I Zygote  : Process 6912 exited due to signal 9 (Killed)
+         1791572410.115197  1000  4944  6058 D CountryDetector: No listener is left
+         1791572410.122182  1000  4944  6248 I am_proc_died: [0,6354,android.process.acore,985,20]
+         1791572410.163783  1000  4944  6248 I am_uid_stopped: 10054
+         1791572410.171684 10143  7372  7372 W PrimesInit: Primes instant initialization
+         1791572410.183208  1000  4944  4974 I libprocessgroup: Successfully killed process cgroup uid 10054 pid 6354 in 4791ms
+         1791572410.213538  1000  4944  4964 I dvm_lock_sample: [system_server,1,android.ui,44,ActivityManagerService.java,3308,void com.android.server.am.ActivityManagerService.dispatchUidsChanged(),-,1503,void com.android.server.am.ActivityManagerService$AppDeathRecipient.binderDied(),8]
+         1791572410.214803  root  4882  4882 I Zygote  : Process 6354 exited due to signal 9 (Killed)
+         1791572410.253137  1000  4944  4974 I libprocessgroup: Successfully killed process cgroup uid 10133 pid 6912 in 1ms
+         1791572410.286987 10143  7372  7395 W Primes  : background initialization
+         1791572410.294274 10143  7372  7372 I GAv4    : Google Analytics 11.0.11 is starting up. To enable debug logging on a device run:
+         1791572410.294274 10143  7372  7372 I GAv4    :   adb shell setprop log.tag.GAv4 DEBUG
+         1791572410.294274 10143  7372  7372 I GAv4    :   adb logcat -s GAv4
+         1791572410.524373  1000  4944  4971 I service_manager_slow: [122,phone]
+         1791572410.749857 10143  7372  7395 E ActivityThread: Failed to find provider info for com.google.android.gsf.gservices
+         1791572411.293959 10143  7372  7399 W GAv4    : AnalyticsReceiver is not registered or is disabled. Register the receiver for reliable dispatching on non-Google Play devices. See http://goo.gl/8Rd3yj for instructions.
+         1791572411.428976 10143  7372  7372 I AlarmClock: AlarmInitReceiver android.intent.action.BOOT_COMPLETED
+         1791572411.587398 10143  7372  7395 I PrimesTesting: GserviceFlagsSupplier.get()
+         1791572411.599810  1000  4944  5725 I am_uid_running: 10120
+         1791572411.135874 10143  7372  7395 I chatty  : uid=10143(com.google.android.deskclock) Primes-init-1 identical 5 lines
+         1791572411.191471 10143  7372  7395 E ActivityThread: Failed to find provider info for com.google.android.gsf.gservices
+         1791572411.606691  1000  4944  5725 W ActivityManager: Slow operation: 55ms so far, now at startProcess: done creating new process record
+         1791572411.607342  1000  4944  5725 W ActivityManager: Slow operation: 57ms so far, now at startProcess: stepping in to startProcess
+         1791572411.643533  1000  4944  5725 W ActivityManager: Slow operation: 93ms so far, now at startProcess: done starting proc!
+         1791572411.697105  1000  4944  5725 I ActivityManager: Killing 6546:com.android.cellbroadcastreceiver/u0a59 (adj 985): empty #17
+         1791572411.698508  1000  4944  5725 I am_kill : [0,6546,com.android.cellbroadcastreceiver,985,empty #17]
+         1791572411.918722  1000  4944  4964 W Looper  : Slow dispatch took 191ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=null m=53
+         1791572412.012263 10143  7372  7395 E ActivityThread: Failed to find provider info for com.google.android.gsf.gservices
+         1791572412.567786  1000  4944  7083 I am_proc_died: [0,6546,com.android.cellbroadcastreceiver,985,20]
+         1791572412.596967  1000  4944  7083 I am_uid_stopped: 10059
+         1791572412.649522  root  4882  4882 I Zygote  : Process 6546 exited due to signal 9 (Killed)
+         1791572412.689666  1000  4944  4974 I libprocessgroup: Successfully killed process cgroup uid 10059 pid 6546 in 921ms
+         1791572413.070074  root  4881  4881 D Zygote  : Forked child process 7403
+         1791572412.502690 10143  7372  7395 I chatty  : uid=10143(com.google.android.deskclock) identical 6 lines
+         1791572412.520652 10143  7372  7395 E ActivityThread: Failed to find provider info for com.google.android.gsf.gservices
+         1791572413.265619  1000  4944  4973 W ActivityManager: Slow operation: 1657ms so far, now at startProcess: returned from zygote!
+         1791572413.270226  1000  4944  4973 W ActivityManager: Slow operation: 1662ms so far, now at startProcess: done updating battery stats
+         1791572413.271093  1000  4944  4973 I am_proc_start: [0,7403,10120,com.google.android.ims,broadcast,{com.google.android.ims/com.google.android.ims.receivers.BootCompletedReceiver}]
+         1791572413.271621  1000  4944  4973 W ActivityManager: Slow operation: 1663ms so far, now at startProcess: building log message
+         1791572413.272349  1000  4944  4973 I ActivityManager: Start proc 7403:com.google.android.ims/u0a120 for broadcast {com.google.android.ims/com.google.android.ims.receivers.BootCompletedReceiver}
+         1791572413.272667  1000  4944  4973 W ActivityManager: Slow operation: 1664ms so far, now at startProcess: starting to update pids map
+         1791572413.305035  1000  4944  4973 W ActivityManager: Slow operation: 1697ms so far, now at startProcess: done updating pids map
+         1791572413.627706 10143  7372  7393 I droid.deskcloc: Waiting for a blocking GC ProfileSaver
+         1791572413.612640 10143  7372  7399 W GAv4    : CampaignTrackingReceiver is not registered, not exported or is disabled. Installation campaign tracking is not possible. See http://goo.gl/8Rd3yj for instructions.
+         1791572413.694117 10120  7403  7403 W gle.android.im: Unexpected CPU variant for X86 using defaults: x86_64
+         1791572413.963664  1000  4944  6393 I dvm_lock_sample: [system_server,1,Binder:4944_16,5,PackageManagerService.java,5627,int com.android.server.pm.PackageManagerService.checkUidPermission(java.lang.String, int),-,5124,android.content.pm.ActivityInfo com.android.server.pm.PackageManagerService.getActivityInfoInternal(android.content.ComponentName, int, int, int),1]
+         1791572414.029177 10143  7372  7393 I droid.deskcloc: WaitForGcToComplete blocked ProfileSaver on ClassLinker for 402.425ms
+         1791572414.067077 10143  7372  7385 I droid.deskcloc: WaitForGcToComplete blocked HeapTrim on ProfileSaver for 30.992ms
+         1791572414.094881 10143  7372  7385 W droid.deskcloc: Suspending all threads took: 26.659ms
+         1791572414.294620  1000  4944  4944 W WindowManager: removeWindowToken: Attempted to remove non-existing token: android.os.Binder@8160d95
+         1791572414.378828 10143  7372  7399 W GAv4    : AnalyticsService not registered in the app manifest. Hits might not be delivered reliably. See http://goo.gl/8Rd3yj for instructions.

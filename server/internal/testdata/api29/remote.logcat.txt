@@ -1,0 +1,28 @@
+--------- beginning of main
+         1791572820.211888 10110  5118  5118 D KeyguardClockSwitch: Updating clock: 3\356\270\20107
+         1791572824.329624  1000  4944  4971 E memtrack: Couldn't load memtrack module
+         1791572824.330621  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+         1791572824.383289 10146  7815  7815 I LogTest : TriggerReceiver what=remote
+         1791572824.386812 10146  7815  7815 I LogTest : trigger what=remote pid=7815
+--------- beginning of events
+         1791572824.455555  1000  4944  4971 I am_pss  : [7815,10146,com.example.logtest,36930560,30511104,0,141393920,0,2,60]
+         1791572824.502835  1000  4944  4971 E memtrack: Couldn't load memtrack module
+         1791572824.503525  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+         1791572824.614059  1000  4944  4971 I am_pss  : [6894,10107,com.android.dialer,14074880,8318976,0,120672256,0,20,40]
+         1791572824.847978  root  4882  4882 D Zygote  : Forked child process 8029
+         1791572824.893398  1000  4944  4965 I dvm_lock_sample: [system_server,0,android.io,26,MessageQueue.java,338,android.os.Message android.os.MessageQueue.next(),-,556,boolean android.os.MessageQueue.enqueueMessage(android.os.Message, long),5]
+--------- beginning of system
+         1791572824.990792  1000  4944  4973 W ActivityManager: Slow operation: 566ms so far, now at startProcess: returned from zygote!
+         1791572824.997695  1000  4944  4973 W ActivityManager: Slow operation: 574ms so far, now at startProcess: done updating battery stats
+         1791572824.999444  1000  4944  4973 I am_proc_start: [0,8029,10146,com.example.logtest:remote,service,{com.example.logtest/com.example.logtest.RemoteService}]
+         1791572825.001555  1000  4944  4973 W ActivityManager: Slow operation: 578ms so far, now at startProcess: building log message
+         1791572825.002998  1000  4944  4973 I ActivityManager: Start proc 8029:com.example.logtest:remote/u0a146 for service {com.example.logtest/com.example.logtest.RemoteService}
+         1791572825.003513  1000  4944  4973 W ActivityManager: Slow operation: 580ms so far, now at startProcess: starting to update pids map
+         1791572825.024543  1000  4944  4973 W ActivityManager: Slow operation: 601ms so far, now at startProcess: done updating pids map
+         1791572825.188811 10146  8029  8029 I .logtest:remot: Late-enabling -Xcheck:jni
+         1791572825.508144 10146  8029  8029 E .logtest:remot: Unknown bits set in runtime_flags: 0x8000
+         1791572825.618446 10146  8029  8029 W .logtest:remot: Unexpected CPU variant for X86 using defaults: x86_64
+         1791572825.922103  1000  4944  7083 I am_proc_bound: [0,8029,com.example.logtest:remote]
+         1791572825.987343  1000  4944  7083 W ActivityManager: Slow operation: 66ms so far, now at attachApplicationLocked: after mServices.attachApplicationLocked
+         1791572826.538218 10146  8029  8029 I LogTest : RemoteService.onCreate pid=8029
+         1791572826.554538 10146  8029  8029 D MyRepo  : remote onStartCommand startId=1

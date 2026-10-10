@@ -1,0 +1,11 @@
+### host 2026-10-10 03:59:32 +0800  call logcat_status {}
+adb: ok (/home/box/android-sdk/platform-tools/adb, version 1.0.41)
+store: /home/box/.cache/android-log-mcp
+devices (1):
+  emulator-5556  device  Android_SDK_built_for_x86_64  android 10 (sdk 29)  tz Asia/Kuching (+08:00)
+    recorded by another android-log-mcp process (pid 135929)
+    device time now: 2026-10-10 03:57:58 (device clock is 1m44s behind this host; re-measured every 30 s)   recording since 2026-10-10 03:40:37   history from 2026-10-10 03:17:20 to 2026-10-10 03:57:57
+    stored 13,032 lines (3.3 MB)
+cursor (now, emulator-5556): c1.ZW11bGF0b3ItNTU1Ng.ccb368e7.13032
+
+[exit 0]

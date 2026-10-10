@@ -1,0 +1,11 @@
+### host 2026-10-10 03:53:37 +0800  call logcat_search {"filter":"tag:LOGMCP_MARK","from":"2026-10-10 03:48:00"}
+device emulator-5556 · times are device-local Asia/Kuching (+08:00) · date 2026-10-10
+filter parsed as: tag contains "LOGMCP_MARK" AND time in [2026-10-10 03:48:00, now)
+matched 3 lines; showing newest 3 (03:48:56.388–03:48:56.716)
+format: time level pid/tid process tag: message
+03:48:56.388 I 4757/4757 ?(uid shell) LOGMCP_MARK: hello mark from shell
+03:48:56.566 E 4758/4758 ?(uid shell) LOGMCP_MARK: error mark
+03:48:56.716 I 4759/4759 ?(uid shell) LOGMCP_MARK: printable: café ✓ 中文
+more: before="c1.ZW11bGF0b3ItNTU1Ng.ccb368e7.12576"  ·  newer/wait: after="c1.ZW11bGF0b3ItNTU1Ng.ccb368e7.12630"
+
+[exit 0]

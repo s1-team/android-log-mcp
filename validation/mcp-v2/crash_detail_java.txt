@@ -1,0 +1,63 @@
+### host 2026-10-10 04:04:14 +0800  call logcat_crashes {"id":"cr7"}
+cr7 Java crash · 2026-10-10 03:44:22.433 · pid 4414 com.example.logtest (thread main) · sources: logcat:crash, events:am_crash, dropbox:data_app_crash
+package: com.example.logtest
+stack:
+  java.lang.RuntimeException: LogTest wrapped crash
+  	at com.example.logtest.Triggers.run(Triggers.java:22)
+  	at com.example.logtest.MainActivity.lambda$onResume$1$com-example-logtest-MainActivity(MainActivity.java:42)
+  	at com.example.logtest.MainActivity$$ExternalSyntheticLambda0.run(D8$$SyntheticClass:0)
+  	at android.os.Handler.handleCallback(Handler.java:883)
+  	at android.os.Handler.dispatchMessage(Handler.java:100)
+  	at android.os.Looper.loop(Looper.java:214)
+  	at android.app.ActivityThread.main(ActivityThread.java:7356)
+  	at java.lang.reflect.Method.invoke(Native Method)
+  	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+  	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+  Caused by: java.lang.IllegalStateException: repo not ready
+  	at com.example.logtest.Triggers$Repo.load(Triggers.java:53)
+  	at com.example.logtest.Triggers.run(Triggers.java:21)
+  	... 9 more
+same signature: cr1 (2026-10-10 03:01:32)
+before crash (pid 4414, last 40 lines):
+  03:43:14.710 I 4414/4414 com.example.logtest am_on_top_resumed_gained_called: [0,com.example.logtest.MainActivity,topStateChangedWhenResumed]
+  03:43:15.343 D 4414/4440 com.example.logtest HostConnection: HostConnection::get() New Host Connection established 0x76b8b44516c0, tid 4440
+  03:43:15.393 D 4414/4440 com.example.logtest HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_hwc_color_transform GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+  03:43:15.438 D 4414/4440 com.example.logtest EGL_emulation: eglCreateContext: 0x76b8b44518a0: maj 3 min 0 rcv 3
+  03:43:15.445 D 4414/4440 com.example.logtest EGL_emulation: eglMakeCurrent: 0x76b8b44518a0: ver 3 0 (tinfo 0x76b943e872e0)
+  03:43:15.542 W 4414/4440 com.example.logtest Gralloc3: mapper 3.x is not supported
+  03:43:15.604 D 4414/4440 com.example.logtest HostConnection: createUnique: call
+  03:43:15.614 D 4414/4440 com.example.logtest HostConnection: HostConnection::get() New Host Connection established 0x76b8b44519e0, tid 4440
+  03:43:15.616 D 4414/4440 com.example.logtest HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_hwc_color_transform GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+  03:43:15.618 D 4414/4440 com.example.logtest eglCodecCommon: allocate: Ask for block of size 0x1000
+  03:43:15.619 D 4414/4440 com.example.logtest eglCodecCommon: allocate: ioctl allocate returned offset 0x3ffff4000 size 0x2000
+  03:43:16.038 I 4414/4429 com.example.logtest example.logtes: NativeAlloc concurrent copying GC freed 2357(224KB) AllocSpace objects, 3(60KB) LOS objects, 55% free, 1222KB/2758KB, paused 399us total 307.353ms
+  03:43:16.195 D 4414/4440 com.example.logtest EGL_emulation: eglMakeCurrent: 0x76b8b44518a0: ver 3 0 (tinfo 0x76b943e872e0)
+  03:43:16.818 I 4414/4440 com.example.logtest OpenGLRenderer: Davey! duration=2174ms; Flags=1, IntendedVsync=1570718482807, Vsync=1570835149469, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=1570840504640, AnimationStart=1570841854641, PerformTraversalsStart=1570842098809, DrawStart=1571744578418, SyncQueued=1572277992419, SyncStart=1572286505323, IssueDrawCommandsStart=1572289955192, SwapBuffers=1572820197651, FrameCompleted=1572901394742, DequeueBufferDuration=3734000, QueueBufferDuration=8574000, 
+  03:43:17.028 I 4414/4414 com.example.logtest Choreographer: Skipped 132 frames!  The application may be doing too much work on its main thread.
+  03:43:17.196 I 4414/4440 com.example.logtest OpenGLRenderer: Davey! duration=2372ms; Flags=0, IntendedVsync=1570901841857, Vsync=1573101841769, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=1573118516311, AnimationStart=1573119552770, PerformTraversalsStart=1573137809824, DrawStart=1573185638105, SyncQueued=1573206735312, SyncStart=1573216420901, IssueDrawCommandsStart=1573217496156, SwapBuffers=1573241346327, FrameCompleted=1573283845463, DequeueBufferDuration=8352000, QueueBufferDuration=1897000, 
+  03:43:38.883 I 4414/4414 com.example.logtest am_on_top_resumed_lost_called: [0,com.example.logtest.MainActivity,topStateChangedWhenResumed]
+  03:43:39.282 I 4414/4414 com.example.logtest am_on_paused_called: [0,com.example.logtest.MainActivity,performPause]
+  03:43:41.986 D 4414/4440 com.example.logtest EGL_emulation: eglMakeCurrent: 0x76b8b44518a0: ver 3 0 (tinfo 0x76b943e872e0)
+  03:43:42.466 I 4414/4414 com.example.logtest am_on_stop_called: [0,com.example.logtest.MainActivity,STOP_ACTIVITY_ITEM]
+  03:43:50.767 I 4414/4414 com.example.logtest am_on_restart_called: [0,com.example.logtest.MainActivity,performRestartActivity]
+  03:43:51.060 D 4414/4414 com.example.logtest LogTest: onStart
+  03:43:51.062 I 4414/4414 com.example.logtest am_on_start_called: [0,com.example.logtest.MainActivity,handleStartActivity]
+  03:43:51.124 I 4414/4414 com.example.logtest LogTest: onResume
+  03:43:51.128 I 4414/4414 com.example.logtest am_on_resume_called: [0,com.example.logtest.MainActivity,RESUME_ACTIVITY]
+  03:43:51.131 I 4414/4414 com.example.logtest am_on_top_resumed_gained_called: [0,com.example.logtest.MainActivity,topWhenResuming]
+  03:43:51.945 D 4414/4440 com.example.logtest EGL_emulation: eglMakeCurrent: 0x76b8b44518a0: ver 3 0 (tinfo 0x76b943e872e0)
+  03:43:52.090 I 4414/4440 com.example.logtest OpenGLRenderer: Davey! duration=1286ms; Flags=1, IntendedVsync=1606868455797, Vsync=1607251789115, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=1607269518542, AnimationStart=1607291946435, PerformTraversalsStart=1607292143878, DrawStart=1607819614430, SyncQueued=1608027228401, SyncStart=1608036531056, IssueDrawCommandsStart=1608037477252, SwapBuffers=1608125968106, FrameCompleted=1608163907918, DequeueBufferDuration=4154000, QueueBufferDuration=2365000, 
+  03:44:10.518 I 4414/4414 com.example.logtest am_on_top_resumed_lost_called: [0,com.example.logtest.MainActivity,pausing]
+  03:44:10.566 I 4414/4414 com.example.logtest am_on_paused_called: [0,com.example.logtest.MainActivity,performPause]
+  03:44:10.576 I 4414/4414 com.example.logtest LogTest: onResume
+  03:44:10.583 I 4414/4414 com.example.logtest am_on_resume_called: [0,com.example.logtest.MainActivity,LIFECYCLER_RESUME_ACTIVITY]
+  03:44:10.585 I 4414/4414 com.example.logtest am_on_top_resumed_gained_called: [0,com.example.logtest.MainActivity,topWhenResuming]
+  03:44:22.045 I 4414/4414 com.example.logtest am_on_top_resumed_lost_called: [0,com.example.logtest.MainActivity,pausing]
+  03:44:22.049 I 4414/4414 com.example.logtest am_on_paused_called: [0,com.example.logtest.MainActivity,performPause]
+  03:44:22.066 I 4414/4414 com.example.logtest am_on_resume_called: [0,com.example.logtest.MainActivity,LIFECYCLER_RESUME_ACTIVITY]
+  03:44:22.068 I 4414/4414 com.example.logtest am_on_top_resumed_gained_called: [0,com.example.logtest.MainActivity,topWhenResuming]
+  03:44:22.056 I 4414/4414 com.example.logtest LogTest: onResume
+  03:44:22.374 I 4414/4414 com.example.logtest LogTest: trigger what=crash_caused pid=4414
+  03:44:22.386 D 4414/4414 com.example.logtest AndroidRuntime: Shutting down VM
+
+[exit 0]

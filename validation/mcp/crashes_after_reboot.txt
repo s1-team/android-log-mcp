@@ -1,0 +1,9 @@
+$ call logcat_crashes package=com.example.logtest from=03:20
+device emulator-5556 · Asia/Kuching (+08:00) · package com.example.logtest · 2 crash groups (2 events) in recorded history
+history: logcat from 2026-10-10 02:35:13; DropBox adds older entries when available (status: data_app_crash ok, data_app_native_crash ok, data_app_anr ok)
+cr27 2026-10-10 03:26:19  java   pid 0 com.example.logtest
+     Native crash: Aborted
+       at unknown:0 (only am_crash event recorded; stack unavailable in log buffers)
+cr26 2026-10-10 03:26:13  native pid 3418 com.example.logtest (thread example.logtest)  SIGABRT (SI_QUEUE) fault addr -------- abort: 'LogTest deliberate abort()' in libc.so (syscall+24)
+more: logcat_crashes id="cr27" for full detail
+

@@ -1,0 +1,71 @@
+### host 2026-10-10 04:10:04 +0800  call logcat_crashes {"package":"com.example.logtest","kinds":["native"],"from":"2026-10-10 04:00:00"}
+device emulator-5556 · Asia/Kuching (+08:00) · package com.example.logtest · 1 match → full detail
+cr12 native crash · 2026-10-10 04:07:17.006 · pid 4871 com.example.logtest (thread example.logtest) · sources: logcat:crash, logcat:tombstone, events:am_crash, dropbox:SYSTEM_TOMBSTONE, dropbox:data_app_native_crash
+package: com.example.logtest
+signal: SIGSEGV (SEGV_MAPERR) fault addr 0x0 in liblogtest.so [#00 pc 7fc]
+crash location: liblogtest.so [#00 pc 7fc]  (first app frame; libc frames such as abort/syscall come before it)
+tombstone (as logged by crash_dump/DEBUG):
+  *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+  Build fingerprint: 'google/sdk_gphone_x86_64/generic_x86_64:10/QSR1.211112.011/13135432:userdebug/dev-keys'
+  Revision: '0'
+  ABI: 'x86_64'
+  Timestamp: 2026-10-10 04:07:18+0800
+  pid: 4871, tid: 4871, name: example.logtest  >>> com.example.logtest <<<
+  uid: 10146
+  signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0
+  Cause: null pointer dereference
+      rax 0000000000000000  rbx 000076b943d65000  rcx 503081d51b80a04d  rdx 0000000000000004
+      r8  0000000000000000  r9  0000000000000000  r10 000076b9426e2610  r11 0000000000000206
+      r12 00007ffe9ef4a000  r13 000076b86b7cd80b  r14 0000000000000000  r15 00007ffe9ef4ab78
+      rdi 0000000000000000  rsi 00007ffe9ef49660
+      rbp 00007ffe9ef49d20  rsp 00007ffe9ef49d20  rip 000076b86ad057fc
+  
+  backtrace:
+        #00 pc 00000000000007fc  /data/app/com.example.logtest-EXHrd52nNpS4jel8iYKCOQ==/lib/x86_64/liblogtest.so
+full tombstone (all 1 threads, memory near registers, maps) is in DropBox SYSTEM_TOMBSTONE; `adb shell dumpsys dropbox --print SYSTEM_TOMBSTONE`
+same signature: cr8 (2026-10-10 03:44:58), cr4 (2026-10-10 03:02:50)
+before crash (pid 4871, last 40 lines):
+  03:57:32.751 E 4871/4871 com.example.logtest LogTest: multi-line message
+    line two
+    	line three (tab)
+  03:57:32.893 D 4871/4896 com.example.logtest libEGL: loaded /vendor/lib64/egl/libGLESv1_CM_emulation.so
+  03:57:33.090 D 4871/4896 com.example.logtest libEGL: loaded /vendor/lib64/egl/libGLESv2_emulation.so
+  03:57:35.104 I 4871/4871 com.example.logtest am_on_create_called: [0,com.example.logtest.MainActivity,performCreate]
+  03:57:35.142 D 4871/4871 com.example.logtest LogTest: onStart
+  03:57:35.144 I 4871/4871 com.example.logtest am_on_start_called: [0,com.example.logtest.MainActivity,handleStartActivity]
+  03:57:35.258 I 4871/4871 com.example.logtest LogTest: onResume
+  03:57:35.262 I 4871/4871 com.example.logtest am_on_resume_called: [0,com.example.logtest.MainActivity,RESUME_ACTIVITY]
+  03:57:35.738 I 4871/4871 com.example.logtest am_on_top_resumed_gained_called: [0,com.example.logtest.MainActivity,topStateChangedWhenResumed]
+  03:57:36.490 D 4871/4894 com.example.logtest HostConnection: HostConnection::get() New Host Connection established 0x76b8b444b700, tid 4894
+  03:57:36.624 D 4871/4894 com.example.logtest HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_hwc_color_transform GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+  03:57:36.717 D 4871/4894 com.example.logtest EGL_emulation: eglCreateContext: 0x76b8b444b8e0: maj 3 min 0 rcv 3
+  03:57:36.726 D 4871/4894 com.example.logtest EGL_emulation: eglMakeCurrent: 0x76b8b444b8e0: ver 3 0 (tinfo 0x76b943e873e0)
+  03:57:36.853 W 4871/4894 com.example.logtest Gralloc3: mapper 3.x is not supported
+  03:57:36.903 D 4871/4894 com.example.logtest HostConnection: createUnique: call
+  03:57:36.921 D 4871/4894 com.example.logtest HostConnection: HostConnection::get() New Host Connection established 0x76b8b444ba20, tid 4894
+  03:57:36.924 D 4871/4894 com.example.logtest HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_hwc_color_transform GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+  03:57:36.930 D 4871/4894 com.example.logtest eglCodecCommon: allocate: Ask for block of size 0x1000
+  03:57:36.932 D 4871/4894 com.example.logtest eglCodecCommon: allocate: ioctl allocate returned offset 0x3ffff4000 size 0x2000
+  03:57:37.286 I 4871/4886 com.example.logtest example.logtes: NativeAlloc concurrent copying GC freed 785(42KB) AllocSpace objects, 0(0B) LOS objects, 55% free, 1214KB/2750KB, paused 1.851ms total 245.062ms
+  03:57:37.413 D 4871/4894 com.example.logtest EGL_emulation: eglMakeCurrent: 0x76b8b444b8e0: ver 3 0 (tinfo 0x76b943e873e0)
+  03:57:38.316 I 4871/4894 com.example.logtest OpenGLRenderer: Davey! duration=2708ms; Flags=1, IntendedVsync=2431684877794, Vsync=2431834877788, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=2431850358627, AnimationStart=2431851501104, PerformTraversalsStart=2431851646509, DrawStart=2433061713206, SyncQueued=2433498502196, SyncStart=2433503317924, IssueDrawCommandsStart=2433504991323, SwapBuffers=2434271700145, FrameCompleted=2434398358385, DequeueBufferDuration=2415000, QueueBufferDuration=6037000, 
+  03:57:38.603 I 4871/4871 com.example.logtest Choreographer: Skipped 165 frames!  The application may be doing too much work on its main thread.
+  03:57:38.842 I 4871/4894 com.example.logtest OpenGLRenderer: Davey! duration=2983ms; Flags=0, IntendedVsync=2431934921243, Vsync=2434684921133, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=2434694828582, AnimationStart=2434695823242, PerformTraversalsStart=2434721527298, DrawStart=2434761747195, SyncQueued=2434783413640, SyncStart=2434793607323, IssueDrawCommandsStart=2434794598430, SwapBuffers=2434831298083, FrameCompleted=2434928725957, DequeueBufferDuration=18866000, QueueBufferDuration=15422000, 
+  03:57:56.595 I 4871/4871 com.example.logtest LogTest: TriggerReceiver what=remote
+  03:57:56.605 I 4871/4871 com.example.logtest LogTest: trigger what=remote pid=4871
+  03:58:18.928 I 4871/4871 com.example.logtest LogTest: TriggerReceiver what=remote_crash
+  03:58:18.931 I 4871/4871 com.example.logtest LogTest: trigger what=remote_crash pid=4871
+  03:59:21.540 I 4871/4871 com.example.logtest LogTest: TriggerReceiver what=anr_broadcast
+  03:59:33.666 I 4871/4884 com.example.logtest example.logtes: Thread[7,tid=4884,WaitingInMainSignalCatcherLoop,Thread*=0x76b8b43de400,peer=0x12c41de8,"Signal Catcher"]: reacting to signal 3
+  03:59:33.667 I 4871/4884 com.example.logtest example.logtes: 
+  03:59:34.171 I 4871/4884 com.example.logtest example.logtes: Wrote stack traces to tombstoned
+  03:59:51.545 W 4871/4871 com.example.logtest LogTest: receiver unblocked
+  04:07:16.490 I 4871/4871 com.example.logtest am_on_top_resumed_lost_called: [0,com.example.logtest.MainActivity,pausing]
+  04:07:16.499 I 4871/4871 com.example.logtest am_on_paused_called: [0,com.example.logtest.MainActivity,performPause]
+  04:07:16.519 I 4871/4871 com.example.logtest LogTest: onResume
+  04:07:16.558 I 4871/4871 com.example.logtest am_on_resume_called: [0,com.example.logtest.MainActivity,LIFECYCLER_RESUME_ACTIVITY]
+  04:07:16.566 I 4871/4871 com.example.logtest am_on_top_resumed_gained_called: [0,com.example.logtest.MainActivity,topWhenResuming]
+  04:07:16.860 I 4871/4871 com.example.logtest LogTest: trigger what=native pid=4871
+  04:07:16.984 E 4871/4871 com.example.logtest LogTestNative: about to SIGSEGV
+
+[exit 0]

@@ -1,0 +1,56 @@
+$ android-log-mcp call logcat_search '{"device":"emulator-5556","filter":"is:crash","from":"03:01:00","limit":15}'
+device emulator-5556 · times are device-local Asia/Kuching (+08:00) · date 2026-10-10
+filter parsed as: is crash AND time in [2026-10-10 03:01:00, now)
+matched 21 lines; showing newest 15 (03:02:41.473–03:07:43.264)
+format: time level pid/tid process tag: message
+03:02:41.473 F 7763/7763 com.example.logtest(?) DEBUG: ABI: 'x86_64'
+03:02:41.490 F 7763/7763 com.example.logtest(?) DEBUG: Timestamp: 2026-10-10 03:02:41+0800
+03:02:41.491 F 7763/7763 com.example.logtest(?) DEBUG: pid: 7736, tid: 7736, name: example.logtest  >>> com.example.logtest <<<
+03:02:41.491 F 7763/7763 com.example.logtest(?) DEBUG: uid: 10146
+03:02:41.492 F 7763/7763 com.example.logtest(?) DEBUG: signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0
+03:02:41.492 F 7763/7763 com.example.logtest(?) DEBUG: Cause: null pointer dereference
+03:02:41.494 F 7763/7763 com.example.logtest(?) DEBUG:     rax 0000000000000000  rbx 00007ef862cd4000  rcx 81c28a362e54aee9  rdx 0000000000000004
+03:02:41.495 F 7763/7763 com.example.logtest(?) DEBUG:     r8  0000000000000000  r9  0000000000000007  r10 00007ef8605d3050  r11 0000000000000206
+03:02:41.496 F 7763/7763 com.example.logtest(?) DEBUG:     r12 00007fffa68447d0  r13 00007ef7d5f027db  r14 0000000000000000  r15 00007fffa68449b8
+03:02:41.498 F 7763/7763 com.example.logtest(?) DEBUG:     rdi 0000000000000000  rsi 00007fffa6843e30
+03:02:41.499 F 7763/7763 com.example.logtest(?) DEBUG:     rbp 00007fffa68444f0  rsp 00007fffa68444f0  rip 00007ef787efc7fc
+03:02:41.931 F 7763/7763 com.example.logtest(?) DEBUG: 
+    backtrace:
+03:02:41.932 F 7763/7763 com.example.logtest(?) DEBUG:       #00 pc 00000000000007fc  /data/app/com.example.logtest-EXHrd52nNpS4jel8iYKCOQ==/lib/x86_64/liblogtest.so
+03:07:39.669 E 8029/8029 com.example.logtest:remote AndroidRuntime: FATAL EXCEPTION: main
+    Process: com.example.logtest:remote, PID: 8029
+    java.lang.RuntimeException: Unable to start service com.example.logtest.RemoteService@a11d0f9 with Intent { cmp=com.example.logtest/.RemoteService (has extras) }: java.lang.IllegalStateException: LogTest crash in :remote
+    	at android.app.ActivityThread.handleServiceArgs(ActivityThread.java:4105)
+    	at android.app.ActivityThread.access$1800(ActivityThread.java:219)
+    	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:1891)
+    	at android.os.Handler.dispatchMessage(Handler.java:107)
+    	at android.os.Looper.loop(Looper.java:214)
+    	at android.app.ActivityThread.main(ActivityThread.java:7356)
+    	at java.lang.reflect.Method.invoke(Native Method)
+    	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+    	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+    Caused by: java.lang.IllegalStateException: LogTest crash in :remote
+    	at com.example.logtest.RemoteService.onStartCommand(RemoteService.java:16)
+    	at android.app.ActivityThread.handleServiceArgs(ActivityThread.java:4087)
+    	... 8 more
+03:07:43.264 E 8076/8076 com.example.logtest:remote AndroidRuntime: FATAL EXCEPTION: main
+    Process: com.example.logtest:remote, PID: 8076
+    java.lang.RuntimeException: Unable to start service com.example.logtest.RemoteService@a11d0f9 with Intent { cmp=com.example.logtest/.RemoteService (has extras) }: java.lang.IllegalStateException: LogTest crash in :remote
+    	at android.app.ActivityThread.handleServiceArgs(ActivityThread.java:4105)
+    	at android.app.ActivityThread.access$1800(ActivityThread.java:219)
+    	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:1891)
+    	at android.os.Handler.dispatchMessage(Handler.java:107)
+    	at android.os.Looper.loop(Looper.java:214)
+    	at android.app.ActivityThread.main(ActivityThread.java:7356)
+    	at java.lang.reflect.Method.invoke(Native Method)
+    	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+    	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+    Caused by: java.lang.IllegalStateException: LogTest crash in :remote
+    	at com.example.logtest.RemoteService.onStartCommand(RemoteService.java:16)
+    	at android.app.ActivityThread.handleServiceArgs(ActivityThread.java:4087)
+    	... 8 more
+[truncated: 6 older matches not shown]
+more: before="c1.ZW11bGF0b3ItNTU1Ng.07a6d2d3.29510"  ·  newer/wait: after="c1.ZW11bGF0b3ItNTU1Ng.07a6d2d3.30515"
+top tags in all 21 matches: DEBUG 16 · AndroidRuntime 4 · libc 1 · narrow with e.g. -message:<noise>, min_level=info, or a smaller from/to
+
+[exit 0]

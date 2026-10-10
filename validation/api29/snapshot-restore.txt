@@ -1,0 +1,19 @@
+restart at 2026-10-10 03:11:24
+boot_completed after 198s, pm ready after 203s
+bf71fe22-4102-4845-aab5-263c4e1018e1
+1791573289.464700717
+Sat Oct 10 03:14:50 +08 2026
+ 03:14:51 up 3 min,  0 users,  load average: 11.23, 5.69, 2.27
+host epoch now: 1791573292.719478852
+== attempt2 restart at 2026-10-10 03:17:02 host epoch 1791573422
+boot_completed after 190s, pm ready after 195s
+ccb368e7-f2c9-484e-83b8-8533bde26262
+1791573621.331750084
+ 03:20:22 up 3 min,  0 users,  load average: 11.62, 5.62, 2.22
+host epoch now: 1791573622.774935784
+INFO         | Loading snapshot 'ready'...
+qemu-system-x86_64-headless: Length mismatch: : 0x2000 in != 0x10000: Invalid argument
+qemu-system-x86_64-headless: error while loading state for instance 0x0 of device 'ram'
+WARNING      | Error -22 while loading VM state
+WARNING      | Failed to load snapshot 'ready'
+USER_INFO    | The emulator is performing a cold boot without a saved state because there's no snapshot and you have configured it not to save on exit.

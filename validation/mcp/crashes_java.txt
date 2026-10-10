@@ -1,0 +1,16 @@
+$ android-log-mcp call logcat_crashes '{"device":"emulator-5556","package":"com.example.logtest"}'
+device emulator-5556 · Asia/Kuching (+08:00) · package com.example.logtest · 2 crash groups (2 events) in recorded history
+history: logcat from 2026-10-10 02:35:13; DropBox adds older entries when available (status: data_app_crash ok, data_app_native_crash ok, data_app_anr ok)
+cr19 2026-10-10 03:01:32  java   pid 0 com.example.logtest
+     java.lang.IllegalStateException: repo not ready
+       at Triggers.java:53 (only am_crash event recorded; stack unavailable in log buffers)
+cr18 2026-10-10 03:01:32  java   pid 7182 com.example.logtest (thread main)
+     java.lang.RuntimeException: LogTest wrapped crash
+       at com.example.logtest.Triggers.run(Triggers.java:22)
+       at com.example.logtest.MainActivity.lambda$onResume$1$com-example-logtest-MainActivity(MainActivity.java:42)
+       at com.example.logtest.MainActivity$$ExternalSyntheticLambda0.run(D8$$SyntheticClass:0)
+       … root cause: java.lang.IllegalStateException: repo not ready
+       … 9 more frames
+more: logcat_crashes id="cr19" for full detail
+
+[exit 0]

@@ -1,0 +1,36 @@
+### host 2026-10-10 04:04:03 +0800  call logcat_crashes {"id":"cr9"}
+cr9 native crash · 2026-10-10 03:45:38.807 · pid 4668 com.example.logtest (thread example.logtest) · sources: logcat:crash, logcat:tombstone, dropbox:SYSTEM_TOMBSTONE, dropbox:data_app_native_crash
+package: com.example.logtest
+signal: SIGABRT (SI_QUEUE) abort: 'LogTest deliberate abort()' in liblogtest.so [#02 pc 86f]
+crash location: liblogtest.so [#02 pc 86f]  (first app frame; libc frames such as abort/syscall come before it)
+tombstone (as logged by crash_dump/DEBUG):
+  *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+  Build fingerprint: 'google/sdk_gphone_x86_64/generic_x86_64:10/QSR1.211112.011/13135432:userdebug/dev-keys'
+  Revision: '0'
+  ABI: 'x86_64'
+  Timestamp: 2026-10-10 03:45:39+0800
+  pid: 4668, tid: 4668, name: example.logtest  >>> com.example.logtest <<<
+  uid: 10146
+  signal 6 (SIGABRT), code -1 (SI_QUEUE), fault addr --------
+  Abort message: 'LogTest deliberate abort()'
+      rax 0000000000000000  rbx 000000000000123c  rcx 000076b9426e33f8  rdx 0000000000000006
+      r8  0000000010090008  r9  0000000000000000  r10 00007ffe9ef49880  r11 0000000000000246
+      r12 00007ffe9ef49c40  r13 000076b86b8d2816  r14 00007ffe9ef49908  r15 000000000000123c
+      rdi 000000000000123c  rsi 000000000000123c
+      rbp 00007ffe9ef49970  rsp 00007ffe9ef49878  rip 000076b9426e33f8
+  
+  backtrace:
+        #00 pc 00000000000943f8  /apex/com.android.runtime/lib64/bionic/libc.so (syscall+24) (BuildId: b5c6019a3b4ea61b5e9a2f56319b584e)
+        #01 pc 0000000000097146  /apex/com.android.runtime/lib64/bionic/libc.so (abort+182) (BuildId: b5c6019a3b4ea61b5e9a2f56319b584e)
+        #02 pc 000000000000086f  /data/app/com.example.logtest-EXHrd52nNpS4jel8iYKCOQ==/lib/x86_64/liblogtest.so
+full tombstone (all 1 threads, memory near registers, maps) is in DropBox SYSTEM_TOMBSTONE; `adb shell dumpsys dropbox --print SYSTEM_TOMBSTONE`
+same signature: cr5 (2026-10-10 03:26:13)
+before crash (pid 4668, last 6 lines):
+  03:45:37.846 I 4668/4668 com.example.logtest example.logtes: Late-enabling -Xcheck:jni
+  03:45:37.940 E 4668/4668 com.example.logtest example.logtes: Unknown bits set in runtime_flags: 0x8000
+  03:45:37.962 W 4668/4668 com.example.logtest example.logtes: Unexpected CPU variant for X86 using defaults: x86_64
+  03:45:38.779 I 4668/4668 com.example.logtest LogTest: TriggerReceiver what=native_abort
+  03:45:38.782 I 4668/4668 com.example.logtest LogTest: trigger what=native_abort pid=4668
+  03:45:38.805 E 4668/4668 com.example.logtest LogTestNative: about to abort: LogTest deliberate abort()
+
+[exit 0]

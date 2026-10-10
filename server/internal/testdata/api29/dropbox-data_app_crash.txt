@@ -1,0 +1,32 @@
+Drop box contents: 269 entries
+Max entries: 1000
+Low priority rate limit period: 2000 ms
+Low priority tags: {data_app_wtf, keymaster, system_server_wtf, system_app_strictmode, system_app_wtf, system_server_strictmode, data_app_strictmode, netstats}
+Searching for: data_app_crash
+
+========================================
+2026-10-10 03:01:32 data_app_crash (text, 1129 bytes)
+Process: com.example.logtest
+PID: 7182
+UID: 10146
+Flags: 0x30a8be46
+Package: com.example.logtest v1 (1.0)
+Foreground: Yes
+Build: google/sdk_gphone_x86_64/generic_x86_64:10/QSR1.211112.011/13135432:userdebug/dev-keys
+
+java.lang.RuntimeException: LogTest wrapped crash
+	at com.example.logtest.Triggers.run(Triggers.java:22)
+	at com.example.logtest.MainActivity.lambda$onResume$1$com-example-logtest-MainActivity(MainActivity.java:42)
+	at com.example.logtest.MainActivity$$ExternalSyntheticLambda0.run(D8$$SyntheticClass:0)
+	at android.os.Handler.handleCallback(Handler.java:883)
+	at android.os.Handler.dispatchMessage(Handler.java:100)
+	at android.os.Looper.loop(Looper.java:214)
+	at android.app.ActivityThread.main(ActivityThread.java:7356)
+	at java.lang.reflect.Method.invoke(Native Method)
+	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+Caused by: java.lang.IllegalStateException: repo not ready
+	at com.example.logtest.Triggers$Repo.load(Triggers.java:53)
+	at com.example.logtest.Triggers.run(Triggers.java:21)
+	... 9 more
+

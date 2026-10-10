@@ -1,0 +1,115 @@
+--------- beginning of main
+         1791573915.859574  llkd  1910  1910 W livelock: sample 3.350s
+         1791573919.872665 10107  3386  3987 I Dialer  : OmtpVvmCarrierCfgHlpr - OmtpEvent:CONFIG_STATUS_SMS_TIME_OUT
+         1791573919.895185 10107  3386  3386 I Dialer  : RetryPolicy - discarding deferred status: configuration_state=4
+         1791573919.946988 10107  3386  3386 I Dialer  : VvmTaskExecutor - no more tasks, stopping service if no task are added in 5000 millis
+         1791573920.145773  1000  2044  2062 W system_server: Long monitor contention with owner ActivityManager (2075) at void com.android.server.am.BroadcastQueue.processNextBroadcast(boolean)(BroadcastQueue.java:948) waiters=0 in java.lang.String com.android.server.am.ActivityManagerService.checkContentProviderAccess(java.lang.String, int) for 168ms
+--------- beginning of events
+         1791573920.161299  1000  2044  2062 I dvm_lock_sample: [system_server,1,Binder:2044_1,168,ActivityManagerService.java,6492,java.lang.String com.android.server.am.ActivityManagerService.checkContentProviderAccess(java.lang.String, int),BroadcastQueue.java,948,void com.android.server.am.BroadcastQueue.processNextBroadcast(boolean),33]
+         1791573920.180845 10107  3386  3386 I Dialer  : VvmTaskReceiver - task received
+         1791573920.189372 10107  3386  3386 I Dialer  : VvmTaskReceiver - TaskExecutor already running
+         1791573920.274477 10107  3386  3386 I Dialer  : Task.createTask - create task:com.android.voicemail.impl.ActivationTask
+         1791573920.277861  1000  2044  2067 I dvm_lock_sample: [system_server,1,android.ui,87,ActivityManagerService.java,3308,void com.android.server.am.ActivityManagerService.dispatchUidsChanged(),-,1913,void com.android.server.am.ActivityManagerService$5.handleMessage(android.os.Message),17]
+         1791573920.309456 10107  3386  3386 I Dialer  : RetryPolicy - retry #1 for com.android.voicemail.impl.ActivationTask@c858a54 queued, executing in 5000
+--------- beginning of system
+         1791573920.357398  1000  2044  2067 W Looper  : Slow dispatch took 267ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=null m=53
+         1791573920.363970 10107  3386  3386 I Dialer  : VvmTaskExecutor - com.android.voicemail.impl.ActivationTask@c858a54 added
+         1791573920.389508 10107  3386  3386 I Dialer  : VvmTaskExecutor - minimal wait time:4945
+         1791573920.395055 10107  3386  3386 I Dialer  : VvmTaskExecutor - sleep for 4945 millis
+         1791573920.395218  1000  2044  2074 E memtrack: Couldn't load memtrack module
+         1791573920.395906  1000  2044  2074 W android.os.Debug: failed to get memory consumption info: -1
+         1791573920.630195  1000  2044  2074 I am_pss  : [3386,10107,com.android.dialer,22193152,17035264,19456,119910400,0,9,44]
+         1791573920.667057  1000  2044  2062 W system_server: Long monitor contention with owner android.bg (2074) at void com.android.server.am.ActivityManagerService$5.handleMessage(android.os.Message)(ActivityManagerService.java:1992) waiters=0 in java.lang.String com.android.server.am.ActivityManagerService.checkContentProviderAccess(java.lang.String, int) for 124ms
+         1791573920.669361  1000  2044  2075 I am_uid_idle: 10054
+         1791573920.670484  1000  2044  2062 I dvm_lock_sample: [system_server,1,Binder:2044_1,124,ActivityManagerService.java,6492,java.lang.String com.android.server.am.ActivityManagerService.checkContentProviderAccess(java.lang.String, int),-,1992,void com.android.server.am.ActivityManagerService$5.handleMessage(android.os.Message),24]
+         1791573920.739891  1000  2044  2074 E memtrack: Couldn't load memtrack module
+         1791573920.740602  1000  2044  2074 W android.os.Debug: failed to get memory consumption info: -1
+         1791573920.775765  1000  2044  2067 W Looper  : Slow dispatch took 105ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=null m=53
+         1791573920.946996  1000  2044  2074 I am_pss  : [3996,1000,com.android.keychain,10652672,7254016,18432,97116160,0,20,32]
+         1791573921.016086  1000  2044  2074 E memtrack: Couldn't load memtrack module
+         1791573921.016443  1000  2044  2074 W android.os.Debug: failed to get memory consumption info: -1
+         1791573921.087914  1000  2044  2075 I am_uid_idle: 10120
+         1791573921.255383  1000  2044  2074 I am_pss  : [3842,10111,com.google.android.projection.gearhead:shared,25315328,19603456,18432,128786432,0,20,30]
+         1791573921.316297  1000  2044  2074 E memtrack: Couldn't load memtrack module
+         1791573921.316812  1000  2044  2074 W android.os.Debug: failed to get memory consumption info: -1
+         1791573921.479993  1000  2044  2074 I am_pss  : [3297,10056,android.process.media,20192256,15552512,18432,120000512,0,11,30]
+         1791573921.808233  1000  2044  2062 I ActivityTaskManager: START u0 {flg=0x10000000 cmp=com.example.logtest/.MainActivity} from uid 2000
+         1791573921.862803  1000  2044  2070 I system_server: Starting a blocking GC Alloc
+         1791573921.896666  1000  2044  2062 I am_new_intent: [0,178215518,3,com.example.logtest/.MainActivity,NULL,NULL,NULL,268435456]
+         1791573921.863520  1000  2044  2070 I system_server: Starting a blocking GC Alloc
+         1791573921.911817  1000  2044  2062 I system_server: Waiting for a blocking GC Alloc
+         1791573921.926597  1000  2044  2224 I system_server: Waiting for a blocking GC Alloc
+         1791573922.129114  1000  2044  2070 I system_server: Alloc young concurrent copying GC freed 28684(3462KB) AllocSpace objects, 0(0B) LOS objects, 35% free, 10MB/15MB, paused 9.295ms total 263.584ms
+         1791573922.133214  1000  2044  2062 I system_server: WaitForGcToComplete blocked Alloc on HeapTrim for 231.693ms
+         1791573922.134892  1000  2044  2062 I system_server: Starting a blocking GC Alloc
+         1791573922.137178  1000  2044  2224 I system_server: WaitForGcToComplete blocked Alloc on HeapTrim for 210.176ms
+         1791573922.137799  1000  2044  2224 I system_server: Starting a blocking GC Alloc
+         1791573922.280088 10146  3418  3418 I am_on_top_resumed_lost_called: [0,com.example.logtest.MainActivity,pausing]
+         1791573922.289224 10146  3418  3418 I am_on_paused_called: [0,com.example.logtest.MainActivity,performPause]
+         1791573922.301878 10146  3418  3418 I LogTest : onResume
+         1791573922.303968 10146  3418  3418 I am_on_resume_called: [0,com.example.logtest.MainActivity,LIFECYCLER_RESUME_ACTIVITY]
+         1791573922.307301 10146  3418  3418 I am_on_top_resumed_gained_called: [0,com.example.logtest.MainActivity,topWhenResuming]
+         1791573922.611014  1000  2044  2069 W system_server: Long monitor contention with owner Binder:2044_1 (2062) at android.app.WaitResult com.android.server.wm.ActivityTaskManagerService.startActivityAndWait(android.app.IApplicationThread, java.lang.String, android.content.Intent, java.lang.String, android.os.IBinder, java.lang.String, int, int, android.app.ProfilerInfo, android.os.Bundle, int)(ActivityTaskManagerService.java:1214) waiters=1 in void com.android.server.wm.WindowManagerService$H.handleMessage(android.os.Message) for 394ms
+         1791573922.614535  1000  2044  2069 I dvm_lock_sample: [system_server,1,android.display,394,WindowManagerService.java,4876,void com.android.server.wm.WindowManagerService$H.handleMessage(android.os.Message),ActivityTaskManagerService.java,1214,android.app.WaitResult com.android.server.wm.ActivityTaskManagerService.startActivityAndWait(android.app.IApplicationThread, java.lang.String, android.content.Intent, java.lang.String, android.os.IBinder, java.lang.String, int, int, android.app.ProfilerInfo, android.os.Bundle, int),78]
+         1791573924.735987  1000  2044  2075 I am_uid_idle: 10061
+         1791573925.509163 10107  3386  3987 I Dialer  : VvmTaskExecutor - executing task com.android.voicemail.impl.ActivationTask@c858a54
+         1791573925.536553 10107  3386  3987 I Dialer  : PreOMigrationHandler - ComponentInfo{com.android.phone/com.android.services.telephony.TelephonyConnectionService}, ***, UserHandle{0} already migrated
+         1791573926.254830 10054  3934  3979 I VoicemailNotifier: receivers for android.intent.action.PROVIDER_CHANGED :[]
+         1791573926.318289 10107  3386  3987 I Dialer  : VvmActivationTask - VVM content provider configured - vvm_type_cvvm
+         1791573926.342695 10107  3386  3987 I Dialer  : OmtpVvmCarrierCfgHlpr - OmtpEvent:CONFIG_ACTIVATING
+         1791573926.489113 10054  3934  3979 I VoicemailNotifier: receivers for android.intent.action.PROVIDER_CHANGED :[]
+         1791573926.589678 radio  2409  2431 I LocationAccessPolicy: Allowing com.android.dialer fine because it doesn't target API 29 yet. Please fix this app. Called from getServiceStateForSubscriber
+         1791573926.620110 radio  2409  2431 I LocationAccessPolicy: Allowing com.android.dialer coarse because it doesn't target API 29 yet. Please fix this app. Called from getServiceStateForSubscriber
+         1791573926.787634 radio  2409  2431 I service_manager_stats: [100,1513,175837]
+         1791573926.830724 radio  2409  2431 I service_manager_slow: [16,carrier_config]
+         1791573927.027554  1000  2044  2062 I am_uid_active: 10120
+         1791573927.583618  1000  2044  3031 I service_manager_slow: [22,isub]
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: Error inserting title_key=\b*\bD\b0\bL\bF\bB\b2\b0\b*\b instance_id=null duration=3000 is_ringtone=1 album_artist=null orientation=null format=47362 height=null is_drm=0 bucket_display_name=ringtones is_audiobook=0 parent=142 volume_name=internal title_resource_uri=null date_modified=1740686337 composer=null _display_name=Andromeda.ogg datetaken=null mime_type=audio/ogg is_notification=0 year=null _data=/system/product/media/audio/ringtones/Andromeda.ogg _size=24973 is_alarm=0 title=Andromeda track=null width=null is_music=0 group_id=1131821161 document_id=null artist_id=1 date_added=1791573929 is_podcast=0 album_id=5 original_document_id=null bucket_id=-2044634724 media_type=2 relative_path=null
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: android.database.sqlite.SQLiteConstraintException: UNIQUE constraint failed: files._data (code 2067 SQLITE_CONSTRAINT_UNIQUE)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at android.database.sqlite.SQLiteConnection.nativeExecuteForLastInsertedRowId(Native Method)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at android.database.sqlite.SQLiteConnection.executeForLastInsertedRowId(SQLiteConnection.java:879)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at android.database.sqlite.SQLiteSession.executeForLastInsertedRowId(SQLiteSession.java:790)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at android.database.sqlite.SQLiteStatement.executeInsert(SQLiteStatement.java:88)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at android.database.sqlite.SQLiteDatabase.insertWithOnConflict(SQLiteDatabase.java:1599)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at android.database.sqlite.SQLiteDatabase.insert(SQLiteDatabase.java:1468)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at com.android.providers.media.MediaProvider.insertFile(MediaProvider.java:2713)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at com.android.providers.media.MediaProvider.insertInternal(MediaProvider.java:3076)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at com.android.providers.media.MediaProvider.insert(MediaProvider.java:2903)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at android.content.ContentProviderOperation.applyInternal(ContentProviderOperation.java:321)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at android.content.ContentProviderOperation.apply(ContentProviderOperation.java:304)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at android.content.ContentProvider.applyBatch(ContentProvider.java:2126)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at com.android.providers.media.MediaProvider.applyBatch(MediaProvider.java:3302)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at android.content.ContentProvider.applyBatch(ContentProvider.java:2117)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at android.content.ContentResolver.applyBatch(ContentResolver.java:1865)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at com.android.providers.media.scan.ModernMediaScanner$Scan.applyPending(ModernMediaScanner.java:439)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at com.android.providers.media.scan.ModernMediaScanner$Scan.maybeApplyPending(ModernMediaScanner.java:432)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at com.android.providers.media.scan.ModernMediaScanner$Scan.visitFile(ModernMediaScanner.java:412)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at com.android.providers.media.scan.ModernMediaScanner$Scan.visitFile(ModernMediaScanner.java:207)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at java.nio.file.Files.walkFileTree(Files.java:2670)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at java.nio.file.Files.walkFileTree(Files.java:2742)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at com.android.providers.media.scan.ModernMediaScanner$Scan.walkFileTree(ModernMediaScanner.java:267)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at com.android.providers.media.scan.ModernMediaScanner$Scan.run(ModernMediaScanner.java:245)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at com.android.providers.media.scan.ModernMediaScanner.scanDirectory(ModernMediaScanner.java:166)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at com.android.providers.media.MediaService.onScanVolume(MediaService.java:150)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at com.android.providers.media.MediaService.onScanVolume(MediaService.java:131)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at com.android.providers.media.MediaService.onHandleIntent(MediaService.java:86)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at android.app.IntentService$ServiceHandler.handleMessage(IntentService.java:78)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at android.os.Handler.dispatchMessage(Handler.java:107)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at android.os.Looper.loop(Looper.java:214)
+         1791573929.618923 10056  3297  3960 E SQLiteDatabase: 	at android.os.HandlerThread.run(HandlerThread.java:67)
+         1791573937.494785  1000  2044  2072 I system_server: Starting a blocking GC Alloc
+         1791573937.495699  1000  2044  2072 I system_server: Starting a blocking GC Alloc
+         1791573937.559540  1000  2044  2068 I system_server: Waiting for a blocking GC Alloc
+         1791573937.642136  1000  2044  2488 I system_server: Waiting for a blocking GC Alloc
+         1791573937.770385  1000  2044  2072 I system_server: Alloc young concurrent copying GC freed 29112(3417KB) AllocSpace objects, 0(0B) LOS objects, 34% free, 10MB/15MB, paused 8.041ms total 273.218ms
+         1791573937.773984  1000  2044  2068 I system_server: WaitForGcToComplete blocked Alloc on HeapTrim for 214.713ms
+         1791573937.774472  1000  2044  2068 I system_server: Starting a blocking GC Alloc
+         1791573937.776116  1000  2044  2488 I system_server: WaitForGcToComplete blocked Alloc on HeapTrim for 134.702ms
+         1791573937.776645  1000  2044  2488 I system_server: Starting a blocking GC Alloc
+         1791573939.660560  root  1736  4070 E ResolverController: No valid NAT64 prefix (100, <unspecified>/0)
+         1791573940.673797  1000  2044  2068 I system_server: Starting a blocking GC Alloc
+         1791573940.674431  1000  2044  2068 I system_server: Starting a blocking GC Alloc
+         1791573940.708016  1000  2044  2488 I system_server: Waiting for a blocking GC Alloc
+         1791573940.885919  1000  2044  2068 I system_server: Alloc young concurrent copying GC freed 23065(2843KB) AllocSpace objects, 0(0B) LOS objects, 34% free, 10MB/15MB, paused 1.508ms total 209.001ms
+         1791573940.890717  1000  2044  2488 I system_server: WaitForGcToComplete blocked Alloc on HeapTrim for 182.721ms
+         1791573940.891073  1000  2044  2488 I system_server: Starting a blocking GC Alloc

@@ -1,0 +1,83 @@
+$ android-log-mcp call logcat_crashes '{"device":"emulator-5556","id":"cr18"}'
+cr18 Java crash · 2026-10-10 03:01:32.402 · pid 7182 com.example.logtest (thread main) · sources: logcat:crash, dropbox:data_app_crash
+package: com.example.logtest
+stack:
+  java.lang.RuntimeException: LogTest wrapped crash
+  	at com.example.logtest.Triggers.run(Triggers.java:22)
+  	at com.example.logtest.MainActivity.lambda$onResume$1$com-example-logtest-MainActivity(MainActivity.java:42)
+  	at com.example.logtest.MainActivity$$ExternalSyntheticLambda0.run(D8$$SyntheticClass:0)
+  	at android.os.Handler.handleCallback(Handler.java:883)
+  	at android.os.Handler.dispatchMessage(Handler.java:100)
+  	at android.os.Looper.loop(Looper.java:214)
+  	at android.app.ActivityThread.main(ActivityThread.java:7356)
+  	at java.lang.reflect.Method.invoke(Native Method)
+  	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+  	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+  Caused by: java.lang.IllegalStateException: repo not ready
+  	at com.example.logtest.Triggers$Repo.load(Triggers.java:53)
+  	at com.example.logtest.Triggers.run(Triggers.java:21)
+  	... 9 more
+before crash (pid 7182, last 40 lines):
+  02:59:23.289 I 7182/7182 com.example.logtest auditd: type=1400 audit(0.0:79): avc: denied { write } for comm="RenderThread" name="property_service" dev="tmpfs" ino=540 scontext=u:r:untrusted_app:s0:c146,c256,c512,c768 tcontext=u:object_r:property_socket:s0 tclass=sock_file permissive=0 app=com.example.logtest
+  02:59:23.289 W 7182/7182 com.example.logtest RenderThread: type=1400 audit(0.0:79): avc: denied { write } for name="property_service" dev="tmpfs" ino=540 scontext=u:r:untrusted_app:s0:c146,c256,c512,c768 tcontext=u:object_r:property_socket:s0 tclass=sock_file permissive=0 app=com.example.logtest
+  02:59:23.310 W 7182/7214 com.example.logtest libc: Unable to set property "qemu.gles" to "1": connection failed; errno=13 (Permission denied)
+  02:59:23.439 V 7182/7182 com.example.logtest LogTest: onCreate verbose
+  02:59:23.442 D 7182/7182 com.example.logtest LogTest: onCreate debug pid=7182 uid=10146
+  02:59:23.442 I 7182/7182 com.example.logtest MyRepo: feed loaded items=20
+  02:59:23.443 D 7182/7182 com.example.logtest OkHttp: --> GET https://api.example.com/v1/feed
+  02:59:23.443 D 7182/7182 com.example.logtest OkHttp: <-- 200 https://api.example.com/v1/feed (312ms)
+  02:59:23.484 W 7182/7182 com.example.logtest MyRepo: token refresh failed
+    java.io.IOException: token endpoint failed
+    	at com.example.logtest.MainActivity.onCreate(MainActivity.java:20)
+    	at android.app.Activity.performCreate(Activity.java:7802)
+    	at android.app.Activity.performCreate(Activity.java:7791)
+    	at android.app.Instrumentation.callActivityOnCreate(Instrumentation.java:1299)
+    	at android.app.ActivityThread.performLaunchActivity(ActivityThread.java:3245)
+    	at android.app.ActivityThread.handleLaunchActivity(ActivityThread.java:3409)
+    	at android.app.servertransaction.LaunchActivityItem.execute(LaunchActivityItem.java:83)
+    	at android.app.servertransaction.TransactionExecutor.executeCallbacks(TransactionExecutor.java:135)
+    	at android.app.servertransaction.TransactionExecutor.execute(TransactionExecutor.java:95)
+    	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2016)
+    	at android.os.Handler.dispatchMessage(Handler.java:107)
+    	at android.os.Looper.loop(Looper.java:214)
+    	at android.app.ActivityThread.main(ActivityThread.java:7356)
+    	at java.lang.reflect.Method.invoke(Native Method)
+    	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+    	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+    Caused by: java.lang.IllegalStateException: Unable to resolve host "push.example.com"
+    	... 16 more
+  02:59:23.485 E 7182/7182 com.example.logtest LogTest: multi-line message
+    line two
+    	line three (tab)
+  02:59:23.724 D 7182/7214 com.example.logtest libEGL: loaded /vendor/lib64/egl/libEGL_emulation.so
+  02:59:23.918 D 7182/7214 com.example.logtest libEGL: loaded /vendor/lib64/egl/libGLESv1_CM_emulation.so
+  02:59:24.151 D 7182/7214 com.example.logtest libEGL: loaded /vendor/lib64/egl/libGLESv2_emulation.so
+  02:59:25.323 I 7182/7182 com.example.logtest am_on_create_called: [0,com.example.logtest.MainActivity,performCreate]
+  02:59:25.417 D 7182/7182 com.example.logtest LogTest: onStart
+  02:59:25.419 I 7182/7182 com.example.logtest am_on_start_called: [0,com.example.logtest.MainActivity,handleStartActivity]
+  02:59:25.534 I 7182/7182 com.example.logtest LogTest: onResume
+  02:59:25.536 I 7182/7182 com.example.logtest am_on_resume_called: [0,com.example.logtest.MainActivity,RESUME_ACTIVITY]
+  02:59:26.032 I 7182/7182 com.example.logtest am_on_top_resumed_gained_called: [0,com.example.logtest.MainActivity,topStateChangedWhenResumed]
+  02:59:27.624 D 7182/7212 com.example.logtest HostConnection: HostConnection::get() New Host Connection established 0x7ef7d1714c20, tid 7212
+  02:59:27.734 D 7182/7212 com.example.logtest HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_hwc_color_transform GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+  02:59:28.009 D 7182/7212 com.example.logtest EGL_emulation: eglCreateContext: 0x7ef7d1715a80: maj 3 min 0 rcv 3
+  02:59:28.036 D 7182/7212 com.example.logtest EGL_emulation: eglMakeCurrent: 0x7ef7d1715a80: ver 3 0 (tinfo 0x7ef862db9460)
+  02:59:28.304 W 7182/7212 com.example.logtest Gralloc3: mapper 3.x is not supported
+  02:59:28.499 D 7182/7212 com.example.logtest HostConnection: createUnique: call
+  02:59:28.504 D 7182/7212 com.example.logtest HostConnection: HostConnection::get() New Host Connection established 0x7ef7d1715bc0, tid 7212
+  02:59:28.525 D 7182/7212 com.example.logtest HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_hwc_color_transform GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+  02:59:28.530 D 7182/7212 com.example.logtest eglCodecCommon: allocate: Ask for block of size 0x1000
+  02:59:28.531 D 7182/7212 com.example.logtest eglCodecCommon: allocate: ioctl allocate returned offset 0x3ff70a000 size 0x2000
+  02:59:29.291 D 7182/7212 com.example.logtest EGL_emulation: eglMakeCurrent: 0x7ef7d1715a80: ver 3 0 (tinfo 0x7ef862db9460)
+  02:59:30.158 I 7182/7212 com.example.logtest OpenGLRenderer: Davey! duration=4323ms; Flags=1, IntendedVsync=1469615600069, Vsync=1469832266727, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=1469848627146, AnimationStart=1469851199073, PerformTraversalsStart=1469851505999, DrawStart=1472381203804, SyncQueued=1473083856142, SyncStart=1473099941440, IssueDrawCommandsStart=1473103484467, SwapBuffers=1473846520807, FrameCompleted=1473955135175, DequeueBufferDuration=2241000, QueueBufferDuration=18046000, 
+  02:59:30.473 I 7182/7182 com.example.logtest Choreographer: Skipped 255 frames!  The application may be doing too much work on its main thread.
+  02:59:30.731 I 7182/7212 com.example.logtest OpenGLRenderer: Davey! duration=4510ms; Flags=0, IntendedVsync=1470015612081, Vsync=1474265611911, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=1474280806821, AnimationStart=1474282080328, PerformTraversalsStart=1474314515533, DrawStart=1474386862543, SyncQueued=1474410989003, SyncStart=1474415441390, IssueDrawCommandsStart=1474416290328, SwapBuffers=1474476462359, FrameCompleted=1474530097726, DequeueBufferDuration=5109000, QueueBufferDuration=12234000, 
+  03:01:31.852 I 7182/7182 com.example.logtest am_on_top_resumed_lost_called: [0,com.example.logtest.MainActivity,pausing]
+  03:01:31.884 I 7182/7182 com.example.logtest am_on_paused_called: [0,com.example.logtest.MainActivity,performPause]
+  03:01:31.921 I 7182/7182 com.example.logtest LogTest: onResume
+  03:01:31.933 I 7182/7182 com.example.logtest am_on_resume_called: [0,com.example.logtest.MainActivity,LIFECYCLER_RESUME_ACTIVITY]
+  03:01:31.947 I 7182/7182 com.example.logtest am_on_top_resumed_gained_called: [0,com.example.logtest.MainActivity,topWhenResuming]
+  03:01:32.308 I 7182/7182 com.example.logtest LogTest: trigger what=crash_caused pid=7182
+  03:01:32.344 D 7182/7182 com.example.logtest AndroidRuntime: Shutting down VM
+
+[exit 0]

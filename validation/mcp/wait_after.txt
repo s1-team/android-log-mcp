@@ -1,0 +1,9 @@
+$ call logcat_search after=c1.ZW11bGF0b3ItNTU1Ng.07a6d2d3.30519 wait_ms=20000 tags=[LOGMCP_MARK]
+device emulator-5556 · times are device-local Asia/Kuching (+08:00) · date 2026-10-10
+filter parsed as: tag == "LOGMCP_MARK"
+matched 1 new lines; showing oldest 1 (03:10:09.777–03:10:09.777)
+format: time level pid/tid process tag: message
+03:10:09.777 I 8205/8205 ? LOGMCP_MARK: repro marker during wait
+more/wait: after="c1.ZW11bGF0b3ItNTU1Ng.07a6d2d3.30520"
+
+[elapsed s]

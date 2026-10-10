@@ -1,0 +1,11 @@
+$ call logcat_search tags=[KeyguardClockSwitch] limit=2
+device emulator-5556 · times are device-local Asia/Kuching (+08:00) · date 2026-10-10
+filter parsed as: tag == "KeyguardClockSwitch"
+matched 36 lines; showing newest 2 (03:26:00.216–03:27:00.036)
+format: time level pid/tid process tag: message
+03:26:00.216 D 2225/2225 com.android.systemui KeyguardClockSwitch: Updating clock: 3\356\270\20126
+03:27:00.036 D 2225/2225 com.android.systemui KeyguardClockSwitch: Updating clock: 3\356\270\20127
+[truncated: 34 older matches not shown]
+more: before="c1.ZW11bGF0b3ItNTU1Ng.ccb368e7.47326"  ·  newer/wait: after="c1.ZW11bGF0b3ItNTU1Ng.ccb368e7.47662"
+top tags in all 36 matches: KeyguardClockSwitch 36 · narrow with e.g. -message:<noise>, min_level=info, or a smaller from/to
+

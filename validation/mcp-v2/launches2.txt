@@ -1,0 +1,14 @@
+### host 2026-10-10 04:03:22 +0800  call logcat_app_launches {"package":"com.example.logtest","from":"2026-10-10 03:56:00"}
+device emulator-5556 · Asia/Kuching (+08:00) · package com.example.logtest · 1 launches since 2026-10-10 03:56:00
+#1 2026-10-10 03:57:24.346  COLD  com.example.logtest/.MainActivity  (pid 4871) — a new process was started for it
+   +0 ms      launch request         START u0 {flg=0x10000000 cmp=com.example.logtest/.MainActivity} from uid 2000
+   +3550 ms   process started        am_proc_start pid 4871
+   +10758 ms  MainActivity.onCreate  returned
+   +10798 ms  onStart                returned
+   +10915 ms  onResume               returned    ← request→onResume 10915 ms
+   TTID (time to initial display, system-measured): 14153 ms   [source: ActivityTaskManager Displayed, logged at +15050 ms]
+   TTFD: not reported (app does not call reportFullyDrawn(), or not yet)
+   note: this Android version logs am_on_*_called without callback durations
+how to read: "+N ms" = when the line was logged, relative to the launch request. onX lines are logged when the callback returned. TTID/TTFD are the system's own measurement (request → first frame / reportFullyDrawn) and can be logged much later than they happened.
+
+[exit 0]

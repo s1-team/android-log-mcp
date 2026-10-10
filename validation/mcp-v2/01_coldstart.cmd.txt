@@ -1,0 +1,10 @@
+### host 2026-10-10 03:43:05 +0800 device 2026-10-10_03:43:05.607162479_+0800
+$ adb shell am start -W -n com.example.logtest/.MainActivity
+Starting: Intent { cmp=com.example.logtest/.MainActivity }
+Status: ok
+LaunchState: COLD
+Activity: com.example.logtest/.MainActivity
+TotalTime: 10840
+WaitTime: 10978
+Complete
+### exit=0 end device 2026-10-10_03:43:18.877247704

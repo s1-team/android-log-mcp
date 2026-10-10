@@ -1,0 +1,35 @@
+# local verification of the npm packages (0.1.0), 2026-10-10, linux-x64 host, emulator-5556
+# registry: local verdaccio 5 at 127.0.0.1:4873 (nothing published to npmjs.org)
+
+$ NPM_CONFIG_REGISTRY=http://127.0.0.1:4873/ python3 npm/test/mcp_smoke.py npx -y android-log-mcp
+initialize: server={'name': 'android-log', 'title': 'Android logcat', 'version': '0.1.0'} protocol=2025-06-18 (0.8s)
+tools/list: ['logcat_app_launches', 'logcat_crashes', 'logcat_search', 'logcat_status']
+tools/call logcat_status (isError=None):
+adb: ok (/home/box/android-sdk/platform-tools/adb, version 1.0.41)
+store: /home/box/.cache/android-log-mcp
+devices (1):
+  emulator-5556  device  Android_SDK_built_for_x86_64  android 10 (sdk 29)  tz Asia/Kuching (+08:00)
+    recorded by another android-log-mcp process (pid 145433)
+    device time now: 2026-10-10 09:18:55   recording since 2026-10-10 03:42:21   history from 2026-10-10 03:17:20 to 2026-10-10 09:18:11
+    stored 14,240 lines (3.6 MB)
+    note: newest stored line is 44s old (device quiet, or logcat delivery stalled)
+cursor (now, emulator-5556): c1.ZW11bGF0b3ItNTU1Ng.ccb368e7.14240
+
+server exit code after stdin EOF: 0
+
+$ npx -y android-log-mcp call logcat_status '{"package":"com.example.logtest"}'   → exit 0
+adb: ok (/home/box/android-sdk/platform-tools/adb, version 1.0.41)
+store: /home/box/.cache/android-log-mcp
+devices (1):
+  emulator-5556  device  Android_SDK_built_for_x86_64  android 10 (sdk 29)  tz Asia/Kuching (+08:00)
+    recorded by another android-log-mcp process (pid 145433)
+    device time now: 2026-10-10 09:19:10   recording since 2026-10-10 03:42:21   history from 2026-10-10 03:17:20 to 2026-10-10 09:19:03
+    stored 14,244 lines (3.6 MB)
+cursor (now, emulator-5556): c1.ZW11bGF0b3ItNTU1Ng.ccb368e7.14244
+package com.example.logtest: installed (uid 10146)
+  com.example.logtest has no running process (last pid 4871 ended 2026-10-10 04:07:22).
+  ended this boot: pid 4871 com.example.logtest (03:57:27–04:07:22, exited (signal 11); crashed: see logcat_crashes id=cr12); pid 4968 com.example.logtest:remote (03:58:21–04:03:22, killed: crash; crashed: see logcat_crashes id=cr11); pid 4929 com.example.logtest:remote (03:57:57–03:58:19, died; crashed: see logcat_crashes id=cr10); pid 4668 com.example.logtest (03:45:37–03:45:42, killed: crash; crashed: see logcat_crashes id=cr9); pid 4610 com.example.logtest (≤03:45:04–03:45:35, gone (not in ps)); pid 4582 com.example.logtest (03:44:51–03:45:09, exited (signal 11); crashed: see logcat_crashes id=cr8); … 2 more
+
+npx -y android-log-mcp call no_such_tool → exit 1; npx -y android-log-mcp daemon → exit 2 (usage; no daemon subcommand yet)
+SIGTERM to the node launcher → binary terminated, exit 0
+npm i --omit=optional android-log-mcp → launcher prints the missing-platform-package hint, exit 1; ANDROID_LOG_MCP_BINARY override works

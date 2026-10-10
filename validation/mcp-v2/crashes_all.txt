@@ -1,0 +1,15 @@
+### host 2026-10-10 03:52:25 +0800  call logcat_crashes {"package":"com.example.logtest","from":"2026-10-10 03:42:30"}
+device emulator-5556 · Asia/Kuching (+08:00) · package com.example.logtest · 3 crash groups (3 events) in recorded history
+history: logcat from 2026-10-10 03:17:20; DropBox adds older entries when available (status: data_app_crash ok, data_app_native_crash ok, data_app_anr ok)
+cr9  2026-10-10 03:45:38  native pid 4668 com.example.logtest (thread example.logtest)  SIGABRT (SI_QUEUE) abort: 'LogTest deliberate abort()' in liblogtest.so [#02 pc 86f]
+cr8  2026-10-10 03:44:58  native pid 4582 com.example.logtest (thread example.logtest)  SIGSEGV (SEGV_MAPERR) fault addr 0x0 in liblogtest.so [#00 pc 7fc]
+cr7  2026-10-10 03:44:22  java   pid 4414 com.example.logtest (thread main)
+     java.lang.RuntimeException: LogTest wrapped crash
+       at com.example.logtest.Triggers.run(Triggers.java:22)
+       at com.example.logtest.MainActivity.lambda$onResume$1$com-example-logtest-MainActivity(MainActivity.java:42)
+       at com.example.logtest.MainActivity$$ExternalSyntheticLambda0.run(D8$$SyntheticClass:0)
+       … root cause: java.lang.IllegalStateException: repo not ready
+       … 9 more frames
+more: logcat_crashes id="cr9" for full detail
+
+[exit 0]

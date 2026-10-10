@@ -1,0 +1,4 @@
+### host 2026-10-10 03:02:26 +0800 device 2026-10-10_03:02:27.084003257_+0800
+$ adb shell am start -n com.example.logtest/.MainActivity --es what native
+Starting: Intent { cmp=com.example.logtest/.MainActivity (has extras) }
+### exit=0 end device 2026-10-10_03:02:31.408417116

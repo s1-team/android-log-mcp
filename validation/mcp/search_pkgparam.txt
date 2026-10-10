@@ -1,0 +1,11 @@
+$ android-log-mcp call logcat_search '{"device":"emulator-5556","package":"com.example.logtest","tags":["MyRepo"],"from":"03:07:00"}'
+device emulator-5556 · times are device-local Asia/Kuching (+08:00) · date 2026-10-10
+filter parsed as: package == com.example.logtest AND tag == "MyRepo" AND time in [2026-10-10 03:07:00, now)
+matched 3 lines; showing newest 3 (03:07:06.554–03:07:43.229)
+format: time level pid/tid process tag: message
+03:07:06.554 D 8029/8029 com.example.logtest:remote MyRepo: remote onStartCommand startId=1
+03:07:39.577 D 8029/8029 com.example.logtest:remote MyRepo: remote onStartCommand startId=2
+03:07:43.229 D 8076/8076 com.example.logtest:remote MyRepo: remote onStartCommand startId=2
+more: before="c1.ZW11bGF0b3ItNTU1Ng.07a6d2d3.30444"  ·  newer/wait: after="c1.ZW11bGF0b3ItNTU1Ng.07a6d2d3.30506"
+
+[exit 0]

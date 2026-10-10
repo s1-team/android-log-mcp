@@ -1,0 +1,9 @@
+adb: ok (/home/box/android-sdk/platform-tools/adb, version 1.0.41)
+store: /home/box/.cache/android-log-mcp
+devices (1):
+  emulator-5556  device  Android_SDK_built_for_x86_64  android 10 (sdk 29)  tz Asia/Kuching (+08:00)
+    recorded by another android-log-mcp process (pid 79104)
+    device time now: 2026-10-10 03:01:00   recording since 2026-10-10 02:55:56   history from 2026-10-10 02:35:13 to 2026-10-10 03:00:54
+    stored 28,506 lines (7.3 MB)
+cursor (now, emulator-5556): c1.ZW11bGF0b3ItNTU1Ng.07a6d2d3.28506
+

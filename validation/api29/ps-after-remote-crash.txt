@@ -1,0 +1,3 @@
+  PID   UID NAME                       
+ 7815 10146 com.example.logtest
+ 8076 10146 com.example.logtest:remote

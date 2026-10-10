@@ -1,0 +1,22 @@
+# Go binaries / build output
+/server/android-log-mcp
+/server/android-log-mcp.exe
+*.exe
+*.test
+*.out
+/dist/
+/npm/dist/
+*.tgz
+
+# Node
+node_modules/
+
+# local / OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+*.keystore
+*.jks
+*.apk
+validation/logtest-app/build/

@@ -1,0 +1,18 @@
+$ android-log-mcp call logcat_search '{"device":"emulator-5556","filter":"tag=:LogTest tag=:MyRepo","from":"03:07:00"}'
+device emulator-5556 · times are device-local Asia/Kuching (+08:00) · date 2026-10-10
+filter parsed as: tag == "LogTest" OR tag == "MyRepo" AND time in [2026-10-10 03:07:00, now)
+note: same-key terms are ORed: tag == "LogTest" | tag == "MyRepo" (use & for AND)
+matched 9 lines; showing newest 9 (03:07:04.383–03:07:43.229)
+format: time level pid/tid process tag: message
+03:07:04.383 I 7815/7815 com.example.logtest LogTest: TriggerReceiver what=remote
+03:07:04.386 I 7815/7815 com.example.logtest LogTest: trigger what=remote pid=7815
+03:07:06.538 I 8029/8029 com.example.logtest:remote LogTest: RemoteService.onCreate pid=8029
+03:07:06.554 D 8029/8029 com.example.logtest:remote MyRepo: remote onStartCommand startId=1
+03:07:39.372 I 7815/7815 com.example.logtest LogTest: TriggerReceiver what=remote_crash
+03:07:39.373 I 7815/7815 com.example.logtest LogTest: trigger what=remote_crash pid=7815
+03:07:39.577 D 8029/8029 com.example.logtest:remote MyRepo: remote onStartCommand startId=2
+03:07:43.219 I 8076/8076 com.example.logtest:remote LogTest: RemoteService.onCreate pid=8076
+03:07:43.229 D 8076/8076 com.example.logtest:remote MyRepo: remote onStartCommand startId=2
+more: before="c1.ZW11bGF0b3ItNTU1Ng.07a6d2d3.30423"  ·  newer/wait: after="c1.ZW11bGF0b3ItNTU1Ng.07a6d2d3.30505"
+
+[exit 0]

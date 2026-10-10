@@ -1,0 +1,14 @@
+### host 2026-10-10 03:42:40 +0800  call logcat_status {"package":"com.example.logtest"}
+adb: ok (/home/box/android-sdk/platform-tools/adb, version 1.0.41)
+store: /home/box/.cache/android-log-mcp
+devices (1):
+  emulator-5556  device  Android_SDK_built_for_x86_64  android 10 (sdk 29)  tz Asia/Kuching (+08:00)
+    recorded by another android-log-mcp process (pid 125347)
+    device time now: 2026-10-10 03:42:51   recording since 2026-10-10 03:42:21   history from 2026-10-10 03:17:20 to 2026-10-10 03:42:49
+    stored 11,073 lines (2.8 MB)
+cursor (now, emulator-5556): c1.ZW11bGF0b3ItNTU1Ng.ccb368e7.11073
+package com.example.logtest: installed (uid 10146)
+  com.example.logtest has no running process (last pid 3418 ended 2026-10-10 03:26:20).
+  ended this boot: pid 3418 com.example.logtest (03:22:31–03:26:20, exited (signal 6); crashed: see logcat_crashes id=cr5)
+
+[exit 0]

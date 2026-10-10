@@ -1,0 +1,96 @@
+--------- beginning of main
+         1791572826.554538 10146  8029  8029 D MyRepo  : remote onStartCommand startId=1
+         1791572857.990331  1000  4944  7083 E memtrack: Couldn't load memtrack module
+         1791572857.992111  1000  4944  7083 W android.os.Debug: failed to get memory consumption info: -1
+--------- beginning of events
+         1791572858.381311 radio  6394  6394 I service_manager_slow: [17,carrier_config]
+         1791572858.827881 radio  6394  6409 I m.android.phon: Background concurrent copying GC freed 44995(4576KB) AllocSpace objects, 4(208KB) LOS objects, 49% free, 1799KB/3598KB, paused 950us total 515.342ms
+         1791572859.361173  1000  4944  4971 E memtrack: Couldn't load memtrack module
+         1791572859.363562  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+         1791572859.372726 10146  7815  7815 I LogTest : TriggerReceiver what=remote_crash
+         1791572859.373815 10146  7815  7815 I LogTest : trigger what=remote_crash pid=7815
+         1791572859.563712  1000  4944  4971 I am_pss  : [8029,10146,com.example.logtest:remote,13543424,9691136,0,103370752,0,11,40]
+         1791572859.577408 10146  8029  8029 D MyRepo  : remote onStartCommand startId=2
+         1791572859.617416 10146  8029  8029 D AndroidRuntime: Shutting down VM
+         1791572859.624519  1000  4944  4971 E memtrack: Couldn't load memtrack module
+         1791572859.624876  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+--------- beginning of crash
+         1791572859.669115 10146  8029  8029 E AndroidRuntime: FATAL EXCEPTION: main
+         1791572859.669115 10146  8029  8029 E AndroidRuntime: Process: com.example.logtest:remote, PID: 8029
+         1791572859.669115 10146  8029  8029 E AndroidRuntime: java.lang.RuntimeException: Unable to start service com.example.logtest.RemoteService@a11d0f9 with Intent { cmp=com.example.logtest/.RemoteService (has extras) }: java.lang.IllegalStateException: LogTest crash in :remote
+         1791572859.669115 10146  8029  8029 E AndroidRuntime: 	at android.app.ActivityThread.handleServiceArgs(ActivityThread.java:4105)
+         1791572859.669115 10146  8029  8029 E AndroidRuntime: 	at android.app.ActivityThread.access$1800(ActivityThread.java:219)
+         1791572859.669115 10146  8029  8029 E AndroidRuntime: 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:1891)
+         1791572859.669115 10146  8029  8029 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:107)
+         1791572859.669115 10146  8029  8029 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:214)
+         1791572859.669115 10146  8029  8029 E AndroidRuntime: 	at android.app.ActivityThread.main(ActivityThread.java:7356)
+         1791572859.669115 10146  8029  8029 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+         1791572859.669115 10146  8029  8029 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+         1791572859.669115 10146  8029  8029 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+         1791572859.669115 10146  8029  8029 E AndroidRuntime: Caused by: java.lang.IllegalStateException: LogTest crash in :remote
+         1791572859.669115 10146  8029  8029 E AndroidRuntime: 	at com.example.logtest.RemoteService.onStartCommand(RemoteService.java:16)
+         1791572859.669115 10146  8029  8029 E AndroidRuntime: 	at android.app.ActivityThread.handleServiceArgs(ActivityThread.java:4087)
+         1791572859.669115 10146  8029  8029 E AndroidRuntime: 	... 8 more
+         1791572859.676428  1000  4944  4971 I am_pss  : [7529,10111,com.google.android.projection.gearhead:shared,23886848,18444288,0,134754304,0,9,31]
+         1791572859.687940  1000  4944  4971 E memtrack: Couldn't load memtrack module
+         1791572859.706388  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+         1791572859.797246  1000  4944  6393 I am_crash: [8029,0,com.example.logtest:remote,814267974,java.lang.IllegalStateException,LogTest crash in :remote,RemoteService.java,16]
+--------- beginning of system
+         1791572859.836845  1000  4944  8074 I DropBoxManagerService: add tag=data_app_crash isTagEnabled=true flags=0x2
+         1791572859.901027  1000  4944  6393 I sysui_multi_action: [757,316,758,4,759,-1]
+         1791572859.904535  1000  4944  4971 I am_pss  : [6894,10107,com.android.dialer,13943808,8318976,0,120672256,0,20,23]
+         1791572859.924751 10146  8029  8029 I Process : Sending signal. PID: 8029 SIG: 9
+         1791572860.234873  1000  4944  6393 I ActivityManager: Process com.example.logtest:remote (pid 8029) has died: fore SVC 
+         1791572860.245559  root  4882  4882 I Zygote  : Process 8029 exited due to signal 9 (Killed)
+         1791572860.254438  1000  4944  6393 I am_proc_died: [0,8029,com.example.logtest:remote,0,11]
+         1791572860.283181  1000  4944  4974 I libprocessgroup: Successfully killed process cgroup uid 10146 pid 8029 in 34ms
+         1791572860.305067  1000  4944  6393 W ActivityManager: Scheduling restart of crashed service com.example.logtest/.RemoteService in 1824ms
+         1791572860.306629  1000  4944  6393 I am_schedule_service_restart: [0,com.example.logtest/.RemoteService,1824]
+         1791572862.202085  root  4882  4882 D Zygote  : Forked child process 8076
+         1791572862.287520 10146  8076  8076 I .logtest:remot: Late-enabling -Xcheck:jni
+         1791572862.319903  1000  4944  4973 W ActivityManager: Slow operation: 187ms so far, now at startProcess: returned from zygote!
+         1791572862.334722  1000  4944  4973 W ActivityManager: Slow operation: 202ms so far, now at startProcess: done updating battery stats
+         1791572862.339924  1000  4944  4973 I am_proc_start: [0,8076,10146,com.example.logtest:remote,service,{com.example.logtest/com.example.logtest.RemoteService}]
+         1791572862.343777  1000  4944  4973 W ActivityManager: Slow operation: 211ms so far, now at startProcess: building log message
+         1791572862.346869  1000  4944  4973 I ActivityManager: Start proc 8076:com.example.logtest:remote/u0a146 for service {com.example.logtest/com.example.logtest.RemoteService}
+         1791572862.347931  1000  4944  4973 W ActivityManager: Slow operation: 215ms so far, now at startProcess: starting to update pids map
+         1791572862.351613  1000  4944  4973 W ActivityManager: Slow operation: 219ms so far, now at startProcess: done updating pids map
+         1791572862.495068 10146  8076  8076 E .logtest:remot: Unknown bits set in runtime_flags: 0x8000
+         1791572862.526182 10146  8076  8076 W .logtest:remot: Unexpected CPU variant for X86 using defaults: x86_64
+         1791572862.709096  1000  4944  6393 I am_proc_bound: [0,8076,com.example.logtest:remote]
+         1791572862.834545  1000  4944  6393 W ActivityManager: Slow operation: 126ms so far, now at attachApplicationLocked: after mServices.attachApplicationLocked
+         1791572863.219330 10146  8076  8076 I LogTest : RemoteService.onCreate pid=8076
+         1791572863.229436 10146  8076  8076 D MyRepo  : remote onStartCommand startId=2
+         1791572863.239481 10146  8076  8076 D AndroidRuntime: Shutting down VM
+         1791572863.264660 10146  8076  8076 E AndroidRuntime: FATAL EXCEPTION: main
+         1791572863.264660 10146  8076  8076 E AndroidRuntime: Process: com.example.logtest:remote, PID: 8076
+         1791572863.264660 10146  8076  8076 E AndroidRuntime: java.lang.RuntimeException: Unable to start service com.example.logtest.RemoteService@a11d0f9 with Intent { cmp=com.example.logtest/.RemoteService (has extras) }: java.lang.IllegalStateException: LogTest crash in :remote
+         1791572863.264660 10146  8076  8076 E AndroidRuntime: 	at android.app.ActivityThread.handleServiceArgs(ActivityThread.java:4105)
+         1791572863.264660 10146  8076  8076 E AndroidRuntime: 	at android.app.ActivityThread.access$1800(ActivityThread.java:219)
+         1791572863.264660 10146  8076  8076 E AndroidRuntime: 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:1891)
+         1791572863.264660 10146  8076  8076 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:107)
+         1791572863.264660 10146  8076  8076 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:214)
+         1791572863.264660 10146  8076  8076 E AndroidRuntime: 	at android.app.ActivityThread.main(ActivityThread.java:7356)
+         1791572863.264660 10146  8076  8076 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+         1791572863.264660 10146  8076  8076 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+         1791572863.264660 10146  8076  8076 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+         1791572863.264660 10146  8076  8076 E AndroidRuntime: Caused by: java.lang.IllegalStateException: LogTest crash in :remote
+         1791572863.264660 10146  8076  8076 E AndroidRuntime: 	at com.example.logtest.RemoteService.onStartCommand(RemoteService.java:16)
+         1791572863.264660 10146  8076  8076 E AndroidRuntime: 	at android.app.ActivityThread.handleServiceArgs(ActivityThread.java:4087)
+         1791572863.264660 10146  8076  8076 E AndroidRuntime: 	... 8 more
+         1791572863.304483  1000  4944  7083 I am_crash: [8076,0,com.example.logtest:remote,814267974,java.lang.IllegalStateException,LogTest crash in :remote,RemoteService.java,16]
+         1791572863.337892  1000  4944  8097 I DropBoxManagerService: add tag=data_app_crash isTagEnabled=true flags=0x2
+         1791572863.390718  1000  4944  4964 I ActivityManager: Showing crash dialog for package com.example.logtest u0
+         1791572863.560890  1000  4944  4964 W Looper  : Slow dispatch took 198ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=null m=1
+         1791572863.704433  1000  4944  4967 I dvm_lock_sample: [system_server,1,android.anim,49,InputMonitor.java,117,void com.android.server.wm.InputMonitor$1.run(),WindowManagerService.java,1982,int com.android.server.wm.WindowManagerService.relayoutWindow(com.android.server.wm.Session, android.view.IWindow, int, android.view.WindowManager$LayoutParams, int, int, int, int, long, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.view.DisplayCutout$ParcelableWrapper, android.util.MergedConfiguration, android.view.SurfaceControl, android.view.InsetsState),9]
+         1791572863.738160  1000  1763  1763 D gralloc_ranchu: gralloc_alloc: Creating ashmem region of size 3432448
+         1791572863.792591  1000  1763  1763 D gralloc_ranchu: gralloc_alloc: Creating ashmem region of size 3432448
+         1791572863.799249  1000  1763  1799 D gralloc_ranchu: gralloc_alloc: Creating ashmem region of size 3432448
+         1791572863.841347  1000  4944  5599 D EGL_emulation: eglMakeCurrent: 0x7ef782406f00: ver 3 0 (tinfo 0x7ef7844ce740)
+         1791572863.920432  1000  4944  4964 W Looper  : Slow dispatch took 348ms android.ui h=android.view.Choreographer$FrameHandler c=android.view.Choreographer$FrameDisplayEventReceiver@befd756 m=0
+         1791572863.939718  1000  4944  4964 W Looper  : Slow delivery took 377ms android.ui h=android.view.ViewRootImpl$ViewRootHandler c=null m=6
+         1791572864.040335  1000  4944  4964 W Looper  : Slow dispatch took 100ms android.ui h=android.view.Choreographer$FrameHandler c=android.view.Choreographer$FrameDisplayEventReceiver@befd756 m=0
+         1791572864.133603  1000  4944  4964 W Looper  : Drained
+         1791572866.229169  root  1821  1821 E wifi_forwarder: RemoteConnection failed to initialize: RemoteConnection failed to open pipe
+         1791572874.087944  root  1800  1800 E netmgr  : Failed to open QEMU pipe 'qemud:network': Invalid argument
+         1791572880.031294 10110  5118  5118 D KeyguardClockSwitch: Updating clock: 3\356\270\20108

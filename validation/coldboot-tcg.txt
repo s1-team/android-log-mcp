@@ -1,0 +1,2 @@
+cold boot (TCG, API35, emulator start 02:12:18 host): boot_completed after 1047s, pm ready after 1051s
+API29 MTTCG cold boot (emulator start->): boot_completed after 430s, pm ready after 447s

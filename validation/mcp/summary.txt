@@ -1,0 +1,22 @@
+$ android-log-mcp call logcat_search '{"device":"emulator-5556","package":"com.example.logtest","from":"02:55:00","to":"03:09:00","view":"summary"}'
+device emulator-5556 · Asia/Kuching (+08:00) · 2026-10-10 02:56:32–2026-10-10 03:07:43
+filter parsed as: package == com.example.logtest AND time in [2026-10-10 02:55:00, 2026-10-10 03:09:00)
+total 214 lines · by level: V 4 D 78 I 75 W 26 E 14 F 17
+top tags: LogTest 34 · example.logtes 23 · HostConnection 20 · DEBUG 16 · libEGL 16 · EGL_emulation 12 · MyRepo 11 · OkHttp 8 · eglCodecCommon 8 · OpenGLRenderer 7 · …(18 more)
+top processes: com.example.logtest 180 · com.example.logtest(?) 18 · com.example.logtest:remote 16
+top repeated messages (digits normalized to #):
+  8× HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v# ANDROID_EMU_native_sync_v# ANDROID_EMU_dma_v# ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v# ANDROID_…
+  7× OpenGLRenderer: Davey! duration=#ms; Flags=#, IntendedVsync=#, Vsync=#, OldestInputEvent=#, NewestInputEvent=#, HandleInputStart=#…
+  5× LogTest: onResume
+  4× Gralloc3: mapper #.x is not supported
+  4× HostConnection: createUnique: call
+crashes in range: 7 (cr24 03:07:43 java.lang.RuntimeException; cr23 03:07:39 java.lang.IllegalStateException; cr22 03:07:39 java.lang.RuntimeException; …4 more) · ANRs: 1 (anr24 03:05:53 Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) })
+latest errors (5):
+  03:03:48.298 E 7815 com.example.logtest LogTest: multi-line message
+  03:07:05.508 E 8029 com.example.logtest:remote .logtest:remot: Unknown bits set in runtime_flags: 0x8000
+  03:07:39.669 E 8029 com.example.logtest:remote AndroidRuntime: FATAL EXCEPTION: main
+  03:07:42.495 E 8076 com.example.logtest:remote .logtest:remot: Unknown bits set in runtime_flags: 0x8000
+  03:07:43.264 E 8076 com.example.logtest:remote AndroidRuntime: FATAL EXCEPTION: main
+next: logcat_search with filter/tags/package narrowed (view="lines"), or logcat_crashes id="cr24"
+
+[exit 0]

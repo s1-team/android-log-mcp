@@ -1,0 +1,14 @@
+{
+  "name": "android-log-mcp",
+  "version": "0.0.0",
+  "description": "MCP stdio server that gives AI agents (Claude Code, Codex, Cursor) read-only access to Android logcat: background recording, Android Studio filter syntax, crash/ANR grouping, app launch timelines.",
+  "keywords": ["mcp", "model-context-protocol", "android", "logcat", "adb", "claude", "cursor", "codex"],
+  "license": "MIT",
+  "author": "s1crab",
+  "homepage": "https://github.com/s1crab/android-log-mcp#readme",
+  "repository": { "type": "git", "url": "git+https://github.com/s1crab/android-log-mcp.git" },
+  "bin": { "android-log-mcp": "bin/android-log-mcp.js" },
+  "files": ["bin/android-log-mcp.js", "README.md", "LICENSE"],
+  "engines": { "node": ">=16" },
+  "optionalDependencies": {}
+}

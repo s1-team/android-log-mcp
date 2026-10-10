@@ -1,0 +1,5 @@
+### host 2026-10-10 03:44:21 +0800 device 2026-10-10_03:44:21.426136383_+0800
+$ adb shell am start -n com.example.logtest/.MainActivity --es what crash_caused
+Starting: Intent { cmp=com.example.logtest/.MainActivity (has extras) }
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+### exit=0 end device 2026-10-10_03:44:23.192585432

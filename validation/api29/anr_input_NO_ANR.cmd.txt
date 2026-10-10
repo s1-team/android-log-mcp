@@ -1,0 +1,10 @@
+### host 2026-10-10 03:03:41 +0800 device 2026-10-10_03:03:41.979675775_+0800
+$ adb shell am start -W -n com.example.logtest/.MainActivity --es what anr; sleep 4; input tap 500 1200; sleep 2; input keyevent KEYCODE_DPAD_DOWN; sleep 1; input keyevent KEYCODE_DPAD_DOWN
+Starting: Intent { cmp=com.example.logtest/.MainActivity (has extras) }
+Status: ok
+LaunchState: COLD
+Activity: com.example.logtest/.MainActivity
+TotalTime: 9738
+WaitTime: 9826
+Complete
+### exit=0 end device 2026-10-10_03:04:32.353205485

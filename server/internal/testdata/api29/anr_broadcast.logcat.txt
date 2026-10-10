@@ -1,0 +1,329 @@
+--------- beginning of events
+         1791572737.970524  1000  4944  5158 I am_uid_active: 10120
+--------- beginning of main
+         1791572742.896309 10146  7815  7815 I LogTest : TriggerReceiver what=anr_broadcast
+         1791572746.108052  root  1821  1821 E wifi_forwarder: RemoteConnection failed to initialize: RemoteConnection failed to open pipe
+--------- beginning of system
+         1791572752.871237  1000  4944  4972 W BroadcastQueue: Timeout of broadcast BroadcastRecord{f12bd0 u0 null} - receiver=android.os.BinderProxy@4e937c9, started 10011ms ago
+         1791572752.872227  1000  4944  4972 W BroadcastQueue: Receiver during timeout of BroadcastRecord{f12bd0 u0 null} : ResolveInfo{4c22ece com.example.logtest/.TriggerReceiver m=0x0}
+         1791572752.872831  1000  4944  4972 I am_broadcast_discard_app: [0,15805392,NULL,0,ResolveInfo{4c22ece com.example.logtest/.TriggerReceiver m=0x0}]
+         1791572753.005031  1000  4944  4965 I DropBoxManagerService: add tag=system_server_strictmode isTagEnabled=true flags=0x2
+         1791572753.199300  1000  4944  4979 W ProcessCpuTracker: Failed to stat(/proc/7935): android.system.ErrnoException: stat failed: ENOENT (No such file or directory)
+         1791572753.200569  1000  4944  4979 W ProcessCpuTracker: Skipping unknown process pid 7935
+         1791572753.204133  1000  4944  4979 W ProcessCpuTracker: Failed to stat(/proc/7937): android.system.ErrnoException: stat failed: ENOENT (No such file or directory)
+         1791572753.204922  1000  4944  4979 W ProcessCpuTracker: Skipping unknown process pid 7937
+         1791572753.217384  1000  4944  4972 W system_server: Long monitor contention with owner CpuTracker (4979) at void com.android.server.am.ActivityManagerService.updateCpuStatsNow()(ActivityManagerService.java:2770) waiters=0 in void com.android.server.am.ActivityManagerService.updateCpuStatsNow() for 208ms
+         1791572753.226782  1000  4944  4972 I dvm_lock_sample: [system_server,1,ActivityManager,208,ActivityManagerService.java,2770,void com.android.server.am.ActivityManagerService.updateCpuStatsNow(),-,2770,void com.android.server.am.ActivityManagerService.updateCpuStatsNow(),41]
+         1791572753.236153  1000  4944  4972 I am_anr  : [0,7815,com.example.logtest,814267974,Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }]
+         1791572753.513050  1000  4944  4972 I ActivityManager: dumpStackTraces pids={5287=true, 5353=true, 5405=true, 5468=true, 5652=true, 5951=true, 6310=true, 6480=true, 6499=true, 6894=true, 7149=true, 7223=true, 7245=true, 7318=true, 7349=true, 7372=true, 7403=true, 7463=true, 7500=true, 7529=true, 7591=true} nativepids=[1613, 1792, 1831, 1841, 1844, 1848, 1852, 1859, 1868, 4883, 4884, 4885]
+         1791572754.017556  root  1800  1800 E netmgr  : Failed to open QEMU pipe 'qemud:network': Invalid argument
+         1791572754.315695  1000  4944  4957 I system_server: Background young concurrent copying GC freed 116427(4150KB) AllocSpace objects, 23(944KB) LOS objects, 32% free, 11MB/16MB, paused 768us total 493.934ms
+         1791572755.292844  1000  4944  4972 W ProcessCpuTracker: Failed to stat(/proc/7940): android.system.ErrnoException: stat failed: ENOENT (No such file or directory)
+         1791572755.293273  1000  4944  4972 W ProcessCpuTracker: Skipping unknown process pid 7940
+         1791572755.735393  1000  4944  4972 I ActivityManager: Skipping next CPU consuming process, not a java proc: 4944
+         1791572755.735668  1000  4944  4972 I ActivityManager: Skipping next CPU consuming process, not a java proc: 1742
+         1791572755.738827  1000  4944  4972 I ActivityManager: Skipping next CPU consuming process, not a java proc: 2674
+         1791572755.739288  1000  4944  4972 I ActivityManager: Skipping next CPU consuming process, not a java proc: 1792
+         1791572755.739418  1000  4944  4972 I ActivityManager: Skipping next CPU consuming process, not a java proc: 5118
+         1791572755.739530  1000  4944  4972 I ActivityManager: Skipping next CPU consuming process, not a java proc: 1764
+         1791572755.739729  1000  4944  4972 I ActivityManager: Skipping next CPU consuming process, not a java proc: 8
+         1791572755.739872  1000  4944  4972 I ActivityManager: Skipping next CPU consuming process, not a java proc: 1608
+         1791572755.739991  1000  4944  4972 I ActivityManager: Skipping next CPU consuming process, not a java proc: 16
+         1791572755.740101  1000  4944  4972 I ActivityManager: Skipping next CPU consuming process, not a java proc: 1807
+         1791572755.742043  1000  4944  4972 I ActivityManager: Skipping next CPU consuming process, not a java proc: 5752
+         1791572755.742769  1000  4944  4972 I ActivityManager: Skipping next CPU consuming process, not a java proc: 6394
+         1791572755.836549  1000  4944  4972 I ActivityManager: Dumping to /data/anr/anr_2026-10-10-03-05-55-813
+         1791572755.837770  1000  4944  4972 I ActivityManager: Collecting stacks for pid 7815
+         1791572755.859494  1000  4944  4972 I system_server: libdebuggerd_client: started dumping process 7815
+         1791572755.908563  1058  1872  1872 I /system/bin/tombstoned: registered intercept for pid 7815 and type kDebuggerdJavaBacktrace
+         1791572755.911901 10146  7815  7826 I example.logtes: Thread[7,tid=7826,WaitingInMainSignalCatcherLoop,Thread*=0x7ef7d16d7400,peer=0x12d41d50,"Signal Catcher"]: reacting to signal 3
+         1791572755.912771 10146  7815  7826 I example.logtes: 
+         1791572756.337632  1058  1872  1872 I /system/bin/tombstoned: received crash request for pid 7815
+         1791572756.338805  1058  1872  1872 I /system/bin/tombstoned: found intercept fd 512 for pid 7815 and type kDebuggerdJavaBacktrace
+         1791572756.371460 10146  7815  7826 I example.logtes: Wrote stack traces to tombstoned
+         1791572756.382766  1000  4944  4972 I system_server: libdebuggerd_client: done dumping process 7815
+         1791572756.420728  1000  4944  4972 I ActivityManager: Collecting stacks for pid 4944
+         1791572756.426513  1000  4944  4972 I system_server: libdebuggerd_client: started dumping process 4944
+         1791572756.449444  1000  4944  4955 I system_server: Thread[7,tid=4955,WaitingInMainSignalCatcherLoop,Thread*=0x7ef7d15d6800,peer=0x130c0078,"Signal Catcher"]: reacting to signal 3
+         1791572756.450340  1000  4944  4955 I system_server: 
+         1791572756.452423  1058  1872  1872 I /system/bin/tombstoned: registered intercept for pid 4944 and type kDebuggerdJavaBacktrace
+         1791572757.866625  1000  4944  4963 W Looper  : Slow delivery took 243ms android.fg h=com.android.server.location.GnssLocationProvider$ProviderHandler c=null m=18
+         1791572757.982018  1058  1872  1872 I /system/bin/tombstoned: received crash request for pid 4944
+         1791572757.982682  1058  1872  1872 I /system/bin/tombstoned: found intercept fd 512 for pid 4944 and type kDebuggerdJavaBacktrace
+         1791572757.996465  1000  4944  4955 I system_server: Wrote stack traces to tombstoned
+         1791572758.052027 radio  6394  6394 I service_manager_slow: [14,carrier_config]
+         1791572758.090437  1000  4944  4972 I system_server: libdebuggerd_client: done dumping process 4944
+         1791572758.120240  1000  4944  4972 I ActivityManager: Collecting stacks for pid 5841
+         1791572758.124030  1000  4944  4972 I system_server: libdebuggerd_client: started dumping process 5841
+         1791572758.129320  1058  1872  1872 I /system/bin/tombstoned: registered intercept for pid 5841 and type kDebuggerdJavaBacktrace
+         1791572758.132303  1000  5841  5864 I or.multidispla: Thread[7,tid=5864,WaitingInMainSignalCatcherLoop,Thread*=0x7ef7d16d7400,peer=0x13c40260,"Signal Catcher"]: reacting to signal 3
+         1791572758.134352  1000  5841  5864 I or.multidispla: 
+         1791572758.414549  1058  1872  1872 I /system/bin/tombstoned: received crash request for pid 5841
+         1791572758.415397  1058  1872  1872 I /system/bin/tombstoned: found intercept fd 512 for pid 5841 and type kDebuggerdJavaBacktrace
+         1791572758.430085  1000  5841  5864 I or.multidispla: Wrote stack traces to tombstoned
+         1791572758.456687  1000  4944  4972 I system_server: libdebuggerd_client: done dumping process 5841
+         1791572758.489840  1000  4944  4972 I ActivityManager: Collecting stacks for pid 5822
+         1791572758.503891  1000  4944  4972 I system_server: libdebuggerd_client: started dumping process 5822
+         1791572758.511613  1058  1872  1872 I /system/bin/tombstoned: registered intercept for pid 5822 and type kDebuggerdJavaBacktrace
+         1791572758.525620 radio  5822  5839 I .ims.rcsservic: Thread[7,tid=5839,WaitingInMainSignalCatcherLoop,Thread*=0x7ef7d16d7400,peer=0x13b403e0,"Signal Catcher"]: reacting to signal 3
+         1791572758.526804 radio  5822  5839 I .ims.rcsservic: 
+         1791572758.637081  1000  4944  4963 W Looper  : Drained
+         1791572759.164859  1058  1872  1872 I /system/bin/tombstoned: received crash request for pid 5822
+         1791572759.166883  1058  1872  1872 I /system/bin/tombstoned: found intercept fd 512 for pid 5822 and type kDebuggerdJavaBacktrace
+         1791572759.182360  1000  4944  4972 I system_server: libdebuggerd_client: done dumping process 5822
+         1791572759.179627 radio  5822  5839 I .ims.rcsservic: Wrote stack traces to tombstoned
+         1791572759.210868  1000  4944  4972 I ActivityManager: Collecting stacks for pid 5765
+         1791572759.213992  1000  4944  4972 I system_server: libdebuggerd_client: started dumping process 5765
+         1791572759.223638  1058  1872  1872 I /system/bin/tombstoned: registered intercept for pid 5765 and type kDebuggerdJavaBacktrace
+         1791572759.232409  1068  5765  5802 I com.android.se: Thread[7,tid=5802,WaitingInMainSignalCatcherLoop,Thread*=0x7ef7d16d7400,peer=0x13a40260,"Signal Catcher"]: reacting to signal 3
+         1791572759.233754  1068  5765  5802 I com.android.se: 
+         1791572759.577410  1058  1872  1872 I /system/bin/tombstoned: received crash request for pid 5765
+         1791572759.577631  1058  1872  1872 I /system/bin/tombstoned: found intercept fd 512 for pid 5765 and type kDebuggerdJavaBacktrace
+         1791572759.608176  1068  5765  5802 I com.android.se: Wrote stack traces to tombstoned
+         1791572759.611143  1000  4944  4972 I system_server: libdebuggerd_client: done dumping process 5765
+         1791572759.632030  1000  4944  4972 I ActivityManager: Collecting stacks for pid 6394
+         1791572759.636664  1000  4944  4972 I system_server: libdebuggerd_client: started dumping process 6394
+         1791572759.645188  1058  1872  1872 I /system/bin/tombstoned: registered intercept for pid 6394 and type kDebuggerdJavaBacktrace
+         1791572759.650646 radio  6394  6407 I m.android.phon: Thread[5,tid=6407,WaitingInMainSignalCatcherLoop,Thread*=0x7ef7d15d7400,peer=0x13741098,"Signal Catcher"]: reacting to signal 3
+         1791572759.651515 radio  6394  6407 I m.android.phon: 
+         1791572760.201008  1058  1872  1872 I /system/bin/tombstoned: received crash request for pid 6394
+         1791572760.201487  1058  1872  1872 I /system/bin/tombstoned: found intercept fd 512 for pid 6394 and type kDebuggerdJavaBacktrace
+         1791572760.227685 radio  6394  6407 I m.android.phon: Wrote stack traces to tombstoned
+         1791572760.252956  1000  4944  4972 I system_server: libdebuggerd_client: done dumping process 6394
+         1791572760.273754  1000  4944  4972 I ActivityManager: Collecting stacks for pid 5256
+         1791572760.276303  1000  4944  4972 I system_server: libdebuggerd_client: started dumping process 5256
+         1791572760.288912  1073  5256  5285 I id.networkstac: Thread[7,tid=5285,WaitingInMainSignalCatcherLoop,Thread*=0x7ef7d16d7400,peer=0x13080710,"Signal Catcher"]: reacting to signal 3
+         1791572760.290183  1073  5256  5285 I id.networkstac: 
+         1791572760.284775  1058  1872  1872 I /system/bin/tombstoned: registered intercept for pid 5256 and type kDebuggerdJavaBacktrace
+         1791572761.114803  1058  1872  1872 I /system/bin/tombstoned: received crash request for pid 5256
+         1791572761.115069  1058  1872  1872 I /system/bin/tombstoned: found intercept fd 512 for pid 5256 and type kDebuggerdJavaBacktrace
+         1791572761.134643  1073  5256  5285 I id.networkstac: Wrote stack traces to tombstoned
+         1791572761.145172  1000  4944  4972 I system_server: libdebuggerd_client: done dumping process 5256
+         1791572761.166972  1000  4944  4972 I ActivityManager: Collecting stacks for pid 5118
+         1791572761.173416  1000  4944  4972 I system_server: libdebuggerd_client: started dumping process 5118
+         1791572761.185176  1058  1872  1872 I /system/bin/tombstoned: registered intercept for pid 5118 and type kDebuggerdJavaBacktrace
+         1791572761.193392 10110  5118  5132 I ndroid.systemu: Thread[5,tid=5132,WaitingInMainSignalCatcherLoop,Thread*=0x7ef7d15d4c00,peer=0x139803b8,"Signal Catcher"]: reacting to signal 3
+         1791572761.194678 10110  5118  5132 I ndroid.systemu: 
+         1791572761.252395 10110  5118  5132 W ndroid.systemu: Suspending all threads took: 7.761ms
+         1791572761.906877  1058  1872  1872 I /system/bin/tombstoned: received crash request for pid 5118
+         1791572761.907126  1058  1872  1872 I /system/bin/tombstoned: found intercept fd 512 for pid 5118 and type kDebuggerdJavaBacktrace
+         1791572761.922518 10110  5118  5132 I ndroid.systemu: Wrote stack traces to tombstoned
+         1791572761.946852  1000  4944  4972 I system_server: libdebuggerd_client: done dumping process 5118
+         1791572761.976335  1000  4944  4972 I ActivityManager: Collecting stacks for native pid 1613
+         1791572761.978213  1000  4944  4972 I system_server: libdebuggerd_client: started dumping process 1613
+         1791572761.986262  1058  1872  1872 I /system/bin/tombstoned: registered intercept for pid 1613 and type kDebuggerdNativeBacktrace
+         1791572762.009494  root  1613  1613 I libc    : Requested dump for tid 1613 (Binder:1613_2)
+         1791572762.325571  root  7947  7947 I crash_dump64: obtaining output fd from tombstoned, type: kDebuggerdNativeBacktrace
+         1791572762.330107  1058  1872  1872 I /system/bin/tombstoned: received crash request for pid 1613
+         1791572762.330388  1058  1872  1872 I /system/bin/tombstoned: found intercept fd 512 for pid 1613 and type kDebuggerdNativeBacktrace
+         1791572762.334139  root  7947  7947 I crash_dump64: performing dump of process 1613 (target tid = 1613)
+         1791572762.558743  1000  4944  4972 I system_server: libdebuggerd_client: done dumping process 1613
+         1791572762.592240  1000  4944  4972 I ActivityManager: Collecting stacks for native pid 1792
+         1791572762.595248  1000  4944  4972 I system_server: libdebuggerd_client: started dumping process 1792
+         1791572762.605640  1058  1872  1872 I /system/bin/tombstoned: registered intercept for pid 1792 and type kDebuggerdNativeBacktrace
+         1791572762.614900  1000  1792  1792 I libc    : Requested dump for tid 1792 (surfaceflinger)
+         1791572763.034260  1000  7952  7952 I crash_dump64: obtaining output fd from tombstoned, type: kDebuggerdNativeBacktrace
+         1791572763.042601  1058  1872  1872 I /system/bin/tombstoned: received crash request for pid 1792
+         1791572763.042947  1058  1872  1872 I /system/bin/tombstoned: found intercept fd 512 for pid 1792 and type kDebuggerdNativeBacktrace
+         1791572763.047649  1000  7952  7952 I crash_dump64: performing dump of process 1792 (target tid = 1792)
+         1791572763.410461  1000  4944  4972 I system_server: libdebuggerd_client: done dumping process 1792
+         1791572763.459625  1000  4944  4972 I ActivityManager: Collecting stacks for native pid 1831
+         1791572763.462944  1000  4944  4972 I system_server: libdebuggerd_client: started dumping process 1831
+         1791572763.472512  1058  1872  1872 I /system/bin/tombstoned: registered intercept for pid 1831 and type kDebuggerdNativeBacktrace
+         1791572763.491469   drm  1831  1831 I libc    : Requested dump for tid 1831 (drmserver)
+         1791572764.177055   drm  7960  7960 I crash_dump32: obtaining output fd from tombstoned, type: kDebuggerdNativeBacktrace
+         1791572764.213684  1058  1872  1872 I /system/bin/tombstoned: received crash request for pid 1831
+         1791572764.214199  1058  1872  1872 I /system/bin/tombstoned: found intercept fd 512 for pid 1831 and type kDebuggerdNativeBacktrace
+         1791572764.218973   drm  7960  7960 I crash_dump32: performing dump of process 1831 (target tid = 1831)
+         1791572764.508166  1000  4944  4972 I system_server: libdebuggerd_client: done dumping process 1831
+         1791572764.517612  1000  4944  4972 I ActivityManager: Collecting stacks for native pid 1841
+         1791572764.529449  1000  4944  4972 I system_server: libdebuggerd_client: started dumping process 1841
+         1791572764.561230  1058  1872  1872 I /system/bin/tombstoned: registered intercept for pid 1841 and type kDebuggerdNativeBacktrace
+         1791572764.586210 media  1841  1841 I libc    : Requested dump for tid 1841 (mediadrmserver)
+         1791572764.949745 media  7966  7966 I crash_dump32: obtaining output fd from tombstoned, type: kDebuggerdNativeBacktrace
+         1791572764.953096  1058  1872  1872 I /system/bin/tombstoned: received crash request for pid 1841
+         1791572764.953396  1058  1872  1872 I /system/bin/tombstoned: found intercept fd 512 for pid 1841 and type kDebuggerdNativeBacktrace
+         1791572764.958777 media  7966  7966 I crash_dump32: performing dump of process 1841 (target tid = 1841)
+         1791572765.107701  1000  4944  4972 I system_server: libdebuggerd_client: done dumping process 1841
+         1791572765.121130  1000  4944  4972 I ActivityManager: Collecting stacks for native pid 1844
+         1791572765.122489  1000  4944  4972 I system_server: libdebuggerd_client: started dumping process 1844
+         1791572765.128312  1058  1872  1872 I /system/bin/tombstoned: registered intercept for pid 1844 and type kDebuggerdNativeBacktrace
+         1791572765.144903  1058  1872  1872 I /system/bin/tombstoned: received crash request for pid 1844
+         1791572765.146081  1058  1872  1872 I /system/bin/tombstoned: found intercept fd 512 for pid 1844 and type kDebuggerdNativeBacktrace
+         1791572765.599140  1000  4944  4972 I system_server: libdebuggerd_client: done dumping process 1844
+         1791572765.615052  1000  4944  4972 I ActivityManager: Collecting stacks for native pid 1848
+         1791572765.616243  1000  4944  4972 I system_server: libdebuggerd_client: started dumping process 1848
+         1791572765.622122  1058  1872  1872 I /system/bin/tombstoned: registered intercept for pid 1848 and type kDebuggerdNativeBacktrace
+         1791572765.658078 media  1848  1848 I libc    : Requested dump for tid 1848 (mediametrics)
+         1791572765.995074 media  7972  7972 I crash_dump64: obtaining output fd from tombstoned, type: kDebuggerdNativeBacktrace
+         1791572766.000320  1058  1872  1872 I /system/bin/tombstoned: received crash request for pid 1848
+         1791572766.001043  1058  1872  1872 I /system/bin/tombstoned: found intercept fd 512 for pid 1848 and type kDebuggerdNativeBacktrace
+         1791572766.024898 media  7972  7972 I crash_dump64: performing dump of process 1848 (target tid = 1848)
+         1791572766.155395  1000  4944  4972 I system_server: libdebuggerd_client: done dumping process 1848
+         1791572766.186244  1000  4944  4972 I ActivityManager: Collecting stacks for native pid 1852
+         1791572766.189414  1000  4944  4972 I system_server: libdebuggerd_client: started dumping process 1852
+         1791572766.208511  1058  1872  1872 I /system/bin/tombstoned: registered intercept for pid 1852 and type kDebuggerdNativeBacktrace
+         1791572766.257136  1066  1852  1852 I libc    : Requested dump for tid 1852 (Binder:1852_2)
+         1791572766.503434  1066  7977  7977 I crash_dump64: obtaining output fd from tombstoned, type: kDebuggerdNativeBacktrace
+         1791572766.511527  1058  1872  1872 I /system/bin/tombstoned: received crash request for pid 1852
+         1791572766.512154  1058  1872  1872 I /system/bin/tombstoned: found intercept fd 512 for pid 1852 and type kDebuggerdNativeBacktrace
+         1791572766.528751  1066  7977  7977 I crash_dump64: performing dump of process 1852 (target tid = 1852)
+         1791572766.731621  1000  4944  4972 I system_server: libdebuggerd_client: done dumping process 1852
+         1791572766.747617  1000  4944  4972 I ActivityManager: Collecting stacks for native pid 1859
+         1791572766.758188  1000  4944  4972 I system_server: libdebuggerd_client: started dumping process 1859
+         1791572766.793860  1058  1872  1872 I /system/bin/tombstoned: registered intercept for pid 1859 and type kDebuggerdNativeBacktrace
+         1791572766.804831  1058  1872  1872 I /system/bin/tombstoned: received crash request for pid 1859
+         1791572766.805289  1058  1872  1872 I /system/bin/tombstoned: found intercept fd 512 for pid 1859 and type kDebuggerdNativeBacktrace
+         1791572767.511244  1000  4944  4972 I system_server: libdebuggerd_client: done dumping process 1859
+         1791572767.526383  1000  4944  4972 I ActivityManager: Collecting stacks for native pid 1868
+         1791572767.531935  1000  4944  4972 I system_server: libdebuggerd_client: started dumping process 1868
+         1791572767.538351  1058  1872  1872 I /system/bin/tombstoned: registered intercept for pid 1868 and type kDebuggerdNativeBacktrace
+         1791572767.564818  1058  1872  1872 I /system/bin/tombstoned: received crash request for pid 1868
+         1791572767.565508  1058  1872  1872 I /system/bin/tombstoned: found intercept fd 512 for pid 1868 and type kDebuggerdNativeBacktrace
+         1791572767.797279  1000  4944  4972 I system_server: libdebuggerd_client: done dumping process 1868
+         1791572767.806294  1000  4944  4972 I ActivityManager: Collecting stacks for native pid 4883
+         1791572767.808530  1000  4944  4972 I system_server: libdebuggerd_client: started dumping process 4883
+         1791572767.813381  1058  1872  1872 I /system/bin/tombstoned: registered intercept for pid 4883 and type kDebuggerdNativeBacktrace
+         1791572767.830695  1041  4883  4883 I libc    : Requested dump for tid 4883 (audioserver)
+         1791572768.207917  1041  7983  7983 I crash_dump64: obtaining output fd from tombstoned, type: kDebuggerdNativeBacktrace
+         1791572768.230443  1058  1872  1872 I /system/bin/tombstoned: received crash request for pid 4883
+         1791572768.234094  1058  1872  1872 I /system/bin/tombstoned: found intercept fd 512 for pid 4883 and type kDebuggerdNativeBacktrace
+         1791572768.249926  1041  7983  7983 I crash_dump64: performing dump of process 4883 (target tid = 4883)
+         1791572768.491943  1000  4944  4972 I system_server: libdebuggerd_client: done dumping process 4883
+         1791572768.514728  1000  4944  4972 I ActivityManager: Collecting stacks for native pid 4884
+         1791572768.517727  1000  4944  4972 I system_server: libdebuggerd_client: started dumping process 4884
+         1791572768.539425  1058  1872  1872 I /system/bin/tombstoned: registered intercept for pid 4884 and type kDebuggerdNativeBacktrace
+         1791572768.550923  1047  4884  4884 I libc    : Requested dump for tid 4884 (cameraserver)
+         1791572768.954492  1047  7988  7988 I crash_dump64: obtaining output fd from tombstoned, type: kDebuggerdNativeBacktrace
+         1791572768.969416  1058  1872  1872 I /system/bin/tombstoned: received crash request for pid 4884
+         1791572768.969951  1058  1872  1872 I /system/bin/tombstoned: found intercept fd 512 for pid 4884 and type kDebuggerdNativeBacktrace
+         1791572768.976862  1047  7988  7988 I crash_dump64: performing dump of process 4884 (target tid = 4884)
+         1791572769.266368  1000  4944  4972 I system_server: libdebuggerd_client: done dumping process 4884
+         1791572769.293304  1000  4944  4972 I ActivityManager: Collecting stacks for native pid 4885
+         1791572769.306475  1000  4944  4972 I system_server: libdebuggerd_client: started dumping process 4885
+         1791572769.329706  1058  1872  1872 I /system/bin/tombstoned: registered intercept for pid 4885 and type kDebuggerdNativeBacktrace
+         1791572769.351776 media  4885  4885 I libc    : Requested dump for tid 4885 (mediaserver)
+         1791572770.152302 media  7996  7996 I crash_dump32: obtaining output fd from tombstoned, type: kDebuggerdNativeBacktrace
+         1791572770.161159  1058  1872  1872 I /system/bin/tombstoned: received crash request for pid 4885
+         1791572770.161851  1058  1872  1872 I /system/bin/tombstoned: found intercept fd 512 for pid 4885 and type kDebuggerdNativeBacktrace
+         1791572770.217071 media  7996  7996 I crash_dump32: performing dump of process 4885 (target tid = 4885)
+         1791572770.553460  1000  4944  4972 I system_server: libdebuggerd_client: done dumping process 4885
+         1791572770.582845  1000  4944  4972 I ActivityManager: Done dumping
+         1791572770.790835  1000  4944  4972 W ProcessCpuTracker: Failed to stat(/proc/7996): android.system.ErrnoException: stat failed: ENOENT (No such file or directory)
+         1791572770.791430  1000  4944  4972 W ProcessCpuTracker: Skipping unknown process pid 7996
+         1791572770.792794  1000  4944  4972 W ProcessCpuTracker: Failed to stat(/proc/7998): android.system.ErrnoException: stat failed: ENOENT (No such file or directory)
+         1791572770.793091  1000  4944  4972 W ProcessCpuTracker: Skipping unknown process pid 7998
+         1791572770.819708  1000  4944  4972 E ActivityManager: ANR in com.example.logtest
+         1791572770.819708  1000  4944  4972 E ActivityManager: PID: 7815
+         1791572770.819708  1000  4944  4972 E ActivityManager: Reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+         1791572770.819708  1000  4944  4972 E ActivityManager: Load: 1.41 / 8.65 / 11.61
+         1791572770.819708  1000  4944  4972 E ActivityManager: CPU usage from 128ms to -17580ms ago (2026-10-10 03:05:52.878 to 2026-10-10 03:06:10.586):
+         1791572770.819708  1000  4944  4972 E ActivityManager:   77% 4944/system_server: 28% user + 48% kernel / faults: 2381 minor 1 major
+         1791572770.819708  1000  4944  4972 E ActivityManager:   21% 1742/android.system.suspend@1.0-service: 7.1% user + 14% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   18% 2674/android.hardware.sensors@1.0-service: 4.1% user + 14% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   17% 5752/adbd: 2.6% user + 15% kernel / faults: 393 minor
+         1791572770.819708  1000  4944  4972 E ActivityManager:   15% 5118/com.android.systemui: 6.3% user + 8.7% kernel / faults: 1541 minor
+         1791572770.819708  1000  4944  4972 E ActivityManager:   6.7% 1608/logd: 1% user + 5.6% kernel / faults: 10 minor
+         1791572770.819708  1000  4944  4972 E ActivityManager:   3.4% 1792/surfaceflinger: 1.5% user + 1.9% kernel / faults: 38 minor 2 major
+         1791572770.819708  1000  4944  4972 E ActivityManager:   4.9% 1764/android.hardware.graphics.composer@2.1-service: 1.3% user + 3.5% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   3.7% 6394/com.android.phone: 1.9% user + 1.8% kernel / faults: 841 minor
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0.8% 1859/media.codec: 0.2% user + 0.5% kernel / faults: 2844 minor
+         1791572770.819708  1000  4944  4972 E ActivityManager:   1.5% 352/khugepaged: 0% user + 1.5% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0.7% 5256/com.google.android.networkstack: 0.3% user + 0.4% kernel / faults: 702 minor
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0.1% 5822/com.android.ims.rcsservice: 0% user + 0% kernel / faults: 716 minor
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0.5% 1844/media.extractor: 0.1% user + 0.3% kernel / faults: 1552 minor 13 major
+         1791572770.819708  1000  4944  4972 E ActivityManager:   2.2% 7815/com.example.logtest: 1.6% user + 0.5% kernel / faults: 834 minor
+         1791572770.819708  1000  4944  4972 E ActivityManager:   1.8% 8/rcu_preempt: 0% user + 1.8% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0.9% 1791/lmkd: 0.3% user + 0.5% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0.4% 1872/tombstoned: 0.1% user + 0.2% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0% 5765/com.android.se: 0% user + 0% kernel / faults: 728 minor
+         1791572770.819708  1000  4944  4972 E ActivityManager:   1.6% 7930/logcat: 0.5% user + 1.1% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   1.5% 6595/logcat: 0.6% user + 0.9% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0.8% 6620/logcat: 0.2% user + 0.5% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0% 5841/com.android.emulator.multidisplay: 0% user + 0% kernel / faults: 719 minor
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0.7% 1807/logcat: 0.3% user + 0.3% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0.2% 4883/audioserver: 0% user + 0.2% kernel / faults: 52 minor
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0% 1868/media.swcodec: 0% user + 0% kernel / faults: 690 minor 15 major
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0.9% 1852/statsd: 0.3% user + 0.5% kernel / faults: 51 minor 7 major
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0% 1841/mediadrmserver: 0% user + 0% kernel / faults: 38 minor 57 major
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0.1% 1848/media.metrics: 0% user + 0.1% kernel / faults: 51 minor 12 major
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0.7% 9/rcu_sched: 0% user + 0.7% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0.1% 4885/mediaserver: 0% user + 0.1% kernel / faults: 19 minor
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0.1% 1831/drmserver: 0% user + 0.1% kernel / faults: 23 minor 4 major
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0.1% 4884/cameraserver: 0% user + 0.1% kernel / faults: 24 minor
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0.1% 1/init: 0% user + 0.1% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0.2% 1632/jbd2/vdc-8: 0% user + 0.2% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0.3% 7861/kworker/0:1: 0% user + 0.3% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0.1% 1613/vold: 0% user + 0.1% kernel / faults: 25 minor 2 major
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0.3% 1761/android.hardware.gnss@1.0-service: 0.1% user + 0.1% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0.2% 7774/kworker/u8:1: 0% user + 0.2% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0% 16/migration/1: 0% user + 0% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0% 22/migration/2: 0% user + 0% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0.1% 108/kworker/u8:5: 0% user + 0.1% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0.1% 7/ksoftirqd/0: 0% user + 0.1% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0% 838/kworker/0:1H: 0% user + 0% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0% 4886/netd: 0% user + 0% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0% 11/migration/0: 0% user + 0% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0% 17/ksoftirqd/1: 0% user + 0% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0% 27/watchdog/3: 0% user + 0% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0% 29/ksoftirqd/3: 0% user + 0% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0% 1750/kworker/1:2: 0% user + 0% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0% 1800/netmgr: 0% user + 0% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0% 1811/psimon: 0% user + 0% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0% 1867/rild: 0% user + 0% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0% 7325/kworker/2:2: 0% user + 0% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0% 7591/android.process.acore: 0% user + 0% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   0% 7693/kworker/3:1: 0% user + 0% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager: 65% TOTAL: 22% user + 43% kernel + 0% iowait + 0.4% softirq
+         1791572770.819708  1000  4944  4972 E ActivityManager: CPU usage from 507ms to 2489ms later (2026-10-10 03:05:53.513 to 2026-10-10 03:05:55.495):
+         1791572770.819708  1000  4944  4972 E ActivityManager:   104% 4944/system_server: 39% user + 64% kernel / faults: 248 minor
+         1791572770.819708  1000  4944  4972 E ActivityManager:     71% 4972/ActivityManager: 19% user + 51% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:     16% 5021/SensorService: 4.9% user + 11% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:     8.7% 4964/android.ui: 4.9% user + 3.7% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:     8.7% 5020/SensorEventAckR: 6.2% user + 2.4% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:     1.2% 4963/android.fg: 1.2% user + 0% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   14% 1742/android.system.suspend@1.0-service: 1.8% user + 12% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:     14% 1742/suspend@1.0-ser: 1.8% user + 12% kernel
+         1791572770.819708  1000  4944  4972 E ActivityManager:   1
+         1791572771.225512  1000  4944  4965 I DropBoxManagerService: add tag=system_server_strictmode isTagEnabled=true flags=0x2
+         1791572771.394413  1000  4944  4972 W system_server: Long monitor contention with owner android.ui (4964) at void com.android.server.am.AppErrors.handleShowAnrUi(android.os.Message)(AppErrors.java:852) waiters=0 in void com.android.server.am.BroadcastQueue.processNextBroadcast(boolean) for 126ms
+         1791572771.401859  1000  4944  4964 E system_server: Invalid ID 0x00000000.
+         1791572771.418668  1000  4944  4972 I dvm_lock_sample: [system_server,1,ActivityManager,126,BroadcastQueue.java,948,void com.android.server.am.BroadcastQueue.processNextBroadcast(boolean),AppErrors.java,852,void com.android.server.am.AppErrors.handleShowAnrUi(android.os.Message),25]
+         1791572771.710152 10110  5118  5118 D KeyguardClockSwitch: Updating clock: 3\356\270\20106
+         1791572771.739421  1000  4944  4965 I DropBoxManagerService: add tag=system_server_strictmode isTagEnabled=true flags=0x2
+         1791572771.825707  1000  4944  7999 I DropBoxManagerService: add tag=data_app_anr isTagEnabled=true flags=0x2
+         1791572771.874381  1000  4944  4965 I DropBoxManagerService: add tag=system_server_strictmode isTagEnabled=true flags=0x2
+         1791572772.294159  1000  4944  4965 I chatty  : uid=1000(system) android.io identical 6 lines
+         1791572772.335270  1000  4944  4965 I DropBoxManagerService: add tag=system_server_strictmode isTagEnabled=true flags=0x2
+         1791572772.639865  1000  4944  4964 W Looper  : Slow dispatch took 1455ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=null m=2
+         1791572772.675724  1000  4944  4964 W Looper  : Slow delivery took 517ms android.ui h=com.android.server.am.BaseErrorDialog$1 c=null m=1
+         1791572772.907382 10146  7815  7815 W LogTest : receiver unblocked
+         1791572773.048640  1000  4944  4957 I system_server: Background young concurrent copying GC freed 88624(3329KB) AllocSpace objects, 5(1556KB) LOS objects, 20% free, 13MB/16MB, paused 11.957ms total 1.572s
+         1791572773.139931  1000  4944  4966 W system_server: Long monitor contention with owner android.ui (4964) at int com.android.server.wm.WindowManagerService.relayoutWindow(com.android.server.wm.Session, android.view.IWindow, int, android.view.WindowManager$LayoutParams, int, int, int, int, long, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.view.DisplayCutout$ParcelableWrapper, android.util.MergedConfiguration, android.view.SurfaceControl, android.view.InsetsState)(WindowManagerService.java:1982) waiters=1 in void com.android.server.wm.WindowManagerService$H.handleMessage(android.os.Message) for 132ms
+         1791572773.157316  1000  4944  4966 I dvm_lock_sample: [system_server,1,android.display,132,WindowManagerService.java,4876,void com.android.server.wm.WindowManagerService$H.handleMessage(android.os.Message),-,1982,int com.android.server.wm.WindowManagerService.relayoutWindow(com.android.server.wm.Session, android.view.IWindow, int, android.view.WindowManager$LayoutParams, int, int, int, int, long, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.view.DisplayCutout$ParcelableWrapper, android.util.MergedConfiguration, android.view.SurfaceControl, android.view.InsetsState),26]
+         1791572773.302188 10110  5118  5397 I OpenGLRenderer: Davey! duration=1266ms; Flags=0, IntendedVsync=1875698826355, Vsync=1875715493021, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=1875716067896, AnimationStart=1875728673637, PerformTraversalsStart=1875728944288, DrawStart=1876173172230, SyncQueued=1876241778583, SyncStart=1876381919408, IssueDrawCommandsStart=1876465843068, SwapBuffers=1877002055761, FrameCompleted=1877105019548, DequeueBufferDuration=26123000, QueueBufferDuration=56622000, 
+         1791572773.338865  1000  4944  5599 D HostConnection: HostConnection::get() New Host Connection established 0x7ef782406dc0, tid 5599
+         1791572773.365702  1000  4944  5599 D HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_hwc_color_transform GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+         1791572773.440632  1000  4944  5599 D EGL_emulation: eglCreateContext: 0x7ef782406f00: maj 3 min 0 rcv 3
+         1791572773.465633  1000  4944  5599 D EGL_emulation: eglMakeCurrent: 0x7ef782406f00: ver 3 0 (tinfo 0x7ef7844ce740)
+         1791572773.560677  1000  1763  1799 D gralloc_ranchu: gralloc_alloc: Creating ashmem region of size 3432448
+         1791572773.604966  1000  1763  1799 D gralloc_ranchu: gralloc_alloc: Creating ashmem region of size 3432448
+         1791572773.614230  1000  1763  1763 D gralloc_ranchu: gralloc_alloc: Creating ashmem region of size 3432448
+         1791572773.656839  1000  4944  5599 D EGL_emulation: eglMakeCurrent: 0x7ef782406f00: ver 3 0 (tinfo 0x7ef7844ce740)
+         1791572774.337594  1000  4944  4964 W Looper  : Slow dispatch took 1645ms android.ui h=android.view.Choreographer$FrameHandler c=android.view.Choreographer$FrameDisplayEventReceiver@befd756 m=0
+         1791572774.361885  1000  4944  4964 I Choreographer: Skipped 93 frames!  The application may be doing too much work on its main thread.
+         1791572774.954298  1000  4944  4964 W Looper  : Drained
+         1791572774.956644  1000  4944  4964 W Looper  : Slow dispatch took 399ms android.ui h=android.view.Choreographer$FrameHandler c=android.view.Choreographer$FrameDisplayEventReceiver@befd756 m=0
+         1791572775.007135  1000  4944  4964 W Looper  : Slow delivery took 413ms android.ui h=android.view.ViewRootImpl$ViewRootHandler c=null m=25
+         1791572798.048601 10107  6894  7588 I Dialer  : OmtpVvmCarrierCfgHlpr - OmtpEvent:CONFIG_STATUS_SMS_TIME_OUT
+         1791572798.067724 10107  6894  6894 I Dialer  : RetryPolicy - Retry limit for com.android.voicemail.impl.ActivationTask@2c94567 reached
+         1791572798.069944 10107  6894  6894 I Dialer  : RetryPolicy - committing deferred status: configuration_state=4
+         1791572798.124954  1000  4944  4972 I am_uid_idle: 10120
+         1791572798.427581 10054  7591  7626 I VoicemailNotifier: receivers for android.intent.action.PROVIDER_CHANGED :[]
+         1791572798.466361 10107  6894  6894 I Dialer  : VvmTaskExecutor - no more tasks, stopping service if no task are added in 5000 millis
+         1791572799.524445  1000  4944  4964 W Looper  : Drained
+         1791572803.510807 10107  6894  6894 I Dialer  : VvmTaskExecutor - Stopping service
+         1791572803.515428 10107  6894  6894 I Dialer  : VvmTaskExecutor - finishing Job
+         1791572803.518772 10107  6894  6894 I Dialer  : TaskSchedulerJobService - finishing job
+         1791572803.658724 10107  6894  6894 I Dialer  : JobFinishedPoller.run - Job finished
+         1791572803.660836 10107  6894  6894 I Dialer  : VvmTaskExecutor - terminated

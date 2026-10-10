@@ -1,0 +1,31 @@
+$ android-log-mcp call logcat_crashes '{"device":"emulator-5556","package":"com.example.logtest"}'
+device emulator-5556 · Asia/Kuching (+08:00) · package com.example.logtest · 6 crash groups (8 events) in recorded history
+history: logcat from 2026-10-10 02:35:13; DropBox adds older entries when available (status: data_app_crash ok, data_app_native_crash ok, data_app_anr ok)
+cr24 2026-10-10 03:07:43  java   pid 8076 com.example.logtest:remote (thread main)
+     java.lang.RuntimeException: Unable to start service com.example.logtest.RemoteService@a11d0f9 with Intent { cmp=com.example.logtest/.RemoteService (has extras) }: java.lang.IllegalStateException: LogTest crash in :remote
+       at android.app.ActivityThread.handleServiceArgs(ActivityThread.java:4105)
+       at android.app.ActivityThread.access$1800(ActivityThread.java:219)
+       at android.app.ActivityThread$H.handleMessage(ActivityThread.java:1891)
+       … root cause: java.lang.IllegalStateException: LogTest crash in :remote
+       … 8 more frames
+     same signature also at 03:07:39 (cr22)
+cr23 2026-10-10 03:07:39  java   pid 0 com.example.logtest:remote
+     java.lang.IllegalStateException: LogTest crash in :remote
+       at RemoteService.java:16 (only am_crash event recorded; stack unavailable in log buffers)
+     same signature also at 03:01:32 (cr19)
+anr24 2026-10-10 03:05:53  anr    pid 7815 com.example.logtest  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+     main thread: "main" prio=5 tid=1 Sleeping — at java.lang.Thread.sleep(Native method)   [traces: data_app_anr]
+cr21 2026-10-10 03:02:50  java   pid 0 com.example.logtest
+     Native crash: Segmentation fault
+       at unknown:0 (only am_crash event recorded; stack unavailable in log buffers)
+cr20 2026-10-10 03:02:39  native pid 7736 com.example.logtest (thread example.logtest)  SIGSEGV (SEGV_MAPERR) fault addr 0x0 in liblogtest.so
+cr18 2026-10-10 03:01:32  java   pid 7182 com.example.logtest (thread main)
+     java.lang.RuntimeException: LogTest wrapped crash
+       at com.example.logtest.Triggers.run(Triggers.java:22)
+       at com.example.logtest.MainActivity.lambda$onResume$1$com-example-logtest-MainActivity(MainActivity.java:42)
+       at com.example.logtest.MainActivity$$ExternalSyntheticLambda0.run(D8$$SyntheticClass:0)
+       … root cause: java.lang.IllegalStateException: repo not ready
+       … 9 more frames
+more: logcat_crashes id="cr24" for full detail
+
+[exit 0]

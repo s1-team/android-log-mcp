@@ -1,0 +1,34 @@
+Drop box contents: 271 entries
+Max entries: 1000
+Low priority rate limit period: 2000 ms
+Low priority tags: {data_app_wtf, keymaster, system_server_wtf, system_app_strictmode, system_app_wtf, system_server_strictmode, data_app_strictmode, netstats}
+Searching for: data_app_native_crash
+
+========================================
+2026-10-10 03:02:50 data_app_native_crash (text, 1139 bytes)
+Process: com.example.logtest
+PID: 7736
+UID: 10146
+Flags: 0x3088be46
+Package: com.example.logtest v1 (1.0)
+Foreground: Yes
+Build: google/sdk_gphone_x86_64/generic_x86_64:10/QSR1.211112.011/13135432:userdebug/dev-keys
+
+*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+Build fingerprint: 'google/sdk_gphone_x86_64/generic_x86_64:10/QSR1.211112.011/13135432:userdebug/dev-keys'
+Revision: '0'
+ABI: 'x86_64'
+Timestamp: 2026-10-10 03:02:41+0800
+pid: 7736, tid: 7736, name: example.logtest  >>> com.example.logtest <<<
+uid: 10146
+signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0
+Cause: null pointer dereference
+    rax 0000000000000000  rbx 00007ef862cd4000  rcx 81c28a362e54aee9  rdx 0000000000000004
+    r8  0000000000000000  r9  0000000000000007  r10 00007ef8605d3050  r11 0000000000000206
+    r12 00007fffa68447d0  r13 00007ef7d5f027db  r14 0000000000000000  r15 00007fffa68449b8
+    rdi 0000000000000000  rsi 00007fffa6843e30
+    rbp 00007fffa68444f0  rsp 00007fffa68444f0  rip 00007ef787efc7fc
+
+backtrace:
+      #00 pc 00000000000007fc  /data/app/com.example.logtest-EXHrd52nNpS4jel8iYKCOQ==/lib/x86_64/liblogtest.so
+

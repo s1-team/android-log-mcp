@@ -1,0 +1,6 @@
+### host 2026-10-10 04:02:16 +0800 device 2026-10-10_04:00:32.698663959_+0800
+$ adb shell ps -A -o PID,UID,NAME | grep -E "logtest|PID"
+  PID   UID NAME                       
+ 4871 10146 com.example.logtest
+ 4968 10146 com.example.logtest:remote
+### exit=0 end device 2026-10-10_04:00:33.832524869

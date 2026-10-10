@@ -1,0 +1,10 @@
+# reader latency (writer pid = background recorder, reader = separate 'android-log-mcp call' process following the same store)
+# reader: logcat_search after=<cursor> wait_ms=25000; then: adb shell log -t LOGMCP_LAT 'latency probe'
+reader returned -1.61 s relative to the moment the adb shell log command returned (negative = before)
+device emulator-5556 · times are device-local Asia/Kuching (+08:00) · date 2026-10-10
+filter parsed as: tag contains "LOGMCP_LAT"
+matched 1 new lines; showing oldest 1 (04:02:09.292–04:02:09.292)
+format: time level pid/tid process tag: message
+04:02:09.292 I 5107/5107 ?(uid shell) LOGMCP_LAT: latency probe
+more/wait: after="c1.ZW11bGF0b3ItNTU1Ng.ccb368e7.13367"
+

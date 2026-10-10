@@ -1,0 +1,14 @@
+$ android-log-mcp call logcat_status '{"device":"emulator-5556","package":"com.example.logtest"}'
+adb: ok (/home/box/android-sdk/platform-tools/adb, version 1.0.41)
+store: /home/box/.cache/android-log-mcp
+devices (1):
+  emulator-5556  device  Android_SDK_built_for_x86_64  android 10 (sdk 29)  tz Asia/Kuching (+08:00)
+    recorded by another android-log-mcp process (pid 79104)
+    device time now: 2026-10-10 03:08:21   recording since 2026-10-10 02:55:56   history from 2026-10-10 02:35:13 to 2026-10-10 03:08:11
+    stored 30,506 lines (7.8 MB)
+cursor (now, emulator-5556): c1.ZW11bGF0b3ItNTU1Ng.07a6d2d3.30506
+package com.example.logtest: installed (uid 10146)
+  running: pid 8076 com.example.logtest:remote (since 2026-10-10 03:07:42), pid 7815 com.example.logtest (since 2026-10-10 03:03:44), pid 6713 <pre-initialized> (since before recording), pid 7763 crash_dump64 (since before recording), pid 7765 com.example.logtest (since before recording)
+  recently dead: pid 8029 com.example.logtest:remote (03:07:04–03:07:40, died; crashed: see logcat_crashes id=cr22); pid 7736 com.example.logtest (03:02:30–03:02:52, died; crashed: see logcat_crashes id=cr20); pid 7182 com.example.logtest (02:59:15–03:01:33, died; crashed: see logcat_crashes id=cr18); pid 7182 com.example.logtest (?–02:59:15, pid reused; crashed: see logcat_crashes id=cr18); pid 6713 com.example.logtest (02:56:33–02:57:57, killed: stop com.example.logtest)
+
+[exit 0]

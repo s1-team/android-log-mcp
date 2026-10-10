@@ -1,0 +1,242 @@
+--------- beginning of main
+         1791572487.320052  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+--------- beginning of events
+         1791572487.475150  1000  4944  4971 I am_pss  : [5468,1000,com.android.settings,41564160,35737600,0,152457216,1,20,26]
+         1791572487.489801  1000  4944  4971 E memtrack: Couldn't load memtrack module
+         1791572487.490152  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+         1791572487.561853  1000  4944  4971 I am_pss  : [7149,10115,com.android.omadm.service,16252928,2945024,0,86040576,1,20,20]
+         1791572487.599047  1000  4944  4971 E memtrack: Couldn't load memtrack module
+         1791572487.601758  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+         1791572487.685271  1000  4944  4971 I am_pss  : [6219,10057,com.android.managedprovisioning,14323712,11317248,0,101187584,1,20,27]
+         1791572487.723522  1000  4944  4971 E memtrack: Couldn't load memtrack module
+         1791572487.724785  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+         1791572487.810046  1000  4944  4971 I am_pss  : [5951,10087,com.android.smspush,11840512,8978432,0,95670272,1,7,32]
+         1791572487.836686  1000  4944  4971 E memtrack: Couldn't load memtrack module
+         1791572487.837015  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+         1791572487.896878  1000  4944  4971 I am_pss  : [5405,10070,com.google.android.ext.services,21689344,13795328,0,144343040,1,6,22]
+         1791572487.938780  1000  4944  4971 E memtrack: Couldn't load memtrack module
+         1791572487.939348  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+         1791572488.051963  1000  4944  4971 I am_pss  : [5841,1000,com.android.emulator.multidisplay,12055552,8900608,0,100777984,1,0,30]
+         1791572488.080172  1000  4944  4971 E memtrack: Couldn't load memtrack module
+         1791572488.080658  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+         1791572488.152208  1000  4944  4971 I am_pss  : [5822,1001,com.android.ims.rcsservice,11931648,8663040,0,100089856,1,0,22]
+         1791572488.188611  1000  4944  4971 E memtrack: Couldn't load memtrack module
+         1791572488.189175  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+         1791572488.254119  1000  4944  4971 I am_pss  : [5765,1068,com.android.se,12163072,9256960,0,96366592,1,0,33]
+         1791572488.280668  1000  4944  4971 E memtrack: Couldn't load memtrack module
+         1791572488.281381  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+         1791572488.379261  1000  4944  4971 I am_pss  : [6394,1001,com.android.phone,35709952,28680192,0,151691264,1,0,34]
+         1791572488.430543  1000  4944  4971 E memtrack: Couldn't load memtrack module
+         1791572488.431264  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+         1791572488.678196  1000  4944  4971 I am_pss  : [5256,1073,com.google.android.networkstack,17461248,12410880,0,123031552,1,0,29]
+         1791572488.717977  1000  4944  4971 E memtrack: Couldn't load memtrack module
+         1791572488.718443  1000  4944  4971 W android.os.Debug: failed to get memory consumption info: -1
+         1791572488.732420 10110  5118  5118 W HeadsUpManagerPhone: onHeadsUpPinnedModeChanged
+         1791572488.803283  1000  4944  4971 I am_pss  : [4944,1000,system,148815872,135069696,0,305963008,1,0,52]
+         1791572489.578117 10110  5118  5397 I OpenGLRenderer: Davey! duration=859ms; Flags=0, IntendedVsync=1592515687992, Vsync=1592749021316, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=1592752811641, AnimationStart=1592753072315, PerformTraversalsStart=1592766352391, DrawStart=1593126964175, SyncQueued=1593163787830, SyncStart=1593169066017, IssueDrawCommandsStart=1593179238250, SwapBuffers=1593357842163, FrameCompleted=1593380521230, DequeueBufferDuration=4560000, QueueBufferDuration=8805000, 
+         1791572489.923329 10110  5118  5397 I OpenGLRenderer: Davey! duration=935ms; Flags=1, IntendedVsync=1592782354910, Vsync=1593249021558, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=1593261396308, AnimationStart=1593261542629, PerformTraversalsStart=1593467489413, DrawStart=1593650767384, SyncQueued=1593652014792, SyncStart=1593659404300, IssueDrawCommandsStart=1593663949306, SwapBuffers=1593703934436, FrameCompleted=1593725740233, DequeueBufferDuration=4455000, QueueBufferDuration=11139000, 
+         1791572489.907968  1000  4944  5324 I sysui_multi_action: [757,128,758,2,793,15047,794,6536,795,10263,796,10436,798,0,806,com.google.android.projection.gearhead,857,com.google.android.gms.availability,858,4,947,0,1395,6,1500,9902,1688,1,1745,2098068913]
+         1791572489.961554  1000  4944  5324 I notification_visibility: [0|com.google.android.projection.gearhead|10436|null|10111,0,15047,10263,0,0]
+         1791572489.981428  1000  4944  5324 I sysui_multi_action: [757,127,758,2]
+         1791572489.985204  1000  4944  5324 I notification_panel_hidden: 
+         1791572490.053552 10110  5118  5118 D StatusBar: disable<e i a s b h r c s > disable2<q i n >
+         1791572490.540663 10110  5118  5397 D EGL_emulation: eglMakeCurrent: 0x7ef7d3278680: ver 3 0 (tinfo 0x7ef7d3218280)
+         1791572490.598853  1000  1763  1799 D gralloc_ranchu: gralloc_alloc: Creating ashmem region of size 286720
+         1791572490.862679 10110  5118  5397 D EGL_emulation: eglMakeCurrent: 0x7ef7d3278680: ver 3 0 (tinfo 0x7ef7d3218280)
+         1791572490.961700  1000  1763  1799 D gralloc_ranchu: gralloc_alloc: Creating ashmem region of size 286720
+         1791572491.009714 10110  5118  5397 I OpenGLRenderer: Davey! duration=1194ms; Flags=1, IntendedVsync=1593582352785, Vsync=1593899019439, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=1593915265819, AnimationStart=1593915538310, PerformTraversalsStart=1593918524901, DrawStart=1594658523091, SyncQueued=1594659217256, SyncStart=1594694074197, IssueDrawCommandsStart=1594708904877, SwapBuffers=1594749170279, FrameCompleted=1594812189146, DequeueBufferDuration=22900000, QueueBufferDuration=4661000, 
+         1791572491.107522  1000  1763  1799 D gralloc_ranchu: gralloc_alloc: Creating ashmem region of size 286720
+--------- beginning of system
+         1791572491.717695  1000  4944  5324 I ActivityTaskManager: START u0 {flg=0x10000000 cmp=com.example.logtest/.MainActivity (has extras)} from uid 2000
+         1791572491.791640  1000  4944  5324 I am_new_intent: [0,119912369,5,com.example.logtest/.MainActivity,NULL,NULL,NULL,268435456]
+         1791572491.852899 10146  7182  7182 I am_on_top_resumed_lost_called: [0,com.example.logtest.MainActivity,pausing]
+         1791572491.884877 10146  7182  7182 I am_on_paused_called: [0,com.example.logtest.MainActivity,performPause]
+         1791572491.921855 10146  7182  7182 I LogTest : onResume
+         1791572491.933203 10146  7182  7182 I am_on_resume_called: [0,com.example.logtest.MainActivity,LIFECYCLER_RESUME_ACTIVITY]
+         1791572491.947420 10146  7182  7182 I am_on_top_resumed_gained_called: [0,com.example.logtest.MainActivity,topWhenResuming]
+         1791572491.983459  1000  4944  4966 W system_server: Long monitor contention with owner android.anim (4967) at void com.android.server.wm.WindowAnimator.animate(long)(WindowAnimator.java:141) waiters=0 in void com.android.server.wm.WindowManagerService$H.handleMessage(android.os.Message) for 101ms
+         1791572492.014424  1000  4944  4966 I dvm_lock_sample: [system_server,1,android.display,101,WindowManagerService.java,4876,void com.android.server.wm.WindowManagerService$H.handleMessage(android.os.Message),WindowAnimator.java,141,void com.android.server.wm.WindowAnimator.animate(long),20]
+         1791572492.018979  1000  4944  6181 I dvm_lock_sample: [system_server,0,Binder:4944_13,58,ActivityTaskManagerService.java,1655,void com.android.server.wm.ActivityTaskManagerService.activityIdle(android.os.IBinder, android.content.res.Configuration, boolean),WindowAnimator.java,141,void com.android.server.wm.WindowAnimator.animate(long),11]
+         1791572492.100578  1000  4944  4966 I ActivityManager: Killing 6219:com.android.managedprovisioning/u0a57 (adj 985): empty #17
+         1791572492.101450  1000  4944  4966 I am_kill : [0,6219,com.android.managedprovisioning,985,empty #17]
+         1791572492.308440 10146  7182  7182 I LogTest : trigger what=crash_caused pid=7182
+         1791572492.344430 10146  7182  7182 D AndroidRuntime: Shutting down VM
+--------- beginning of crash
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: FATAL EXCEPTION: main
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: Process: com.example.logtest, PID: 7182
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: java.lang.RuntimeException: LogTest wrapped crash
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	at com.example.logtest.Triggers.run(Triggers.java:22)
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	at com.example.logtest.MainActivity.lambda$onResume$1$com-example-logtest-MainActivity(MainActivity.java:42)
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	at com.example.logtest.MainActivity$$ExternalSyntheticLambda0.run(D8$$SyntheticClass:0)
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	at android.os.Handler.handleCallback(Handler.java:883)
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:100)
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:214)
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	at android.app.ActivityThread.main(ActivityThread.java:7356)
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: Caused by: java.lang.IllegalStateException: repo not ready
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	at com.example.logtest.Triggers$Repo.load(Triggers.java:53)
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	at com.example.logtest.Triggers.run(Triggers.java:21)
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	... 9 more
+         1791572492.461549  1000  4944  6181 I am_crash: [7182,0,com.example.logtest,816365126,java.lang.IllegalStateException,repo not ready,Triggers.java,53]
+         1791572492.503188  1000  4944  7692 I DropBoxManagerService: add tag=data_app_crash isTagEnabled=true flags=0x2
+         1791572492.505486  1000  4944  6181 W ActivityTaskManager:   Force finishing activity com.example.logtest/.MainActivity
+         1791572492.519761  1000  4944  6181 I am_finish_activity: [0,119912369,5,com.example.logtest/.MainActivity,force-crash]
+         1791572492.526882  1000  4944  6181 I am_focused_stack: [0,0,0,2,finishActivity adjustFocus]
+         1791572492.536740  1000  4944  6181 I wm_task_moved: [3,0,2147483647]
+         1791572492.548882  1000  4944  6181 I am_set_resumed_activity: [0,com.google.android.apps.nexuslauncher/.NexusLauncherActivity,finishActivity adjustFocus]
+         1791572492.552453  1000  4944  6181 I am_set_resumed_activity: [0,com.google.android.apps.nexuslauncher/.NexusLauncherActivity,finishActivity]
+         1791572492.574949  1000  4944  6181 W InputReader: Device has associated, but no associated display id.
+         1791572492.587822  1000  4944  6181 I am_pause_activity: [0,119912369,com.example.logtest/.MainActivity,userLeaving=false]
+         1791572492.668404  1000  4944  4966 I sysui_multi_action: [757,803,799,window_time_0,802,139]
+         1791572492.744171  1000  4944  4963 W Looper  : Slow dispatch took 156ms android.fg h=com.android.server.DropBoxManagerService$DropBoxManagerBroadcastHandler c=null m=1
+         1791572492.761432  1000  4944  5324 I am_proc_died: [0,6219,com.android.managedprovisioning,985,20]
+         1791572492.765128  1000  4944  5324 I am_uid_stopped: 10057
+         1791572492.577480  1000  4944  6181 I chatty  : uid=1000(system) Binder:4944_13 identical 8 lines
+         1791572492.578527  1000  4944  6181 W InputReader: Device has associated, but no associated display id.
+         1791572492.816798  root  4882  4882 I Zygote  : Process 6219 exited due to signal 9 (Killed)
+         1791572492.832434  1000  4944  4974 I libprocessgroup: Successfully killed process cgroup uid 10057 pid 6219 in 701ms
+         1791572492.874833  1000  4944  4966 W system_server: Long monitor contention with owner android.fg (4963) at int com.android.server.am.ActivityManagerService.broadcastIntent(android.app.IApplicationThread, android.content.Intent, java.lang.String, android.content.IIntentReceiver, int, java.lang.String, android.os.Bundle, java.lang.String[], int, android.os.Bundle, boolean, boolean, int)(ActivityManagerService.java:15557) waiters=1 in void com.android.server.am.ActivityManagerService$LocalService.updateCpuStats() for 108ms
+         1791572492.877766  1000  4944  4966 I dvm_lock_sample: [system_server,1,android.display,108,ActivityManagerService.java,18076,void com.android.server.am.ActivityManagerService$LocalService.updateCpuStats(),-,15557,int com.android.server.am.ActivityManagerService.broadcastIntent(android.app.IApplicationThread, android.content.Intent, java.lang.String, android.content.IIntentReceiver, int, java.lang.String, android.os.Bundle, java.lang.String[], int, android.os.Bundle, boolean, boolean, int),21]
+         1791572492.905215  1000  4944  6181 I sysui_multi_action: [757,316,758,4,759,-1]
+         1791572492.912114  1000  4944  5324 I dvm_lock_sample: [system_server,1,Binder:4944_6,13,ActivityTaskManagerService.java,2780,android.app.ActivityManager$StackInfo com.android.server.wm.ActivityTaskManagerService.getStackInfo(int, int),TaskChangeNotificationController.java,282,void com.android.server.wm.TaskChangeNotificationController.forAllRemoteListeners(com.android.server.wm.TaskChangeNotificationController$TaskStackConsumer, android.os.Message),2]
+         1791572492.931717 10146  7182  7182 I Process : Sending signal. PID: 7182 SIG: 9
+         1791572492.925467  1000  4944  4964 W Looper  : Slow dispatch took 187ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=null m=1
+         1791572492.981496  1000  4944  4964 W Looper  : Slow delivery took 217ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=null m=32
+         1791572493.037939  1000  4944  4966 W ActivityTaskManager: Activity top resumed state loss timeout for ActivityRecord{725b7b1 u0 com.example.logtest/.MainActivity t5 f}
+         1791572493.104188  1000  4944  4966 W ActivityTaskManager: Activity pause timeout for ActivityRecord{725b7b1 u0 com.example.logtest/.MainActivity t5 f}
+         1791572493.109970  1000  4944  4966 I am_add_to_stopping: [0,119912369,com.example.logtest/.MainActivity,finishCurrentActivityLocked]
+         1791572493.135538  1000  4944  4966 I am_set_resumed_activity: [0,com.google.android.apps.nexuslauncher/.NexusLauncherActivity,resumeTopActivityInnerLocked]
+         1791572493.162653  1000  4944  4966 W InputReader: Device has associated, but no associated display id.
+         1791572493.171700  1000  4944  4966 I am_resume_activity: [0,161434653,3,com.google.android.apps.nexuslauncher/.NexusLauncherActivity]
+         1791572493.164294  1000  4944  4966 I chatty  : uid=1000(system) android.display identical 8 lines
+         1791572493.164426  1000  4944  4966 W InputReader: Device has associated, but no associated display id.
+         1791572493.342255  1000  4944  5511 W system_server: Long monitor contention with owner android.display (4966) at void com.android.server.wm.ActivityStack$ActivityStackHandler.handleMessage(android.os.Message)(ActivityStack.java:447) waiters=1 in int com.android.server.wm.WindowManagerService.relayoutWindow(com.android.server.wm.Session, android.view.IWindow, int, android.view.WindowManager$LayoutParams, int, int, int, int, long, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.view.DisplayCutout$ParcelableWrapper, android.util.MergedConfiguration, android.view.SurfaceControl, android.view.InsetsState) for 156ms
+         1791572493.344004  1000  4944  5511 I dvm_lock_sample: [system_server,1,Binder:4944_8,156,WindowManagerService.java,1982,int com.android.server.wm.WindowManagerService.relayoutWindow(com.android.server.wm.Session, android.view.IWindow, int, android.view.WindowManager$LayoutParams, int, int, int, int, long, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.graphics.Rect, android.view.DisplayCutout$ParcelableWrapper, android.util.MergedConfiguration, android.view.SurfaceControl, android.view.InsetsState),ActivityStack.java,447,void com.android.server.wm.ActivityStack$ActivityStackHandler.handleMessage(android.os.Message),31]
+         1791572493.516900 10108  5353  5353 I am_on_restart_called: [0,com.google.android.apps.nexuslauncher.NexusLauncherActivity,performRestartActivity]
+         1791572493.609674  1000  4944  5511 W ActivityManager: Unable to start service Intent { act=com.android.launcher3.WINDOW_OVERLAY dat=app://com.google.android.apps.nexuslauncher:10108?v=9&cv=14 pkg=com.google.android.googlequicksearchbox } U=0: not found
+         1791572493.634727  1000  4944  4966 I sysui_multi_action: [757,803,799,window_time_0,802,1]
+         1791572493.640655 10108  5353  5353 I am_on_start_called: [0,com.google.android.apps.nexuslauncher.NexusLauncherActivity,handleStartActivity]
+         1791572493.675122 10108  5353  5353 I am_on_resume_called: [0,com.google.android.apps.nexuslauncher.NexusLauncherActivity,RESUME_ACTIVITY]
+         1791572493.675717 10108  5353  5353 I am_on_top_resumed_gained_called: [0,com.google.android.apps.nexuslauncher.NexusLauncherActivity,topWhenResuming]
+         1791572493.811109  1000  4944  5035 W InputDispatcher: channel 'c655f18 com.example.logtest/com.example.logtest.MainActivity (server)' ~ Consumer closed input channel or an error occurred.  events=0x9
+         1791572493.813519  1000  4944  5035 E InputDispatcher: channel 'c655f18 com.example.logtest/com.example.logtest.MainActivity (server)' ~ Channel is unrecoverably broken and will be disposed!
+         1791572493.905618  1000  4944  5158 I ActivityManager: Process com.example.logtest (pid 7182) has died: vis+99 TOP 
+         1791572493.906400  1000  4944  5158 I am_proc_died: [0,7182,com.example.logtest,199,2]
+         1791572494.059729  1000  1763  1799 D gralloc_ranchu: gralloc_alloc: Creating ashmem region of size 9334784
+         1791572494.111366  root  4882  4882 I Zygote  : Process 7182 exited due to signal 9 (Killed)
+         1791572494.154246  1000  4944  4974 I libprocessgroup: Successfully killed process cgroup uid 10146 pid 7182 in 243ms
+         1791572494.156959  1000  4944  6184 I WindowManager: WIN DEATH: Window{c655f18 u0 com.example.logtest/com.example.logtest.MainActivity}
+         1791572494.182957  1000  1763  1799 D gralloc_ranchu: gralloc_alloc: Creating ashmem region of size 9334784
+         1791572494.184670  1000  4944  6184 W InputDispatcher: Attempted to unregister already unregistered input channel 'c655f18 com.example.logtest/com.example.logtest.MainActivity (server)'
+         1791572494.195388  1000  1763  1799 D gralloc_ranchu: gralloc_alloc: Creating ashmem region of size 9334784
+         1791572494.217900  1000  4944  5158 W system_server: Long monitor contention with owner android.anim (4967) at void com.android.server.wm.WindowAnimator.animate(long)(WindowAnimator.java:141) waiters=2 in void com.android.server.wm.WindowProcessController.setThread(android.app.IApplicationThread) for 193ms
+         1791572494.220043  1000  4944  5158 I dvm_lock_sample: [system_server,0,Binder:4944_4,193,WindowProcessController.java,205,void com.android.server.wm.WindowProcessController.setThread(android.app.IApplicationThread),WindowAnimator.java,141,void com.android.server.wm.WindowAnimator.animate(long),38]
+         1791572494.223975  1000  4944  5572 W system_server: Long monitor contention with owner android.anim (4967) at void com.android.server.wm.WindowSurfacePlacer.lambda$new$0$WindowSurfacePlacer()(WindowSurfacePlacer.java:61) waiters=2 in void com.android.server.wm.Session.binderDied() for 163ms
+         1791572494.254270  1000  4944  4967 W system_server: Long monitor contention with owner Binder:4944_14 (6184) at void com.android.server.wm.WindowState$DeathRecipient.binderDied()(WindowState.java:2489) waiters=2 in void com.android.server.wm.WindowAnimator.lambda$new$1$WindowAnimator(long) for 113ms
+         1791572494.255094  1000  4944  4967 I dvm_lock_sample: [system_server,1,android.anim,113,WindowAnimator.java,96,void com.android.server.wm.WindowAnimator.lambda$new$1$WindowAnimator(long),WindowState.java,2489,void com.android.server.wm.WindowState$DeathRecipient.binderDied(),22]
+         1791572494.264248  1000  4944  5158 I am_uid_stopped: 10146
+         1791572494.296342  1000  4944  5572 I dvm_lock_sample: [system_server,0,Binder:4944_A,163,Session.java,146,void com.android.server.wm.Session.binderDied(),WindowSurfacePlacer.java,61,void com.android.server.wm.WindowSurfacePlacer.lambda$new$0$WindowSurfacePlacer(),32]
+         1791572494.462525 10108  5353  5977 D EGL_emulation: eglMakeCurrent: 0x7ef787e9f200: ver 3 0 (tinfo 0x7ef7d15f91e0)
+         1791572494.543266  1000  4944  5158 W InputReader: Device has associated, but no associated display id.
+         1791572494.596942  1000  4944  5158 I wm_task_removed: [5,removeAppToken: last token]
+         1791572494.626631  1000  4944  5158 I am_remove_task: [5,2]
+         1791572494.633011  1000  4944  5158 I wm_task_removed: [5,removeTask]
+         1791572494.641778  1000  4944  4980 I dvm_lock_sample: [system_server,1,PowerManagerService,13,MessageQueue.java,338,android.os.Message android.os.MessageQueue.next(),-,556,boolean android.os.MessageQueue.enqueueMessage(android.os.Message, long),2]
+         1791572494.546422  1000  4944  5158 I chatty  : uid=1000(system) Binder:4944_4 identical 8 lines
+         1791572494.546547  1000  4944  5158 W InputReader: Device has associated, but no associated display id.
+         1791572494.662283 10108  5353  5977 I OpenGLRenderer: Davey! duration=1039ms; Flags=1, IntendedVsync=1597352461345, Vsync=1597502461339, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=1597517151604, AnimationStart=1597517308928, PerformTraversalsStart=1597517316672, DrawStart=1598189016582, SyncQueued=1598249056176, SyncStart=1598275497734, IssueDrawCommandsStart=1598290308601, SwapBuffers=1598367370264, FrameCompleted=1598418322660, DequeueBufferDuration=2328000, QueueBufferDuration=11175000, 
+         1791572494.699972  1000  4944  5158 I wm_stack_removed: 2
+         1791572494.792849  1000  4944  4967 W system_server: Long monitor contention with owner Binder:4944_4 (5158) at void com.android.server.wm.ActivityTaskManagerService$LocalService.handleAppDied(com.android.server.wm.WindowProcessController, boolean, java.lang.Runnable)(ActivityTaskManagerService.java:6758) waiters=0 in void com.android.server.wm.WindowAnimator.lambda$new$1$WindowAnimator(long) for 368ms
+         1791572494.812129  1000  4944  4967 I dvm_lock_sample: [system_server,1,android.anim,368,WindowAnimator.java,96,void com.android.server.wm.WindowAnimator.lambda$new$1$WindowAnimator(long),ActivityTaskManagerService.java,6758,void com.android.server.wm.ActivityTaskManagerService$LocalService.handleAppDied(com.android.server.wm.WindowProcessController, boolean, java.lang.Runnable),73]
+         1791572495.030310  1000  4944  4964 W system_server: Long monitor contention with owner Binder:4944_4 (5158) at void com.android.server.am.ActivityManagerService$AppDeathRecipient.binderDied()(ActivityManagerService.java:1503) waiters=0 in void com.android.server.am.ActivityManagerService.dispatchUidsChanged() for 756ms
+         1791572495.032098  1000  4944  4964 I dvm_lock_sample: [system_server,1,android.ui,756,ActivityManagerService.java,3308,void com.android.server.am.ActivityManagerService.dispatchUidsChanged(),-,1503,void com.android.server.am.ActivityManagerService$AppDeathRecipient.binderDied(),100]
+         1791572495.040399  1000  4944  4966 W system_server: Long monitor contention with owner Binder:4944_4 (5158) at void com.android.server.am.ActivityManagerService$AppDeathRecipient.binderDied()(ActivityManagerService.java:1503) waiters=1 in void com.android.server.am.ActivityManagerService$LocalService.updateActivityUsageStats(android.content.ComponentName, int, int, android.os.IBinder, android.content.ComponentName) for 652ms
+         1791572495.043575  1000  4944  4964 W Looper  : Slow dispatch took 770ms android.ui h=com.android.server.am.ActivityManagerService$UiHandler c=null m=53
+         1791572495.081548  1000  4944  4966 I dvm_lock_sample: [system_server,1,android.display,652,ActivityManagerService.java,18092,void com.android.server.am.ActivityManagerService$LocalService.updateActivityUsageStats(android.content.ComponentName, int, int, android.os.IBinder, android.content.ComponentName),-,1503,void com.android.server.am.ActivityManagerService$AppDeathRecipient.binderDied(),100]
+         1791572495.083489  1000  4944  4966 W ActivityManager: setHasOverlayUi called on unknown pid: 7182
+         1791572495.331130  1000  4944  4944 W ActivityManager: Unable to start service Intent { act=android.service.appprediction.AppPredictionService cmp=com.google.android.as/com.google.android.apps.miphone.aiai.app.AiAiPredictionService } U=0: not found
+         1791572495.348255  1000  4944  4944 W RemoteAppPredictionService: could not bind to Intent { act=android.service.appprediction.AppPredictionService cmp=com.google.android.as/com.google.android.apps.miphone.aiai.app.AiAiPredictionService } using flags 67108865
+         1791572495.349394  1000  4944  4944 W Looper  : Slow dispatch took 179ms main h=android.os.Handler c=<recycled PooledLambda@258a6c5> m=0
+         1791572495.537730  1000  4944  4964 W Looper  : Drained
+         1791572495.647394  1000  4944  4980 I dvm_lock_sample: [system_server,1,PowerManagerService,27,MessageQueue.java,338,android.os.Message android.os.MessageQueue.next(),-,556,boolean android.os.MessageQueue.enqueueMessage(android.os.Message, long),5]
+         1791572495.770493  1000  4944  4944 I notification_enqueue: [10108,5353,com.google.android.apps.nexuslauncher,10436,NULL,0,Notification(channel=com.google.android.gms.availability pri=0 contentView=null vibrate=null sound=null tick defaults=0x0 flags=0x110 color=0x00000000 vis=PRIVATE),1]
+         1791572495.974415  1000  4944  4944 I sysui_multi_action: [757,1501,758,1,793,481873,794,12574,795,217,796,10436,806,com.google.android.apps.nexuslauncher,857,com.google.android.gms.availability,858,4,947,0,1500,0,1688,1,1745,2098068913]
+         1791572495.987688  1000  4944  4944 I sysui_multi_action: [757,804,799,note_interruptive,801,0,802,1]
+         1791572495.992930  1000  4944  4944 I sysui_multi_action: [757,199,758,1,759,2,793,481892,794,12593,795,236,796,10436,806,com.google.android.apps.nexuslauncher,857,com.google.android.gms.availability,858,4,947,0,1500,19,1688,1,1745,2098068913]
+         1791572495.995291  1000  4944  4944 I notification_alert: [0|com.google.android.apps.nexuslauncher|10436|null|10108,0,1,0]
+         1791572496.009636  1000  4944  4944 W Looper  : Slow dispatch took 136ms main h=com.android.server.notification.NotificationManagerService$WorkerHandler c=com.android.server.notification.NotificationManagerService$PostNotificationRunnable@496bbe6 m=0
+         1791572496.090136  1000  4944  4944 I notification_enqueue: [10108,5353,com.google.android.apps.nexuslauncher,10436,NULL,0,Notification(channel=com.google.android.gms.availability pri=0 contentView=null vibrate=null sound=null tick defaults=0x0 flags=0x110 color=0x00000000 vis=PRIVATE),1]
+         1791572496.147853 10110  5118  7697 W MediaPlayer: Couldn't open content://0@settings/system/notification_sound_cache
+         1791572496.147853 10110  5118  7697 W MediaPlayer: java.io.FileNotFoundException: open failed: ENOENT (No such file or directory)
+         1791572496.147853 10110  5118  7697 W MediaPlayer: 	at android.database.DatabaseUtils.readExceptionWithFileNotFoundExceptionFromParcel(DatabaseUtils.java:149)
+         1791572496.147853 10110  5118  7697 W MediaPlayer: 	at android.content.ContentProviderProxy.openTypedAssetFile(ContentProviderNative.java:705)
+         1791572496.147853 10110  5118  7697 W MediaPlayer: 	at android.content.ContentResolver.openTypedAssetFileDescriptor(ContentResolver.java:1687)
+         1791572496.147853 10110  5118  7697 W MediaPlayer: 	at android.content.ContentResolver.openAssetFileDescriptor(ContentResolver.java:1503)
+         1791572496.147853 10110  5118  7697 W MediaPlayer: 	at android.content.ContentResolver.openAssetFileDescriptor(ContentResolver.java:1420)
+         1791572496.147853 10110  5118  7697 W MediaPlayer: 	at android.media.MediaPlayer.attemptDataSource(MediaPlayer.java:1101)
+         1791572496.147853 10110  5118  7697 W MediaPlayer: 	at android.media.MediaPlayer.setDataSource(MediaPlayer.java:1064)
+         1791572496.147853 10110  5118  7697 W MediaPlayer: 	at android.media.MediaPlayer.setDataSource(MediaPlayer.java:1001)
+         1791572496.147853 10110  5118  7697 W MediaPlayer: 	at com.android.systemui.media.NotificationPlayer$CreationAndCompletionThread.run(NotificationPlayer.java:102)
+         1791572496.149073 10110  5118  7697 W MediaPlayer: Couldn't open null uri
+         1791572496.149073 10110  5118  7697 W MediaPlayer: java.lang.NullPointerException: uri
+         1791572496.149073 10110  5118  7697 W MediaPlayer: 	at com.android.internal.util.Preconditions.checkNotNull(Preconditions.java:133)
+         1791572496.149073 10110  5118  7697 W MediaPlayer: 	at android.content.ContentResolver.openAssetFileDescriptor(ContentResolver.java:1477)
+         1791572496.149073 10110  5118  7697 W MediaPlayer: 	at android.content.ContentResolver.openAssetFileDescriptor(ContentResolver.java:1420)
+         1791572496.149073 10110  5118  7697 W MediaPlayer: 	at android.media.MediaPlayer.attemptDataSource(MediaPlayer.java:1101)
+         1791572496.149073 10110  5118  7697 W MediaPlayer: 	at android.media.MediaPlayer.setDataSource(MediaPlayer.java:1066)
+         1791572496.149073 10110  5118  7697 W MediaPlayer: 	at android.media.MediaPlayer.setDataSource(MediaPlayer.java:1001)
+         1791572496.149073 10110  5118  7697 W MediaPlayer: 	at com.android.systemui.media.NotificationPlayer$CreationAndCompletionThread.run(NotificationPlayer.java:102)
+         1791572496.186286 media  4885  4885 E MediaPlayerService: Couldn't open fd for content://settings/system/notification_sound
+         1791572496.188574 10110  5118  7697 E MediaPlayerNative: Unable to create media player
+         1791572496.194744 10110  5118  7697 V MediaPlayer: resetDrmState:  mDrmInfo=null mDrmProvisioningThread=null mPrepareDrmInProgress=false mActiveDrmScheme=false
+         1791572496.195418 10110  5118  7697 V MediaPlayer: cleanDrmObj: mDrmObj=null mDrmSessionId=null
+         1791572496.220974 10110  5118  7697 W RingtonePlayer: error loading sound for content://settings/system/notification_sound
+         1791572496.220974 10110  5118  7697 W RingtonePlayer: java.io.IOException: setDataSource failed.: status=0x80000000
+         1791572496.220974 10110  5118  7697 W RingtonePlayer: 	at android.media.MediaPlayer.nativeSetDataSource(Native Method)
+         1791572496.220974 10110  5118  7697 W RingtonePlayer: 	at android.media.MediaPlayer.setDataSource(MediaPlayer.java:1173)
+         1791572496.220974 10110  5118  7697 W RingtonePlayer: 	at android.media.MediaPlayer.setDataSource(MediaPlayer.java:1160)
+         1791572496.220974 10110  5118  7697 W RingtonePlayer: 	at android.media.MediaPlayer.setDataSource(MediaPlayer.java:1069)
+         1791572496.220974 10110  5118  7697 W RingtonePlayer: 	at android.media.MediaPlayer.setDataSource(MediaPlayer.java:1001)
+         1791572496.220974 10110  5118  7697 W RingtonePlayer: 	at com.android.systemui.media.NotificationPlayer$CreationAndCompletionThread.run(NotificationPlayer.java:102)
+         1791572496.240998  1000  4944  4944 E NotificationService: Muting recently noisy 0|com.google.android.apps.nexuslauncher|10436|null|10108
+         1791572496.410790 10110  5118  5118 I sysui_multi_action: [757,803,799,note_peek,802,1]
+         1791572496.414853 10110  5118  5118 W HeadsUpManagerPhone: onHeadsUpPinnedModeChanged
+         1791572496.484990 10110  5118  5118 D StatusBar: disable<e i a s b h r c s > disable2<q i n >
+         1791572496.485271  1000  4944  5572 I sysui_multi_action: [757,127,758,1]
+         1791572496.493627  1000  4944  5572 I sysui_multi_action: [757,804,799,note_load,801,1,802,1]
+         1791572496.498011  1000  4944  5572 I notification_panel_revealed: 1
+         1791572496.721779 10110  5118  5118 I Choreographer: Skipped 33 frames!  The application may be doing too much work on its main thread.
+         1791572497.254477 10110  5118  5397 I OpenGLRenderer: Davey! duration=1085ms; Flags=1, IntendedVsync=1599968401748, Vsync=1600518401726, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=1600526567104, AnimationStart=1600526734884, PerformTraversalsStart=1600539804936, DrawStart=1600858136714, SyncQueued=1600895093560, SyncStart=1600898310814, IssueDrawCommandsStart=1600901426408, SwapBuffers=1601021373970, FrameCompleted=1601057015239, DequeueBufferDuration=10553000, QueueBufferDuration=14754000, 
+         1791572497.373781 10110  5118  7699 I dvm_lock_sample: [com.android.systemui,0,AsyncTask #24,78,AssetManager.java,1062,void android.content.res.AssetManager.applyStyle(long, int, int, android.content.res.XmlBlock$Parser, int[], long, long),-,504,boolean android.content.res.AssetManager.getResourceValue(int, int, android.util.TypedValue, boolean),15]
+         1791572497.473447 10110  5118  5397 D EGL_emulation: eglMakeCurrent: 0x7ef7d3278680: ver 3 0 (tinfo 0x7ef7d3218280)
+         1791572497.514068  1000  1763  1799 D gralloc_ranchu: gralloc_alloc: Creating ashmem region of size 9334784
+         1791572497.643837 10110  5118  5397 D EGL_emulation: eglMakeCurrent: 0x7ef7d3278680: ver 3 0 (tinfo 0x7ef7d3218280)
+         1791572497.720759  1000  1763  1799 D gralloc_ranchu: gralloc_alloc: Creating ashmem region of size 9334784
+         1791572497.740288 10110  5118  5397 I OpenGLRenderer: Davey! duration=760ms; Flags=1, IntendedVsync=1600765382365, Vsync=1600965382357, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=1600975049283, AnimationStart=1600975210100, PerformTraversalsStart=1601095235980, DrawStart=1601427390157, SyncQueued=1601437705034, SyncStart=1601455194290, IssueDrawCommandsStart=1601457661795, SwapBuffers=1601512917763, FrameCompleted=1601543218953, DequeueBufferDuration=14559000, QueueBufferDuration=1451000, 
+         1791572497.900810  1000  4944  6181 I sysui_multi_action: [757,128,758,1,793,483799,794,0,795,1967,796,10436,798,0,806,com.google.android.apps.nexuslauncher,857,com.google.android.gms.availability,858,4,947,0,1395,6,1500,1967,1688,1,1745,2098068913]
+         1791572497.903913  1000  4944  6181 I sysui_multi_action: [757,804,799,note_freshness,801,1967,802,1]
+         1791572497.905554  1000  4944  6181 I notification_visibility: [0|com.google.android.apps.nexuslauncher|10436|null|10108,1,483799,1967,0,0]
+         1791572498.119982  1000  1763  1799 D gralloc_ranchu: gralloc_alloc: Creating ashmem region of size 9334784
+         1791572498.124416  1000  4944  5756 E TaskPersister: File error accessing recents directory (directory doesn't exist?).
+         1791572502.883611 10110  5118  5118 W HeadsUpManagerPhone: onHeadsUpPinnedModeChanged
+         1791572503.527269  1000  4944  6181 I sysui_multi_action: [757,128,758,2,793,489424,794,5625,795,7592,796,10436,798,0,806,com.google.android.apps.nexuslauncher,857,com.google.android.gms.availability,858,4,947,0,1395,6,1500,7592,1688,1,1745,2098068913]
+         1791572503.538938  1000  4944  6181 I notification_visibility: [0|com.google.android.apps.nexuslauncher|10436|null|10108,0,489424,7592,0,0]
+         1791572503.573403  1000  4944  6181 I sysui_multi_action: [757,127,758,2]
+         1791572503.574805  1000  4944  6181 I notification_panel_hidden: 
+         1791572503.708029 10110  5118  5118 D StatusBar: disable<e i a s b h r c s > disable2<q i n >
+         1791572503.937620 10110  5118  5397 D EGL_emulation: eglMakeCurrent: 0x7ef7d3278680: ver 3 0 (tinfo 0x7ef7d3218280)
+         1791572503.990237  1000  1763  1799 D gralloc_ranchu: gralloc_alloc: Creating ashmem region of size 286720
+         1791572504.087924  1000  4944  4966 I dvm_lock_sample: [system_server,1,android.display,13,WindowManagerService.java,4876,void com.android.server.wm.WindowManagerService$H.handleMessage(android.os.Message),-,1888,void com.android.server.wm.WindowManagerService.setInsetsWindow(com.android.server.wm.Session, android.view.IWindow, int, android.graphics.Rect, android.graphics.Rect, android.graphics.Region),2]
+         1791572504.175361 10110  5118  5397 D EGL_emulation: eglMakeCurrent: 0x7ef7d3278680: ver 3 0 (tinfo 0x7ef7d3218280)
+         1791572504.259620  1000  1763  1799 D gralloc_ranchu: gralloc_alloc: Creating ashmem region of size 286720
+         1791572504.279695 10110  5118  5397 I OpenGLRenderer: Davey! duration=809ms; Flags=1, IntendedVsync=1607232156144, Vsync=1607532156132, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=1607547596069, AnimationStart=1607547763422, PerformTraversalsStart=1607553247969, DrawStart=1607974962396, SyncQueued=1607975615272, SyncStart=1608015305851, IssueDrawCommandsStart=1608028307402, SwapBuffers=1608056665026, FrameCompleted=1608081610529, DequeueBufferDuration=12508000, QueueBufferDuration=3520000, 
+         1791572504.349906  1000  1763  1799 D gralloc_ranchu: gralloc_alloc: Creating ashmem region of size 286720
+         1791572505.859556  root  1821  1821 E wifi_forwarder: RemoteConnection failed to initialize: RemoteConnection failed to open pipe
+         1791572505.878461  root  4886  6802 I netd    : trafficSwapActiveStatsMap() <74.03ms>
+         1791572505.923577  root  4886  6802 I netd    : tetherGetStats() <29.00ms>
+         1791572505.943683  1000  4944  4977 I service_manager_slow: [12,isub]
+         1791572507.107847  root  4886  6802 I netd    : firewallEnableChildChain(2, "false") <0.62ms>
+         1791572513.670305  root  1800  1800 E netmgr  : Failed to open QEMU pipe 'qemud:network': Invalid argument
+         1791572520.041380 10110  5118  5118 D KeyguardClockSwitch: Updating clock: 3\356\270\20102

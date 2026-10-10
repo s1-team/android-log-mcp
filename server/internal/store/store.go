@@ -1,0 +1,881 @@
+// Package store keeps per-device logcat records in append-only JSONL segment
+// files under <base>/<serial>/ plus an in-memory window of recent records.
+//
+// One process per device directory is the writer (holds writer.lock); other
+// processes open the same directory as followers and tail the files. This
+// lets several MCP stdio servers share one recording without a daemon.
+package store
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"runtime"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/s1crab/android-log-mcp/server/internal/logcat"
+	"github.com/s1crab/android-log-mcp/server/internal/model"
+)
+
+// Config controls sizes and retention.
+type Config struct {
+	SegmentBytes int64         // rotate segments at this size (default 16 MiB)
+	MaxBytes     int64         // per-device cap (default 512 MiB)
+	MaxAge       time.Duration // per-device age cap (default 7 days)
+	MemRecords   int           // in-memory window (default 100k)
+}
+
+func (c *Config) defaults() {
+	if c.SegmentBytes <= 0 {
+		c.SegmentBytes = 16 << 20
+	}
+	if c.MaxBytes <= 0 {
+		c.MaxBytes = 512 << 20
+	}
+	if c.MaxAge <= 0 {
+		c.MaxAge = 7 * 24 * time.Hour
+	}
+	if c.MemRecords <= 0 {
+		c.MemRecords = 100_000
+	}
+}
+
+type segment struct {
+	first uint64
+	path  string
+	size  int64
+}
+
+// Store is one device's log store.
+type Store struct {
+	Dir    string
+	Serial string
+	cfg    Config
+
+	mu      sync.RWMutex
+	writer  bool
+	lockF   *os.File
+	mem     []*model.Record // ascending seq, contiguous
+	lastSeq uint64
+	segs    []segment
+	cur     *os.File
+	curW    *bufio.Writer
+	curSize int64
+	meta    Meta
+	metaMod time.Time
+	dirty   bool
+	notify  chan struct{}
+
+	// follower tail state
+	tailSeg string
+	tailOff int64
+
+	// small cache of decoded on-disk segments
+	cacheMu sync.Mutex
+	cache   map[string][]*model.Record
+	cacheQ  []string
+	closed  bool
+}
+
+// SanitizeSerial makes a serial safe as a directory name.
+func SanitizeSerial(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.' {
+			b.WriteRune(r)
+		} else {
+			fmt.Fprintf(&b, "_%02x", r)
+		}
+	}
+	return b.String()
+}
+
+// Open opens (creating if needed) the store for serial under base. It
+// becomes the writer if it can take the lock, else a follower.
+func Open(base, serial string, cfg Config) (*Store, error) {
+	cfg.defaults()
+	dir := filepath.Join(base, SanitizeSerial(serial))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, err
+	}
+	s := &Store{Dir: dir, Serial: serial, cfg: cfg, notify: make(chan struct{}), cache: map[string][]*model.Record{}}
+	s.meta.Serial = serial
+	s.loadMeta()
+	if f, ok := tryLock(filepath.Join(dir, "writer.lock")); ok {
+		s.writer = true
+		s.lockF = f
+	}
+	if err := s.loadSegments(); err != nil {
+		return nil, err
+	}
+	if s.writer {
+		s.prune()
+	}
+	return s, nil
+}
+
+// OpenReadOnly opens an existing device directory without ever writing.
+func OpenReadOnly(dir string, cfg Config) (*Store, error) {
+	cfg.defaults()
+	s := &Store{Dir: dir, cfg: cfg, notify: make(chan struct{}), cache: map[string][]*model.Record{}}
+	s.loadMeta()
+	s.Serial = s.meta.Serial
+	if err := s.loadSegments(); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// IsWriter reports whether this process owns the device directory.
+func (s *Store) IsWriter() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.writer
+}
+
+// TryPromote attempts to become the writer (e.g. after the previous writer exited).
+func (s *Store) TryPromote() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.writer {
+		return true
+	}
+	f, ok := tryLock(filepath.Join(s.Dir, "writer.lock"))
+	if !ok {
+		return false
+	}
+	s.writer = true
+	s.lockF = f
+	s.mu.Unlock()
+	s.Refresh() // catch up with whatever the old writer flushed
+	s.mu.Lock()
+	s.loadMetaLocked()
+	return true
+}
+
+func (s *Store) loadMeta() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.loadMetaLocked()
+}
+
+func (s *Store) loadMetaLocked() {
+	p := filepath.Join(s.Dir, "meta.json")
+	st, err := os.Stat(p)
+	if err != nil {
+		return
+	}
+	if !st.ModTime().After(s.metaMod) && !s.metaMod.IsZero() {
+		return
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return
+	}
+	var m Meta
+	if json.Unmarshal(b, &m) == nil {
+		serial := s.meta.Serial
+		s.meta = m
+		if s.meta.Serial == "" {
+			s.meta.Serial = serial
+		}
+		s.metaMod = st.ModTime()
+	}
+}
+
+// Meta returns a copy of the metadata.
+func (s *Store) Meta() Meta {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	m := s.meta
+	m.Sessions = append([]Session(nil), m.Sessions...)
+	m.Gaps = append([]Gap(nil), m.Gaps...)
+	return m
+}
+
+// UpdateMeta mutates metadata (writer only) and persists it.
+func (s *Store) UpdateMeta(fn func(m *Meta)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	fn(&s.meta)
+	if s.writer {
+		s.saveMetaLocked()
+	}
+}
+
+func (s *Store) saveMetaLocked() {
+	b, _ := json.MarshalIndent(&s.meta, "", " ")
+	tmp := filepath.Join(s.Dir, "meta.json.tmp")
+	if os.WriteFile(tmp, b, 0o644) == nil {
+		os.Rename(tmp, filepath.Join(s.Dir, "meta.json"))
+	}
+	s.dirty = false
+}
+
+func segName(first uint64) string { return fmt.Sprintf("seg-%020d.jsonl", first) }
+
+func (s *Store) listSegments() ([]segment, error) {
+	ents, err := os.ReadDir(s.Dir)
+	if err != nil {
+		return nil, err
+	}
+	var segs []segment
+	for _, e := range ents {
+		n := e.Name()
+		if !strings.HasPrefix(n, "seg-") || !strings.HasSuffix(n, ".jsonl") {
+			continue
+		}
+		first, err := strconv.ParseUint(strings.TrimSuffix(strings.TrimPrefix(n, "seg-"), ".jsonl"), 10, 64)
+		if err != nil {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		segs = append(segs, segment{first: first, path: filepath.Join(s.Dir, n), size: info.Size()})
+	}
+	sort.Slice(segs, func(i, j int) bool { return segs[i].first < segs[j].first })
+	return segs, nil
+}
+
+// loadSegments indexes segment files and fills the memory window from the tail.
+func (s *Store) loadSegments() error {
+	segs, err := s.listSegments()
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.segs = segs
+	if len(segs) == 0 {
+		return nil
+	}
+	if s.writer {
+		// Repair a torn last line left by a crash.
+		last := segs[len(segs)-1]
+		if err := truncateTorn(last.path); err == nil {
+			if st, err := os.Stat(last.path); err == nil {
+				s.segs[len(s.segs)-1].size = st.Size()
+			}
+		}
+	}
+	var mem []*model.Record
+	for i := len(segs) - 1; i >= 0 && len(mem) < s.cfg.MemRecords; i-- {
+		recs, end, err := readSegment(segs[i].path, 0)
+		if err != nil {
+			continue
+		}
+		if i == len(segs)-1 {
+			s.tailSeg, s.tailOff = segs[i].path, end
+		}
+		mem = append(recs, mem...)
+	}
+	mem = contiguousTail(mem)
+	if len(mem) > s.cfg.MemRecords {
+		mem = mem[len(mem)-s.cfg.MemRecords:]
+	}
+	s.mem = mem
+	if len(mem) > 0 {
+		s.lastSeq = mem[len(mem)-1].Seq
+	}
+	return nil
+}
+
+// contiguousTail keeps the longest suffix whose seqs increase by exactly 1.
+func contiguousTail(m []*model.Record) []*model.Record {
+	for i := len(m) - 1; i > 0; i-- {
+		if m[i].Seq != m[i-1].Seq+1 {
+			return m[i:]
+		}
+	}
+	return m
+}
+
+func truncateTorn(path string) error {
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil || st.Size() == 0 {
+		return err
+	}
+	// scan back for the last newline
+	const chunk = 64 << 10
+	end := st.Size()
+	buf := make([]byte, chunk)
+	for pos := end; pos > 0; {
+		n := int64(chunk)
+		if pos < n {
+			n = pos
+		}
+		pos -= n
+		if _, err := f.ReadAt(buf[:n], pos); err != nil && err != io.EOF {
+			return err
+		}
+		if i := bytes.LastIndexByte(buf[:n], '\n'); i >= 0 {
+			if pos+int64(i)+1 != end {
+				return f.Truncate(pos + int64(i) + 1)
+			}
+			return nil
+		}
+	}
+	return f.Truncate(0)
+}
+
+// readSegment decodes complete lines from offset; returns records and the
+// offset just past the last complete line.
+func readSegment(path string, off int64) ([]*model.Record, int64, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, off, err
+	}
+	defer f.Close()
+	if _, err := f.Seek(off, io.SeekStart); err != nil {
+		return nil, off, err
+	}
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return nil, off, err
+	}
+	last := bytes.LastIndexByte(data, '\n')
+	if last < 0 {
+		return nil, off, nil
+	}
+	data = data[:last+1]
+	recs := make([]*model.Record, 0, len(data)/180)
+	for len(data) > 0 {
+		i := bytes.IndexByte(data, '\n')
+		line := data[:i]
+		data = data[i+1:]
+		if len(line) == 0 {
+			continue
+		}
+		r := new(model.Record)
+		if json.Unmarshal(line, r) == nil {
+			// records written before printable-unescaping existed
+			r.Msg = logcat.UnescapePrintable(r.Msg)
+			recs = append(recs, r)
+		}
+	}
+	return recs, off + int64(last) + 1, nil
+}
+
+// LastSeq is the newest sequence number (0 = empty).
+func (s *Store) LastSeq() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.lastSeq
+}
+
+// FirstSeq is the oldest sequence still stored (0 = empty).
+func (s *Store) FirstSeq() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.segs) > 0 {
+		return max(s.segs[0].first, 1)
+	}
+	if len(s.mem) > 0 {
+		return s.mem[0].Seq
+	}
+	return 0
+}
+
+// Append assigns sequence numbers and persists records (writer only).
+func (s *Store) Append(recs []*model.Record) error {
+	if len(recs) == 0 {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.writer {
+		return errors.New("store: not the writer")
+	}
+	for _, r := range recs {
+		s.lastSeq++
+		r.Seq = s.lastSeq
+		if s.cur == nil || s.curSize >= s.cfg.SegmentBytes {
+			if err := s.rotateLocked(r.Seq); err != nil {
+				return err
+			}
+		}
+		b, err := json.Marshal(r)
+		if err != nil {
+			return err
+		}
+		b = append(b, '\n')
+		n, err := s.curW.Write(b)
+		s.curSize += int64(n)
+		if err != nil {
+			return err
+		}
+		s.mem = append(s.mem, r)
+		if r.TimeNs > s.meta.LastTimeNs {
+			s.meta.LastTimeNs = r.TimeNs
+		}
+	}
+	s.segs[len(s.segs)-1].size = s.curSize
+	// Make every batch visible to follower processes right away (the
+	// recorder appends ~every 100 ms; meta.json is saved by Flush, ~2/s).
+	if err := s.curW.Flush(); err != nil {
+		return err
+	}
+	s.meta.IngestHostNs = time.Now().UnixNano()
+	if len(s.mem) > s.cfg.MemRecords+s.cfg.MemRecords/4 {
+		drop := len(s.mem) - s.cfg.MemRecords
+		s.mem = append([]*model.Record(nil), s.mem[drop:]...)
+	}
+	s.dirty = true
+	close(s.notify)
+	s.notify = make(chan struct{})
+	return nil
+}
+
+func (s *Store) rotateLocked(first uint64) error {
+	if s.cur != nil {
+		s.curW.Flush()
+		s.cur.Close()
+		s.cur = nil
+		if n := len(s.segs); n > 0 {
+			s.segs[n-1].size = s.curSize
+		}
+	}
+	// Reuse the last segment if it is not full (e.g. after restart).
+	if n := len(s.segs); n > 0 && s.segs[n-1].size < s.cfg.SegmentBytes && s.cur == nil && s.curSize == 0 {
+		f, err := os.OpenFile(s.segs[n-1].path, os.O_WRONLY|os.O_APPEND, 0o644)
+		if err == nil {
+			s.cur, s.curW, s.curSize = f, bufio.NewWriterSize(f, 256<<10), s.segs[n-1].size
+			if s.curSize < s.cfg.SegmentBytes {
+				return nil
+			}
+			f.Close()
+			s.cur = nil
+		}
+	}
+	p := filepath.Join(s.Dir, segName(first))
+	f, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return err
+	}
+	s.cur, s.curW, s.curSize = f, bufio.NewWriterSize(f, 256<<10), 0
+	s.segs = append(s.segs, segment{first: first, path: p})
+	s.pruneLocked()
+	return nil
+}
+
+// Flush writes buffered data and metadata (writer only). Call periodically.
+func (s *Store) Flush() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.writer {
+		return
+	}
+	if s.curW != nil {
+		s.curW.Flush()
+	}
+	if s.dirty {
+		s.meta.LastSeenHostNs = time.Now().UnixNano()
+		s.saveMetaLocked()
+	}
+	if runtime.GOOS == "windows" && s.lockF != nil {
+		now := time.Now()
+		os.Chtimes(s.lockF.Name(), now, now)
+	}
+}
+
+// Close flushes and releases the writer lock.
+func (s *Store) Close() {
+	s.Flush()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cur != nil {
+		s.cur.Close()
+		s.cur = nil
+	}
+	if s.lockF != nil {
+		name := s.lockF.Name()
+		s.lockF.Close()
+		if runtime.GOOS == "windows" {
+			os.Remove(name)
+		}
+		s.lockF = nil
+	}
+	s.writer = false
+	s.closed = true
+}
+
+func (s *Store) prune() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pruneLocked()
+}
+
+// pruneLocked deletes whole oldest segments beyond MaxBytes / MaxAge.
+// The active (last) segment is never deleted.
+func (s *Store) pruneLocked() {
+	var total int64
+	for _, sg := range s.segs {
+		total += sg.size
+	}
+	cutoff := time.Now().Add(-s.cfg.MaxAge)
+	for len(s.segs) > 1 {
+		old := s.segs[0]
+		st, err := os.Stat(old.path)
+		tooOld := err == nil && st.ModTime().Before(cutoff)
+		if total <= s.cfg.MaxBytes && !tooOld {
+			break
+		}
+		os.Remove(old.path)
+		total -= old.size
+		s.segs = s.segs[1:]
+		s.dropCache(old.path)
+	}
+	if len(s.segs) > 0 && len(s.mem) > 0 && s.mem[0].Seq < s.segs[0].first {
+		k := s.segs[0].first - s.mem[0].Seq
+		if k >= uint64(len(s.mem)) {
+			s.mem = nil
+		} else {
+			s.mem = append([]*model.Record(nil), s.mem[k:]...)
+		}
+	}
+}
+
+func (s *Store) dropCache(p string) {
+	s.cacheMu.Lock()
+	delete(s.cache, p)
+	s.cacheMu.Unlock()
+}
+
+// Refresh (followers) picks up records appended by the writer process.
+func (s *Store) Refresh() {
+	s.mu.RLock()
+	w := s.writer
+	s.mu.RUnlock()
+	if w {
+		return
+	}
+	segs, err := s.listSegments()
+	if err != nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.loadMetaLocked()
+	s.segs = segs
+	if len(segs) == 0 {
+		return
+	}
+	var added bool
+	start := -1
+	for i, sg := range segs {
+		if sg.path == s.tailSeg {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		start = 0
+		for i, sg := range segs {
+			if sg.first <= s.lastSeq+1 {
+				start = i
+			}
+		}
+	}
+	for i := start; i < len(segs); i++ {
+		off := int64(0)
+		if segs[i].path == s.tailSeg {
+			off = s.tailOff
+		}
+		recs, end, err := readSegment(segs[i].path, off)
+		if err != nil {
+			continue
+		}
+		s.tailSeg, s.tailOff = segs[i].path, end
+		for _, r := range recs {
+			if r.Seq <= s.lastSeq {
+				continue
+			}
+			if len(s.mem) > 0 && r.Seq != s.lastSeq+1 {
+				s.mem = nil // discontinuity: restart window
+			}
+			s.mem = append(s.mem, r)
+			s.lastSeq = r.Seq
+			added = true
+		}
+	}
+	if len(s.mem) > s.cfg.MemRecords+s.cfg.MemRecords/4 {
+		s.mem = append([]*model.Record(nil), s.mem[len(s.mem)-s.cfg.MemRecords:]...)
+	}
+	if added {
+		close(s.notify)
+		s.notify = make(chan struct{})
+	}
+}
+
+// Wait blocks until a record newer than afterSeq exists, ctx ends, or timeout.
+func (s *Store) Wait(ctx context.Context, afterSeq uint64, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for {
+		s.Refresh()
+		s.mu.RLock()
+		last, ch, w := s.lastSeq, s.notify, s.writer
+		s.mu.RUnlock()
+		if last > afterSeq {
+			return true
+		}
+		left := time.Until(deadline)
+		if left <= 0 {
+			return false
+		}
+		step := left
+		if !w && step > 300*time.Millisecond {
+			step = 300 * time.Millisecond
+		}
+		t := time.NewTimer(step)
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return false
+		case <-ch:
+		case <-t.C:
+		}
+		t.Stop()
+	}
+}
+
+// Scan visits records with after < seq < before (before==0: no upper bound),
+// ascending or descending. fn returns false to stop. Records older than the
+// memory window are read from disk.
+func (s *Store) Scan(after, before uint64, desc bool, fn func(*model.Record) bool) {
+	s.mu.RLock()
+	mem := s.mem
+	segs := append([]segment(nil), s.segs...)
+	last := s.lastSeq
+	s.mu.RUnlock()
+	if before == 0 || before > last+1 {
+		before = last + 1
+	}
+	if after+1 >= before {
+		return
+	}
+	memFirst := uint64(0)
+	if len(mem) > 0 {
+		memFirst = mem[0].Seq
+	}
+	inMem := func(lo, hi uint64, desc bool) bool { // [lo,hi)
+		if len(mem) == 0 || hi <= memFirst {
+			return true
+		}
+		lo = max(lo, memFirst)
+		if desc {
+			for q := hi - 1; q >= lo; q-- {
+				if !fn(mem[q-memFirst]) {
+					return false
+				}
+				if q == 0 {
+					break
+				}
+			}
+			return true
+		}
+		for q := lo; q < hi; q++ {
+			if !fn(mem[q-memFirst]) {
+				return false
+			}
+		}
+		return true
+	}
+	onDisk := func(lo, hi uint64, desc bool) bool { // [lo,hi), only seqs < memFirst
+		if len(mem) > 0 {
+			hi = min(hi, memFirst)
+		}
+		if lo >= hi {
+			return true
+		}
+		idx := make([]int, 0)
+		for i, sg := range segs {
+			end := uint64(1<<63 - 1)
+			if i+1 < len(segs) {
+				end = segs[i+1].first
+			}
+			if sg.first < hi && end > lo {
+				idx = append(idx, i)
+			}
+		}
+		if desc {
+			for i, j := 0, len(idx)-1; i < j; i, j = i+1, j-1 {
+				idx[i], idx[j] = idx[j], idx[i]
+			}
+		}
+		for _, i := range idx {
+			recs := s.segmentRecords(segs[i].path)
+			if desc {
+				for k := len(recs) - 1; k >= 0; k-- {
+					r := recs[k]
+					if r.Seq >= lo && r.Seq < hi && !fn(r) {
+						return false
+					}
+				}
+			} else {
+				for _, r := range recs {
+					if r.Seq >= lo && r.Seq < hi && !fn(r) {
+						return false
+					}
+				}
+			}
+		}
+		return true
+	}
+	lo, hi := after+1, before
+	if desc {
+		if inMem(lo, hi, true) {
+			onDisk(lo, hi, true)
+		}
+	} else {
+		if onDisk(lo, hi, false) {
+			inMem(lo, hi, false)
+		}
+	}
+}
+
+func (s *Store) segmentRecords(path string) []*model.Record {
+	s.cacheMu.Lock()
+	if r, ok := s.cache[path]; ok {
+		s.cacheMu.Unlock()
+		return r
+	}
+	s.cacheMu.Unlock()
+	recs, _, _ := readSegment(path, 0)
+	s.cacheMu.Lock()
+	s.cache[path] = recs
+	s.cacheQ = append(s.cacheQ, path)
+	if len(s.cacheQ) > 3 {
+		delete(s.cache, s.cacheQ[0])
+		s.cacheQ = s.cacheQ[1:]
+	}
+	s.cacheMu.Unlock()
+	return recs
+}
+
+// Get returns the record with the given seq, or nil.
+func (s *Store) Get(seq uint64) *model.Record {
+	var out *model.Record
+	s.Scan(seq-1, seq+1, false, func(r *model.Record) bool { out = r; return false })
+	return out
+}
+
+// Stats summarizes stored data.
+type Stats struct {
+	Records    uint64
+	Bytes      int64
+	OldestNs   int64
+	NewestNs   int64
+	FirstSeq   uint64
+	LastSeq    uint64
+	MemRecords int
+}
+
+func (s *Store) Stats() Stats {
+	s.mu.RLock()
+	st := Stats{LastSeq: s.lastSeq, MemRecords: len(s.mem)}
+	for _, sg := range s.segs {
+		st.Bytes += sg.size
+	}
+	first := uint64(0)
+	if len(s.segs) > 0 {
+		first = max(s.segs[0].first, 1)
+	} else if len(s.mem) > 0 {
+		first = s.mem[0].Seq
+	}
+	if len(s.mem) > 0 {
+		st.NewestNs = s.mem[len(s.mem)-1].TimeNs
+	}
+	s.mu.RUnlock()
+	st.FirstSeq = first
+	if first > 0 && st.LastSeq >= first {
+		st.Records = st.LastSeq - first + 1
+		if r := s.Get(first); r != nil {
+			st.OldestNs = r.TimeNs
+		}
+	}
+	return st
+}
+
+// ---- auxiliary JSONL files (crashes, processes, dropbox cache) ----
+
+// AppendAux appends one JSON value to <dir>/<name>.jsonl (writer only).
+func (s *Store) AppendAux(name string, v any) error {
+	if !s.IsWriter() {
+		return errors.New("store: not the writer")
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(filepath.Join(s.Dir, name+".jsonl"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.Write(append(b, '\n'))
+	return err
+}
+
+// ReadAux returns all complete lines of <dir>/<name>.jsonl.
+func (s *Store) ReadAux(name string) [][]byte {
+	b, err := os.ReadFile(filepath.Join(s.Dir, name+".jsonl"))
+	if err != nil {
+		return nil
+	}
+	if i := bytes.LastIndexByte(b, '\n'); i >= 0 {
+		b = b[:i]
+	} else {
+		return nil
+	}
+	return bytes.Split(b, []byte{'\n'})
+}
+
+// RewriteAux atomically replaces an aux file (writer only), e.g. to trim it.
+func (s *Store) RewriteAux(name string, lines [][]byte) error {
+	tmp := filepath.Join(s.Dir, name+".jsonl.tmp")
+	var buf bytes.Buffer
+	for _, l := range lines {
+		buf.Write(l)
+		buf.WriteByte('\n')
+	}
+	if err := os.WriteFile(tmp, buf.Bytes(), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, filepath.Join(s.Dir, name+".jsonl"))
+}
+
+func timeSince(t time.Time) float64 { return time.Since(t).Seconds() }
+
+// ListDeviceDirs lists device directories under base that contain meta.json.
+func ListDeviceDirs(base string) []string {
+	ents, err := os.ReadDir(base)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range ents {
+		if e.IsDir() {
+			if _, err := os.Stat(filepath.Join(base, e.Name(), "meta.json")); err == nil {
+				out = append(out, filepath.Join(base, e.Name()))
+			}
+		}
+	}
+	return out
+}

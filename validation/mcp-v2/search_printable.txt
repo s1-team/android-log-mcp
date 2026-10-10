@@ -1,0 +1,9 @@
+### host 2026-10-10 03:53:48 +0800  call logcat_search {"filter":"message:\"café ✓ 中文\"","from":"2026-10-10 03:48:00"}
+device emulator-5556 · times are device-local Asia/Kuching (+08:00) · date 2026-10-10
+filter parsed as: message contains "café ✓ 中文" AND time in [2026-10-10 03:48:00, now)
+matched 1 lines; showing newest 1 (03:48:56.716–03:48:56.716)
+format: time level pid/tid process tag: message
+03:48:56.716 I 4759/4759 ?(uid shell) LOGMCP_MARK: printable: café ✓ 中文
+more: before="c1.ZW11bGF0b3ItNTU1Ng.ccb368e7.12578"  ·  newer/wait: after="c1.ZW11bGF0b3ItNTU1Ng.ccb368e7.12630"
+
+[exit 0]

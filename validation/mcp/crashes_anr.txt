@@ -1,0 +1,103 @@
+$ android-log-mcp call logcat_crashes '{"device":"emulator-5556","package":"com.example.logtest","kinds":["anr"]}'
+device emulator-5556 · Asia/Kuching (+08:00) · package com.example.logtest · 1 match → full detail
+anr24 ANR · 2026-10-10 03:05:53.236 · pid 7815 com.example.logtest · sources: events:am_anr, logcat:system, dropbox:data_app_anr
+package: com.example.logtest
+reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+cpu (first lines):
+  CPU usage from 128ms to -17580ms ago (2026-10-10 03:05:52.878 to 2026-10-10 03:06:10.586):
+    77% 4944/system_server: 28% user + 48% kernel / faults: 2381 minor 1 major
+    21% 1742/android.system.suspend@1.0-service: 7.1% user + 14% kernel
+    18% 2674/android.hardware.sensors@1.0-service: 4.1% user + 14% kernel
+    17% 5752/adbd: 2.6% user + 15% kernel / faults: 393 minor
+    15% 5118/com.android.systemui: 6.3% user + 8.7% kernel / faults: 1541 minor
+    6.7% 1608/logd: 1% user + 5.6% kernel / faults: 10 minor
+    3.4% 1792/surfaceflinger: 1.5% user + 1.9% kernel / faults: 38 minor 2 major
+    4.9% 1764/android.hardware.graphics.composer@2.1-service: 1.3% user + 3.5% kernel
+    3.7% 6394/com.android.phone: 1.9% user + 1.8% kernel / faults: 841 minor
+main thread [traces: data_app_anr]:
+  "main" prio=5 tid=1 Sleeping
+    | group="main" sCount=1 dsCount=0 flags=1 obj=0x71ce73c8 self=0x7ef862cd4000
+    | sysTid=7815 nice=-10 cgrp=default sched=0/0 handle=0x7ef86325ded8
+    | state=S schedstat=( 5129089942 1498071918 573 ) utm=410 stm=102 core=3 HZ=100
+    | stack=0x7fffa604b000-0x7fffa604d000 stackSize=8192KB
+    | held mutexes=
+    at java.lang.Thread.sleep(Native method)
+    - sleeping on <0x09c4526e> (a java.lang.Object)
+    at java.lang.Thread.sleep(Thread.java:440)
+    - locked <0x09c4526e> (a java.lang.Object)
+    at java.lang.Thread.sleep(Thread.java:356)
+    at android.os.SystemClock.sleep(SystemClock.java:131)
+    at com.example.logtest.TriggerReceiver.onReceive(TriggerReceiver.java:15)
+    at android.app.ActivityThread.handleReceiver(ActivityThread.java:3788)
+    at android.app.ActivityThread.access$1400(ActivityThread.java:219)
+    at android.app.ActivityThread$H.handleMessage(ActivityThread.java:1870)
+    at android.os.Handler.dispatchMessage(Handler.java:107)
+    at android.os.Looper.loop(Looper.java:214)
+    at android.app.ActivityThread.main(ActivityThread.java:7356)
+    at java.lang.reflect.Method.invoke(Native method)
+    at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+    at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+before crash (pid 7815, last 40 lines):
+  03:03:48.046 D 7815/7839 com.example.logtest libEGL: Emulator has host GPU support, qemu.gles is set to 1.
+  03:03:48.051 W 7815/7839 com.example.logtest libc: Unable to set property "qemu.gles" to "1": connection failed; errno=13 (Permission denied)
+  03:03:48.039 I 7815/7815 com.example.logtest auditd: type=1400 audit(0.0:81): avc: denied { write } for comm="RenderThread" name="property_service" dev="tmpfs" ino=540 scontext=u:r:untrusted_app:s0:c146,c256,c512,c768 tcontext=u:object_r:property_socket:s0 tclass=sock_file permissive=0 app=com.example.logtest
+  03:03:48.039 W 7815/7815 com.example.logtest RenderThread: type=1400 audit(0.0:81): avc: denied { write } for name="property_service" dev="tmpfs" ino=540 scontext=u:r:untrusted_app:s0:c146,c256,c512,c768 tcontext=u:object_r:property_socket:s0 tclass=sock_file permissive=0 app=com.example.logtest
+  03:03:48.190 V 7815/7815 com.example.logtest LogTest: onCreate verbose
+  03:03:48.193 D 7815/7815 com.example.logtest LogTest: onCreate debug pid=7815 uid=10146
+  03:03:48.193 I 7815/7815 com.example.logtest MyRepo: feed loaded items=20
+  03:03:48.194 D 7815/7815 com.example.logtest OkHttp: --> GET https://api.example.com/v1/feed
+  03:03:48.194 D 7815/7815 com.example.logtest OkHttp: <-- 200 https://api.example.com/v1/feed (312ms)
+  03:03:48.297 W 7815/7815 com.example.logtest MyRepo: token refresh failed
+    java.io.IOException: token endpoint failed
+    	at com.example.logtest.MainActivity.onCreate(MainActivity.java:20)
+    	at android.app.Activity.performCreate(Activity.java:7802)
+    	at android.app.Activity.performCreate(Activity.java:7791)
+    	at android.app.Instrumentation.callActivityOnCreate(Instrumentation.java:1299)
+    	at android.app.ActivityThread.performLaunchActivity(ActivityThread.java:3245)
+    	at android.app.ActivityThread.handleLaunchActivity(ActivityThread.java:3409)
+    	at android.app.servertransaction.LaunchActivityItem.execute(LaunchActivityItem.java:83)
+    	at android.app.servertransaction.TransactionExecutor.executeCallbacks(TransactionExecutor.java:135)
+    	at android.app.servertransaction.TransactionExecutor.execute(TransactionExecutor.java:95)
+    	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2016)
+    	at android.os.Handler.dispatchMessage(Handler.java:107)
+    	at android.os.Looper.loop(Looper.java:214)
+    	at android.app.ActivityThread.main(ActivityThread.java:7356)
+    	at java.lang.reflect.Method.invoke(Native Method)
+    	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+    	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+    Caused by: java.lang.IllegalStateException: Unable to resolve host "push.example.com"
+    	... 16 more
+  03:03:48.298 E 7815/7815 com.example.logtest LogTest: multi-line message
+    line two
+    	line three (tab)
+  03:03:48.499 D 7815/7839 com.example.logtest libEGL: loaded /vendor/lib64/egl/libEGL_emulation.so
+  03:03:48.608 D 7815/7839 com.example.logtest libEGL: loaded /vendor/lib64/egl/libGLESv1_CM_emulation.so
+  03:03:48.811 D 7815/7839 com.example.logtest libEGL: loaded /vendor/lib64/egl/libGLESv2_emulation.so
+  03:03:49.707 I 7815/7815 com.example.logtest am_on_create_called: [0,com.example.logtest.MainActivity,performCreate]
+  03:03:49.744 D 7815/7815 com.example.logtest LogTest: onStart
+  03:03:49.747 I 7815/7815 com.example.logtest am_on_start_called: [0,com.example.logtest.MainActivity,handleStartActivity]
+  03:03:49.839 I 7815/7815 com.example.logtest LogTest: onResume
+  03:03:49.843 I 7815/7815 com.example.logtest am_on_resume_called: [0,com.example.logtest.MainActivity,RESUME_ACTIVITY]
+  03:03:50.037 I 7815/7815 com.example.logtest am_on_top_resumed_gained_called: [0,com.example.logtest.MainActivity,topStateChangedWhenResumed]
+  03:03:50.610 D 7815/7837 com.example.logtest HostConnection: HostConnection::get() New Host Connection established 0x7ef7d3277f00, tid 7837
+  03:03:50.765 D 7815/7837 com.example.logtest HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_hwc_color_transform GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+  03:03:50.862 D 7815/7837 com.example.logtest EGL_emulation: eglCreateContext: 0x7ef7d32780e0: maj 3 min 0 rcv 3
+  03:03:50.873 D 7815/7837 com.example.logtest EGL_emulation: eglMakeCurrent: 0x7ef7d32780e0: ver 3 0 (tinfo 0x7ef7d3218d20)
+  03:03:50.976 W 7815/7837 com.example.logtest Gralloc3: mapper 3.x is not supported
+  03:03:51.011 D 7815/7837 com.example.logtest HostConnection: createUnique: call
+  03:03:51.015 D 7815/7837 com.example.logtest HostConnection: HostConnection::get() New Host Connection established 0x7ef7d3278220, tid 7837
+  03:03:51.031 D 7815/7837 com.example.logtest HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_hwc_color_transform GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+  03:03:51.037 D 7815/7837 com.example.logtest eglCodecCommon: allocate: Ask for block of size 0x1000
+  03:03:51.038 D 7815/7837 com.example.logtest eglCodecCommon: allocate: ioctl allocate returned offset 0x3ff70a000 size 0x2000
+  03:03:51.514 I 7815/7828 com.example.logtest example.logtes: NativeAlloc concurrent copying GC freed 2335(239KB) AllocSpace objects, 3(60KB) LOS objects, 55% free, 1224KB/2760KB, paused 446us total 362.318ms
+  03:03:51.564 D 7815/7837 com.example.logtest EGL_emulation: eglMakeCurrent: 0x7ef7d32780e0: ver 3 0 (tinfo 0x7ef7d3218d20)
+  03:03:52.130 I 7815/7837 com.example.logtest OpenGLRenderer: Davey! duration=2150ms; Flags=1, IntendedVsync=1733765440860, Vsync=1733865440856, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=1733867060799, AnimationStart=1733868103379, PerformTraversalsStart=1733868184984, DrawStart=1734866539860, SyncQueued=1735361157512, SyncStart=1735372635373, IssueDrawCommandsStart=1735376377440, SwapBuffers=1735844030235, FrameCompleted=1735927354121, DequeueBufferDuration=2339000, QueueBufferDuration=5196000, 
+  03:03:52.382 I 7815/7815 com.example.logtest LogTest: trigger what=anr pid=7815
+  03:03:52.383 W 7815/7815 com.example.logtest LogTest: blocking main thread for 30s (ANR test)
+  03:04:22.391 W 7815/7815 com.example.logtest LogTest: main thread unblocked
+  03:04:22.559 I 7815/7815 com.example.logtest Choreographer: Skipped 1944 frames!  The application may be doing too much work on its main thread.
+  03:04:23.169 W 7815/7815 com.example.logtest InputMethodManager: Ignoring onBind: cur seq=3, given seq=2
+  03:04:23.695 I 7815/7837 com.example.logtest OpenGLRenderer: Davey! duration=33527ms; Flags=0, IntendedVsync=1733948809790, Vsync=1766348808494, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=1766365737117, AnimationStart=1766367510738, PerformTraversalsStart=1766392675320, DrawStart=1766441381445, SyncQueued=1766746180622, SyncStart=1766764898619, IssueDrawCommandsStart=1766797156776, SwapBuffers=1767416831523, FrameCompleted=1767495296303, DequeueBufferDuration=9957000, QueueBufferDuration=27692000, 
+  03:05:42.896 I 7815/7815 com.example.logtest LogTest: TriggerReceiver what=anr_broadcast
+
+[exit 0]

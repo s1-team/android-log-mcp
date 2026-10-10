@@ -1,0 +1,8 @@
+crash-buffer:
+F/libc    ( 3418): Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) in tid 3418 (example.logtest), pid 3418 (example.logtest)
+F/DEBUG   ( 4107): *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+F/DEBUG   ( 4107): Build fingerprint: 'google/sdk_gphone_x86_64/generic_x86_64:10/QSR1.211112.011/13135432:userdebug/dev-keys'
+F/DEBUG   ( 4107): Revision: '0'
+F/DEBUG   ( 4107): ABI: 'x86_64'
+main-count: 0
+system-count: 0

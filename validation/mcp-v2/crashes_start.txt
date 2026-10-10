@@ -1,0 +1,25 @@
+### host 2026-10-10 03:42:55 +0800  call logcat_crashes {"package":"com.example.logtest"}
+device emulator-5556 · Asia/Kuching (+08:00) · package com.example.logtest · 5 crash groups (6 events) in recorded history
+history: logcat from 2026-10-10 03:17:20; DropBox adds older entries when available (status: data_app_crash ok, data_app_native_crash ok, data_app_anr ok)
+cr5  2026-10-10 03:26:13  native pid 3418 com.example.logtest (thread example.logtest)  SIGABRT (SI_QUEUE) abort: 'LogTest deliberate abort()' in liblogtest.so [#02 pc 86f]
+cr3  2026-10-10 03:07:43  java   pid 8076 com.example.logtest:remote
+     java.lang.RuntimeException: Unable to start service com.example.logtest.RemoteService@a11d0f9 with Intent { cmp=com.example.logtest/.RemoteService (has extras) }: java.lang.IllegalStateException: LogTest crash in :remote
+       at android.app.ActivityThread.handleServiceArgs(ActivityThread.java:4105)
+       at android.app.ActivityThread.access$1800(ActivityThread.java:219)
+       at android.app.ActivityThread$H.handleMessage(ActivityThread.java:1891)
+       … root cause: java.lang.IllegalStateException: LogTest crash in :remote
+       … 8 more frames
+     same signature also at 03:07:39 (cr2)
+anr3 2026-10-10 03:06:12  anr    pid 7815 com.example.logtest  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+     main thread: "main" prio=5 tid=1 Sleeping — at java.lang.Thread.sleep(Native method)   [traces: data_app_anr]
+cr4  2026-10-10 03:02:50  native pid 7736 com.example.logtest (thread example.logtest)  SIGSEGV (SEGV_MAPERR) fault addr 0x0 in liblogtest.so [#00 pc 7fc]
+cr1  2026-10-10 03:01:32  java   pid 7182 com.example.logtest
+     java.lang.RuntimeException: LogTest wrapped crash
+       at com.example.logtest.Triggers.run(Triggers.java:22)
+       at com.example.logtest.MainActivity.lambda$onResume$1$com-example-logtest-MainActivity(MainActivity.java:42)
+       at com.example.logtest.MainActivity$$ExternalSyntheticLambda0.run(D8$$SyntheticClass:0)
+       … root cause: java.lang.IllegalStateException: repo not ready
+       … 9 more frames
+more: logcat_crashes id="cr5" for full detail
+
+[exit 0]

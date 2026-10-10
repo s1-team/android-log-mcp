@@ -1,0 +1,28 @@
+$ call logcat_app_launches package=com.example.logtest from=03:20
+device emulator-5556 · Asia/Kuching (+08:00) · package com.example.logtest · 3 launches since 2026-10-10 03:20:00
+#1 2026-10-10 03:25:21.808  UNKNOWN  com.example.logtest/.MainActivity
+   +0 ms     launch request       START u0 {flg=0x10000000 cmp=com.example.logtest/.MainActivity} from uid 2000
+   —         MainActivity.onCreate not found
+   —         onStart              not found
+   —         onResume             not found
+   —         Displayed (TTID)     not found
+   —         Fully drawn          not reported (app does not call reportFullyDrawn(), or not yet)
+   note: no onResume/Displayed evidence after the request (launch may have been redirected, blocked, or events buffer not recorded)
+#2 2026-10-10 03:24:09.670  UNKNOWN  com.example.logtest/.MainActivity
+   +0 ms     launch request       START u0 {flg=0x10000000 cmp=com.example.logtest/.MainActivity} from uid 2000
+   —         MainActivity.onCreate not found
+   —         onStart              not found
+   —         onResume             not found
+   —         Displayed (TTID)     not found
+   —         Fully drawn          not reported (app does not call reportFullyDrawn(), or not yet)
+   note: no onResume/Displayed evidence after the request (launch may have been redirected, blocked, or events buffer not recorded)
+#3 2026-10-10 03:22:28.816  COLD  com.example.logtest/.MainActivity  (pid 3418)
+   +0 ms     launch request       START u0 {flg=0x10000000 cmp=com.example.logtest/.MainActivity} from uid 2000
+   +2357 ms  process started      am_proc_start pid 3418
+   —         MainActivity.onCreate not found
+   —         onStart              not found
+   —         onResume             not found
+   +34938 ms Displayed (TTID)     system reports +22707 ms
+   —         Fully drawn          not reported (app does not call reportFullyDrawn(), or not yet)
+caveats: onX times are when the callback returned (events are logged after return); TTID is measured by the system from the launch request; COLD/WARM/HOT is inferred (am_proc_start ⇒ COLD, onCreate without process start ⇒ WARM, only onResume ⇒ HOT).
+

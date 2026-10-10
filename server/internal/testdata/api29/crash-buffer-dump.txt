@@ -1,0 +1,114 @@
+         1791571098.310261  1000  1993  2015 E AndroidRuntime: *** FATAL EXCEPTION IN SYSTEM PROCESS: android.fg
+         1791571098.310261  1000  1993  2015 E AndroidRuntime: java.lang.IllegalStateException: Error granting/upgrading runtime permissions
+         1791571098.310261  1000  1993  2015 E AndroidRuntime: 	at com.android.server.policy.PermissionPolicyService.lambda$grantOrUpgradeDefaultRuntimePermissionsIfNeeded$0(PermissionPolicyService.java:286)
+         1791571098.310261  1000  1993  2015 E AndroidRuntime: 	at com.android.server.policy.-$$Lambda$PermissionPolicyService$8D9Zbki65ND_Q20M-Trexl6cHcQ.accept(Unknown Source:4)
+         1791571098.310261  1000  1993  2015 E AndroidRuntime: 	at android.permission.PermissionControllerManager$PendingGrantOrUpgradeDefaultRuntimePermissionsRequest.onTimeout(PermissionControllerManager.java:1212)
+         1791571098.310261  1000  1993  2015 E AndroidRuntime: 	at android.permission.PermissionControllerManager$PendingGrantOrUpgradeDefaultRuntimePermissionsRequest.onTimeout(PermissionControllerManager.java:1185)
+         1791571098.310261  1000  1993  2015 E AndroidRuntime: 	at com.android.internal.infra.AbstractRemoteService$PendingRequest.lambda$new$0$AbstractRemoteService$PendingRequest(AbstractRemoteService.java:654)
+         1791571098.310261  1000  1993  2015 E AndroidRuntime: 	at com.android.internal.infra.-$$Lambda$AbstractRemoteService$PendingRequest$IBoaBGXZQEXJr69u3aJF-LCJ42Y.run(Unknown Source:4)
+         1791571098.310261  1000  1993  2015 E AndroidRuntime: 	at android.os.Handler.handleCallback(Handler.java:883)
+         1791571098.310261  1000  1993  2015 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:100)
+         1791571098.310261  1000  1993  2015 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:214)
+         1791571098.310261  1000  1993  2015 E AndroidRuntime: 	at android.os.HandlerThread.run(HandlerThread.java:67)
+         1791571098.310261  1000  1993  2015 E AndroidRuntime: 	at com.android.server.ServiceThread.run(ServiceThread.java:44)
+         1791571099.772504 10119  2207  2207 E AndroidRuntime: FATAL EXCEPTION: main
+         1791571099.772504 10119  2207  2207 E AndroidRuntime: Process: com.google.android.gms.persistent, PID: 2207
+         1791571099.772504 10119  2207  2207 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+         1791571101.244987 10074  2254  2310 E AndroidRuntime: FATAL EXCEPTION: AsyncTask #1
+         1791571101.244987 10074  2254  2310 E AndroidRuntime: Process: com.google.android.permissioncontroller, PID: 2254
+         1791571101.244987 10074  2254  2310 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+         1791571510.137255  1073  3107  3698 E AndroidRuntime: FATAL EXCEPTION: Thread-7
+         1791571510.137255  1073  3107  3698 E AndroidRuntime: Process: com.google.android.networkstack, PID: 3107
+         1791571510.137255  1073  3107  3698 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+         1791571510.205553 10131  3519  3519 E AndroidRuntime: FATAL EXCEPTION: main
+         1791571510.205553 10131  3519  3519 E AndroidRuntime: Process: com.google.android.inputmethod.latin, PID: 3519
+         1791571510.205553 10131  3519  3519 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+         1791571510.625059 radio  3188  3188 E AndroidRuntime: FATAL EXCEPTION: main
+         1791571510.625059 radio  3188  3188 E AndroidRuntime: Process: com.android.phone, PID: 3188
+         1791571510.625059 radio  3188  3188 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+         1791571510.901035 10110  2814  2814 E AndroidRuntime: FATAL EXCEPTION: main
+         1791571510.901035 10110  2814  2814 E AndroidRuntime: Process: com.android.systemui, PID: 2814
+         1791571510.901035 10110  2814  2814 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+         1791571543.808447 shell  3761  3761 E AndroidRuntime: FATAL EXCEPTION: main
+         1791571543.808447 shell  3761  3761 E AndroidRuntime: PID: 3761
+         1791571543.808447 shell  3761  3761 E AndroidRuntime: java.lang.NullPointerException: Attempt to invoke interface method 'void android.os.IPowerManager.wakeUp(long, int, java.lang.String, java.lang.String)' on a null object reference
+         1791571543.808447 shell  3761  3761 E AndroidRuntime: 	at com.android.commands.svc.PowerCommand.run(PowerCommand.java:87)
+         1791571543.808447 shell  3761  3761 E AndroidRuntime: 	at com.android.commands.svc.Svc.main(Svc.java:41)
+         1791571543.808447 shell  3761  3761 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit.nativeFinishInit(Native Method)
+         1791571543.808447 shell  3761  3761 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit.main(RuntimeInit.java:338)
+         1791571543.849951 shell  3761  3761 E AndroidRuntime: Error reporting crash
+         1791571543.849951 shell  3761  3761 E AndroidRuntime: java.lang.RuntimeException: Bad file descriptor
+         1791571543.849951 shell  3761  3761 E AndroidRuntime: 	at android.os.BinderProxy.transactNative(Native Method)
+         1791571543.849951 shell  3761  3761 E AndroidRuntime: 	at android.os.BinderProxy.transact(BinderProxy.java:510)
+         1791571543.849951 shell  3761  3761 E AndroidRuntime: 	at android.os.ServiceManagerProxy.getService(ServiceManagerNative.java:128)
+         1791571543.849951 shell  3761  3761 E AndroidRuntime: 	at android.os.ServiceManager.rawGetService(ServiceManager.java:263)
+         1791571543.849951 shell  3761  3761 E AndroidRuntime: 	at android.os.ServiceManager.getService(ServiceManager.java:129)
+         1791571543.849951 shell  3761  3761 E AndroidRuntime: 	at android.app.ActivityManager$1.create(ActivityManager.java:4054)
+         1791571543.849951 shell  3761  3761 E AndroidRuntime: 	at android.app.ActivityManager$1.create(ActivityManager.java:4051)
+         1791571543.849951 shell  3761  3761 E AndroidRuntime: 	at android.util.Singleton.get(Singleton.java:38)
+         1791571543.849951 shell  3761  3761 E AndroidRuntime: 	at android.app.ActivityManager.getService(ActivityManager.java:4042)
+         1791571543.849951 shell  3761  3761 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit$KillApplicationHandler.uncaughtException(RuntimeInit.java:145)
+         1791571543.849951 shell  3761  3761 E AndroidRuntime: 	at java.lang.ThreadGroup.uncaughtException(ThreadGroup.java:1073)
+         1791571543.849951 shell  3761  3761 E AndroidRuntime: 	at java.lang.ThreadGroup.uncaughtException(ThreadGroup.java:1068)
+         1791571543.849951 shell  3761  3761 E AndroidRuntime: 	at java.lang.Thread.dispatchUncaughtException(Thread.java:2187)
+         1791571788.153777 10073  4656  4656 E AndroidRuntime: FATAL EXCEPTION: main
+         1791571788.153777 10073  4656  4656 E AndroidRuntime: Process: com.google.android.sdksetup, PID: 4656
+         1791571788.153777 10073  4656  4656 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+         1791571788.262712 10119  4822  4822 E AndroidRuntime: FATAL EXCEPTION: main
+         1791571788.262712 10119  4822  4822 E AndroidRuntime: Process: com.google.process.gservices, PID: 4822
+         1791571788.262712 10119  4822  4822 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+         1791571788.388587 10062  4701  4701 E AndroidRuntime: FATAL EXCEPTION: main
+         1791571788.388587 10062  4701  4701 E AndroidRuntime: Process: com.google.android.apps.restore, PID: 4701
+         1791571788.388587 10062  4701  4701 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+         1791571788.692842 10131  4481  4481 E AndroidRuntime: FATAL EXCEPTION: main
+         1791571788.692842 10131  4481  4481 E AndroidRuntime: Process: com.google.android.inputmethod.latin, PID: 4481
+         1791571788.692842 10131  4481  4481 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+         1791571788.730053 radio  4743  4743 E AndroidRuntime: FATAL EXCEPTION: main
+         1791571788.730053 radio  4743  4743 E AndroidRuntime: Process: com.android.phone, PID: 4743
+         1791571788.730053 radio  4743  4743 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+         1791571788.785357 10122  4562  4562 E AndroidRuntime: FATAL EXCEPTION: main
+         1791571788.785357 10122  4562  4562 E AndroidRuntime: Process: com.google.android.googlequicksearchbox:interactor, PID: 4562
+         1791571788.785357 10122  4562  4562 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+         1791571788.948575 10110  3994  3994 E AndroidRuntime: FATAL EXCEPTION: main
+         1791571788.948575 10110  3994  3994 E AndroidRuntime: Process: com.android.systemui, PID: 3994
+         1791571788.948575 10110  3994  3994 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+         1791571789.148683 10108  4235  4859 E AndroidRuntime: FATAL EXCEPTION: GoogleApiHandler
+         1791571789.148683 10108  4235  4859 E AndroidRuntime: Process: com.google.android.apps.nexuslauncher, PID: 4235
+         1791571789.148683 10108  4235  4859 E AndroidRuntime: DeadSystemException: The system died; earlier logs will point to the root cause
+         1791572471.347949 10111  7611  7611 E AndroidRuntime: FATAL EXCEPTION: main
+         1791572471.347949 10111  7611  7611 E AndroidRuntime: Process: com.google.android.projection.gearhead:projection, PID: 7611
+         1791572471.347949 10111  7611  7611 E AndroidRuntime: java.lang.IllegalStateException: Failed to connect to car service: SERVICE_DISABLED
+         1791572471.347949 10111  7611  7611 E AndroidRuntime: 	at bct.a(SourceFile:169)
+         1791572471.347949 10111  7611  7611 E AndroidRuntime: 	at foc.a(SourceFile:27)
+         1791572471.347949 10111  7611  7611 E AndroidRuntime: 	at bpv.a(SourceFile:367)
+         1791572471.347949 10111  7611  7611 E AndroidRuntime: 	at bpv.a(SourceFile:433)
+         1791572471.347949 10111  7611  7611 E AndroidRuntime: 	at bqc.a(SourceFile:31)
+         1791572471.347949 10111  7611  7611 E AndroidRuntime: 	at dby.a(SourceFile:9)
+         1791572471.347949 10111  7611  7611 E AndroidRuntime: 	at com.google.android.gms.common.api.internal.GoogleApiClientImpl.a(SourceFile:317)
+         1791572471.347949 10111  7611  7611 E AndroidRuntime: 	at com.google.android.gms.common.api.internal.GoogleApiClientConnecting.b(SourceFile:156)
+         1791572471.347949 10111  7611  7611 E AndroidRuntime: 	at erg.a(SourceFile:3)
+         1791572471.347949 10111  7611  7611 E AndroidRuntime: 	at com.google.android.gms.common.api.internal.GoogleApiClientStateHolder$a.handleMessage(SourceFile:17)
+         1791572471.347949 10111  7611  7611 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:107)
+         1791572471.347949 10111  7611  7611 E AndroidRuntime: 	at com.google.android.gms.libs.punchclock.threads.TracingHandler.dispatchMessage(SourceFile:10)
+         1791572471.347949 10111  7611  7611 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:214)
+         1791572471.347949 10111  7611  7611 E AndroidRuntime: 	at android.app.ActivityThread.main(ActivityThread.java:7356)
+         1791572471.347949 10111  7611  7611 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+         1791572471.347949 10111  7611  7611 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+         1791572471.347949 10111  7611  7611 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: FATAL EXCEPTION: main
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: Process: com.example.logtest, PID: 7182
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: java.lang.RuntimeException: LogTest wrapped crash
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	at com.example.logtest.Triggers.run(Triggers.java:22)
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	at com.example.logtest.MainActivity.lambda$onResume$1$com-example-logtest-MainActivity(MainActivity.java:42)
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	at com.example.logtest.MainActivity$$ExternalSyntheticLambda0.run(D8$$SyntheticClass:0)
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	at android.os.Handler.handleCallback(Handler.java:883)
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:100)
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:214)
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	at android.app.ActivityThread.main(ActivityThread.java:7356)
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: Caused by: java.lang.IllegalStateException: repo not ready
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	at com.example.logtest.Triggers$Repo.load(Triggers.java:53)
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	at com.example.logtest.Triggers.run(Triggers.java:21)
+         1791572492.402083 10146  7182  7182 E AndroidRuntime: 	... 9 more
