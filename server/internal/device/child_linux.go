@@ -8,9 +8,16 @@ import (
 )
 
 func tieToParent(cmd *exec.Cmd) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
+	attr(cmd).Pdeathsig = syscall.SIGKILL
 }
 
 func ownGroup(cmd *exec.Cmd) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	attr(cmd).Setpgid = true
+}
+
+func attr(cmd *exec.Cmd) *syscall.SysProcAttr {
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	return cmd.SysProcAttr
 }

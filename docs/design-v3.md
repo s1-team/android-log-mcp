@@ -627,7 +627,7 @@ One long-lived process per user records every device and answers every tool call
 
 ### 11.2 Start, fallback, recovery
 
-- `service.Client.ensure`: dial; on failure, under `run/spawn.lock`: copy the binary to `<root>/bin/<version>-<sha12>/` (`InstallBinary`, atomic rename; reuse touches it), start `service --detached` (unix `Setsid`; Windows `DETACHED_PROCESS|CREATE_NEW_PROCESS_GROUP|CREATE_BREAKAWAY_FROM_JOB`, retried without breakaway on ACCESS_DENIED), wait ≤ 10 s for the socket.
+- `service.Client.ensure`: dial; on failure, under `run/spawn.lock`: copy the binary to `<root>/bin/<version>-<sha12>/` (`InstallBinary`, atomic rename; reuse touches it), start `service --detached` (unix `Setsid`; Windows `CREATE_NO_WINDOW|CREATE_NEW_PROCESS_GROUP|CREATE_BREAKAWAY_FROM_JOB` with SW_HIDE, retried without breakaway on ACCESS_DENIED; not `DETACHED_PROCESS`, which leaves the service without a console so every console child (adb) opens a visible window — fixed in 0.4.1. All child processes go through `procattr.Hide`), wait ≤ 10 s for the socket.
 - **In-process fallback:** if the spawn fails (or after 3 spawns within a minute), the client runs `service.Start` itself (`Embedded` reason, logs tee'd to stderr and the service log) and serves the same socket; other clients use it. When that process exits, the others reconnect and start a new service.
 - **Recovery:** a broken connection (`ipc.ErrClosed`) makes the client reconnect (starting a service if needed) and retry the call, up to 3 attempts; tools are read-only, so a retry is safe.
 - `service.lock` is the single-instance guarantee; a second `service` exits with "already running (pid, version)".

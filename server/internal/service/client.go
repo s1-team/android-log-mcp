@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/s1crab/android-log-mcp/server/internal/ipc"
+	"github.com/s1crab/android-log-mcp/server/internal/procattr"
 	"github.com/s1crab/android-log-mcp/server/internal/store"
 )
 
@@ -291,7 +292,7 @@ func (c *Client) spawn(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	cmd := exec.Command(exe, "service", "--detached")
+	cmd := procattr.Hide(exec.Command(exe, "service", "--detached"))
 	cmd.Dir = c.opt.Control.Dir
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
 	if err := detach(cmd); err != nil {

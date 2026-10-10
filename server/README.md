@@ -15,6 +15,7 @@ REPLAY_DUMP=1 go test ./internal/mcpserver -run ReplayExplore -v  # 打印 fixtu
 |---|---|
 | `cmd/android-log-mcp` | 入口：MCP stdio thin client of the background service, `service [status|stop]`, `call`, `report`, `root`, `set-root`, `compat`, `--offline <dir>`（只读打开数据集：不用 adb，不录制、不清理、不创建文件；in-process） |
 | `internal/ipc` | AF_UNIX transport for the service: JSON-lines frames, request ids/cancel, user-only socket dir (0700/0600, Windows DACL), same-user peer check, socket path fallback |
+| `internal/procattr` | `Hide`: every child process starts without a console window on Windows (`CREATE_NO_WINDOW`); a source scan test enforces it for every `exec.Command` |
 | `internal/service` | The background service (one per user: `service.lock`, `service.json`, ops hello/call/status/stop/handoff/report/set-root, linger, service log), the client (start detached from `<root>/bin`, in-process fallback, reconnect/retry, version and protocol rules), `config.json` and set-root |
 | `internal/device` | 设备管理（adb track-devices；按稳定设备 ID 管理，`identity.go`）、录制、ingest pipeline（`Pipeline`，fixture 回放也走这里）、DropBox、adb children (`child*.go`), set-root carry-over (`carry.go`) |
 | `internal/logcat` | logcat 行解析、多行合并、`-v printable` 反转义 |

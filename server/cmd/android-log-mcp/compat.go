@@ -12,6 +12,7 @@ import (
 
 	"github.com/s1crab/android-log-mcp/server/internal/compat"
 	"github.com/s1crab/android-log-mcp/server/internal/device"
+	"github.com/s1crab/android-log-mcp/server/internal/procattr"
 )
 
 // runCompat probes one device for the features android-log-mcp depends on
@@ -113,7 +114,7 @@ func adbVersion(out string) string {
 func probeTracking(ctx context.Context, adbPath string) string {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, adbPath, "track-devices")
+	cmd := procattr.Hide(exec.CommandContext(ctx, adbPath, "track-devices"))
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return "unavailable: " + err.Error()

@@ -59,6 +59,7 @@ Repository artifacts (docs, issues, commit messages, release notes) are **Englis
   - Shell / manual runs: redirect the whole per-user cache dir, which moves the control dir, the service and the default root: Linux `XDG_CACHE_HOME=/tmp/x`, macOS `HOME=/tmp/x`, Windows `LocalAppData=C:\tmp\x`. Stop such a test service with the same environment (`… android-log-mcp service stop`).
   - Read-only checks of a dataset: `--offline <dir>` (in-process; never talks to the service, never records, prunes or creates files).
   - Live checks against the real service on the dev box: `scripts/service-e2e.sh` and `scripts/e2e-report.sh` (they use the real control dir on purpose; `service-e2e.sh` switches the root and back).
+- **Start every child process as `procattr.Hide(exec.Command…(…))`** (`server/internal/procattr`). On Windows anything else opens a console window for each adb call; `TestEveryChildIsHidden` fails the build otherwise.
 - **Never kill the adb server** (`adb kill-server`, or killing its process) in code, tests or scripts: other tools and the user depend on it. The service starts it outside its own process group and only its own `adb` children end with it.
 - **Packaging:** run `scripts/build-npm.sh [VERSION] [--pack]`. CI runs the npx smoke tests on every Node version in the matrix.
 

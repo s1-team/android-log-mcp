@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+### Fixed
+
+- Windows: console windows kept popping up while the background service ran (for example with Codex or ChatGPT as the MCP client). The service was started with `DETACHED_PROCESS`, i.e. without any console, so every console child it started (`adb devices`, `track-devices`, `shell getprop`, `logcat`, `start-server`, …) got a new visible console window. The service now starts with its own hidden console (`CREATE_NO_WINDOW`, still in a new process group and outside the client's job), and every child process the program starts is created without a window. A source scan test makes sure no new `exec.Command` skips this.
+
 ## [0.4.0] - 2026-10-10
 
 A breaking release: a new storage layout, one data root for all clients, and one background service per user that does all recording.
