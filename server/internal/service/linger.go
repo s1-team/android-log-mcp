@@ -47,6 +47,11 @@ func lingerFor(span time.Duration, env string) (time.Duration, string) {
 	return d, fmt.Sprintf("%s (%s), at most %s)", d, how, LingerMax)
 }
 
+// StartGrace is the shortest time a service waits for its first client,
+// whatever the linger (ANDROID_LOG_MCP_LINGER=0 must not stop a service
+// before the client that started it connects).
+var StartGrace = 30 * time.Second
+
 func (s *Service) linger() (time.Duration, string) {
 	var span time.Duration
 	if m := s.Manager(); m != nil {
@@ -75,6 +80,11 @@ func (s *Service) clientsChanged(n int) {
 	}
 	if d < 0 {
 		return
+	}
+	if !s.everConnected && d < StartGrace {
+		// just started (e.g. by a client that is about to connect): never
+		// stop before the first client had a chance to connect
+		d, how = StartGrace, fmt.Sprintf("%s before the first client connects", StartGrace)
 	}
 	s.idleSince, s.idleFor = time.Now(), d
 	gen := s.lingerGen + 1

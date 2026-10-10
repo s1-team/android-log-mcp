@@ -58,15 +58,17 @@ type Service struct {
 	mstop context.CancelFunc
 	tools *mcpserver.Tools
 
-	clients   int
-	lingerT   *time.Timer
-	lingerGen int
-	idleSince time.Time
-	idleFor   time.Duration
-	stopOnce  sync.Once
-	stopping  chan struct{}
-	done      chan struct{}
-	reason    string
+	clients int
+	// everConnected: a client has said hello (before that, StartGrace)
+	everConnected bool
+	lingerT       *time.Timer
+	lingerGen     int
+	idleSince     time.Time
+	idleFor       time.Duration
+	stopOnce      sync.Once
+	stopping      chan struct{}
+	done          chan struct{}
+	reason        string
 }
 
 // Hello is the first request of a client.
@@ -272,6 +274,7 @@ func (s *Service) handle(ctx context.Context, c *ipc.Conn, op string, body json.
 			c.Value = &h
 			s.mu.Lock()
 			s.clients++
+			s.everConnected = true
 			n := s.clients
 			s.mu.Unlock()
 			s.clientsChanged(n)

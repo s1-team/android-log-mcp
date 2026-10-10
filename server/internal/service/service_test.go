@@ -221,3 +221,46 @@ func TestLingerStopsAfterLastClient(t *testing.T) {
 		t.Fatal("did not stop after the last client")
 	}
 }
+
+// A service started with linger 0 waits StartGrace for its first client,
+// then stops when the last client leaves.
+func TestLingerZeroWaitsForFirstClient(t *testing.T) {
+	t.Setenv(LingerEnv, "0")
+	old := StartGrace
+	StartGrace = 500 * time.Millisecond
+	defer func() { StartGrace = old }()
+	ctrl := testControl(t)
+	s := startTest(t, ctrl, "0.4.0")
+	time.Sleep(200 * time.Millisecond)
+	select {
+	case <-s.Done():
+		t.Fatal("stopped before the first client could connect")
+	default:
+	}
+	c, err := Dial(context.Background(), ctrl, "0.4.0", "mcp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(700 * time.Millisecond)
+	select {
+	case <-s.Done():
+		t.Fatal("stopped while a client was connected")
+	default:
+	}
+	c.Close()
+	select {
+	case <-s.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("did not stop after the last client (linger 0)")
+	}
+	// and without any client it stops after the grace
+	s2 := startTest(t, ctrl, "0.4.0")
+	select {
+	case <-s2.Done():
+		if !strings.Contains(s2.Reason(), "before the first client connects") {
+			t.Fatalf("reason %q", s2.Reason())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no stop after the start grace")
+	}
+}
