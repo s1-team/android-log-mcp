@@ -26,7 +26,7 @@ func main() {
 	if version != "" {
 		mcpserver.Version = version
 	}
-	home := flag.String("home", "", "data directory (default $ANDROID_LOG_MCP_HOME or <user cache dir>/android-log-mcp)")
+	home := flag.String("home", "", "data directory (default $ANDROID_LOG_MCP_HOME or <user cache dir>/android-log-mcp); devices owned by another process are never recorded here")
 	version := flag.Bool("version", false, "print version and exit")
 	offline := flag.Bool("offline", false, "do not use adb: only browse recorded data (e.g. an unzipped report's store/ directory)")
 	flag.Usage = func() {
@@ -70,6 +70,7 @@ usage:
 	}
 	m := device.NewManager(base, store.ConfigFromEnv())
 	m.NoADB = *offline
+	m.Version = mcpserver.Version
 	m.Start(ctx)
 	defer m.Close()
 	tools := &mcpserver.Tools{M: m}

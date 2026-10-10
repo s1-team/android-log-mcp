@@ -15,18 +15,24 @@ import (
 	"time"
 
 	"github.com/s1crab/android-log-mcp/server/internal/analysis"
+	"github.com/s1crab/android-log-mcp/server/internal/layout"
 	"github.com/s1crab/android-log-mcp/server/internal/logcat"
 	"github.com/s1crab/android-log-mcp/server/internal/model"
 	"github.com/s1crab/android-log-mcp/server/internal/procs"
 	"github.com/s1crab/android-log-mcp/server/internal/store"
 )
 
-// Device is one serial: its store plus (when this process is the writer and
-// the device is online) a running recorder.
+// Device is one device: its store plus (when this process owns it and the
+// device is online) a running recorder. Serial is the stable device ID (the
+// key of tools and cursors); Addr is the adb serial it is reached through.
 type Device struct {
 	Serial string
 	Store  *store.Store
 	adb    *ADB
+
+	addr    string
+	foreign *layout.Owner     // set: another process records this device; never record
+	owner   *layout.OwnerLock // held while this process owns the device
 
 	mu         sync.RWMutex
 	state      string // adb state ("" = not attached)
@@ -69,6 +75,10 @@ func recordPause(st *store.Store) {
 func newDevice(adb *ADB, st *store.Store, serial string) *Device {
 	d := &Device{Serial: serial, Store: st, adb: adb, dbxPending: map[string]bool{}}
 	m := st.Meta()
+	d.addr = m.Addr
+	if d.addr == "" {
+		d.addr = serial
+	}
 	d.applyTZ(m.TZ, m.TZOffset)
 	d.offset = time.Duration(m.ClockOffsetNs)
 	d.offsetAt = time.Unix(0, m.ClockHostNs)
@@ -159,7 +169,7 @@ func (d *Device) Now() time.Time {
 // measureClock re-reads the device clock (`date +%s.%N`, midpoint of the adb round trip).
 func (d *Device) measureClock(ctx context.Context) {
 	t0 := time.Now()
-	out, err := d.adb.Shell(ctx, d.Serial, 15*time.Second, "date +%s.%N")
+	out, err := d.adb.Shell(ctx, d.Addr(), 15*time.Second, "date +%s.%N")
 	t1 := time.Now()
 	if err != nil {
 		return
@@ -189,11 +199,14 @@ type Status struct {
 	LastErr   string
 	WriterPID string
 	Paused    string // non-empty: this process would record but disk space is low
+	// Owner is set when another android-log-mcp process (possibly with a
+	// different ANDROID_LOG_MCP_HOME, or an older version) records the device.
+	Owner *layout.Owner
 }
 
 func (d *Device) Status() Status {
 	d.mu.RLock()
-	s := Status{State: d.state, Recording: d.recording, LastErr: d.lastErr}
+	s := Status{State: d.state, Recording: d.recording, LastErr: d.lastErr, Owner: d.foreign}
 	d.mu.RUnlock()
 	s.Writer = d.Store.IsWriter()
 	if s.Writer && s.State == "device" {
@@ -205,6 +218,49 @@ func (d *Device) Status() Status {
 		}
 	}
 	return s
+}
+
+// Addr is the adb serial the device is reached through.
+func (d *Device) Addr() string {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.addr
+}
+
+func (d *Device) setAddr(addr string) {
+	d.mu.Lock()
+	changed := d.addr != addr
+	d.addr = addr
+	d.mu.Unlock()
+	if changed && d.Store.IsWriter() {
+		d.Store.UpdateMeta(func(m *store.Meta) { m.Addr = addr })
+	}
+	d.owner.Update(func(o *layout.Owner) { o.Addr = addr })
+}
+
+// Owned reports whether this process holds the device's global owner lock.
+func (d *Device) Owned() bool {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.owner != nil
+}
+
+// Matches reports whether name refers to this device: its ID, its adb
+// serial, or an alias (e.g. the adb serial of a migrated pre-v1 directory,
+// which old cursors carry).
+func (d *Device) Matches(name string) bool {
+	if name == "" {
+		return false
+	}
+	if name == d.Serial || name == d.Addr() {
+		return true
+	}
+	for _, a := range d.Store.Meta().Aliases {
+		if a == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (d *Device) setErr(err error) {
@@ -255,7 +311,7 @@ func (d *Device) stop() {
 func (d *Device) probe(ctx context.Context) error {
 	cmd := "getprop ro.product.model; getprop ro.build.version.release; getprop ro.build.version.sdk; getprop persist.sys.timezone; date +%z; cat /proc/sys/kernel/random/boot_id; date +%s"
 	t0 := time.Now()
-	out, err := d.adb.Shell(ctx, d.Serial, 15*time.Second, cmd)
+	out, err := d.adb.Shell(ctx, d.Addr(), 15*time.Second, cmd)
 	t1 := time.Now()
 	if err != nil {
 		return err
@@ -291,7 +347,10 @@ func (d *Device) probe(ctx context.Context) error {
 func (d *Device) run(ctx context.Context) {
 	backoff := time.Second
 	for ctx.Err() == nil {
-		if !d.Store.IsWriter() && !d.Store.TryPromote() {
+		d.mu.RLock()
+		foreign := d.foreign != nil
+		d.mu.RUnlock()
+		if foreign || (!d.Store.IsWriter() && !d.Store.TryPromote()) {
 			// another android-log-mcp process records this device; we follow its files
 			d.mu.Lock()
 			d.recording = false
@@ -403,7 +462,7 @@ func (d *Device) recordOnce(ctx context.Context) error {
 	defer cancel()
 	// Note: never rely on `logcat --uid` (missing on API 29) or multiple
 	// `--pid` (only one is honoured); all filtering happens on our side.
-	cmd := exec.CommandContext(cctx, d.adb.Path, append([]string{"-s", d.Serial}, logcat.Args(resume)...)...)
+	cmd := exec.CommandContext(cctx, d.adb.Path, append([]string{"-s", d.Addr()}, logcat.Args(resume)...)...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
@@ -553,7 +612,7 @@ func (d *Device) psLoop(ctx context.Context, pipe *Pipeline) {
 }
 
 func (d *Device) seedPS(ctx context.Context, pipe *Pipeline) {
-	out, err := d.adb.Shell(ctx, d.Serial, 15*time.Second, "ps -A -o PID,UID,NAME 2>/dev/null || ps")
+	out, err := d.adb.Shell(ctx, d.Addr(), 15*time.Second, "ps -A -o PID,UID,NAME 2>/dev/null || ps")
 	if err != nil {
 		return
 	}
@@ -562,7 +621,7 @@ func (d *Device) seedPS(ctx context.Context, pipe *Pipeline) {
 
 func (d *Device) refreshPackages(ctx context.Context) {
 	for attempt := 0; attempt < 30 && ctx.Err() == nil; attempt++ {
-		out, err := d.adb.Shell(ctx, d.Serial, 20*time.Second, "pm list packages -U 2>/dev/null || cmd package list packages -U")
+		out, err := d.adb.Shell(ctx, d.Addr(), 20*time.Second, "pm list packages -U 2>/dev/null || cmd package list packages -U")
 		if err == nil {
 			if m := procs.ParsePackagesU(out); len(m) > 0 {
 				if p := d.pipeline(); p != nil {
@@ -610,7 +669,7 @@ func (d *Device) requestDropbox(tag string) {
 
 // fetchDropbox runs `dumpsys dropbox --print <tag>` and merges entries.
 func (d *Device) fetchDropbox(ctx context.Context, tag string) {
-	out, err := d.adb.Shell(ctx, d.Serial, 30*time.Second, "dumpsys dropbox --print "+tag)
+	out, err := d.adb.Shell(ctx, d.Addr(), 30*time.Second, "dumpsys dropbox --print "+tag)
 	status := "ok"
 	if err != nil {
 		status = err.Error()

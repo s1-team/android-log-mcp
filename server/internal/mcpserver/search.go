@@ -191,7 +191,7 @@ func (t *Tools) buildQuery(d *device.Device, a commonArgs) (*query, error) {
 		if err != nil {
 			return nil, errf("%s: %v", c.name, err)
 		}
-		if cur.Serial != d.Serial {
+		if !d.Matches(cur.Serial) {
 			return nil, errf("%s cursor belongs to device %s; pass device=%q or take a cursor from this device.", c.name, cur.Serial, cur.Serial)
 		}
 		last := d.Store.LastSeq()

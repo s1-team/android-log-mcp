@@ -67,7 +67,7 @@ keep act=android.intent.action.MAIN ro.build.fingerprint persist.sys.timezone ba
 KEEP
 
 # make sure something records the device
-if ! find "$HOME_DIR" -maxdepth 2 -name meta.json -newermt '-60 seconds' 2>/dev/null | grep -q .; then
+if ! find "$HOME_DIR" -maxdepth 3 -name meta.json -newermt '-60 seconds' 2>/dev/null | grep -q .; then
   echo "no active recorder seen; starting one" >&2
   (sleep infinity | ANDROID_LOG_MCP_HOME="$HOME_DIR" "$BIN" >/dev/null 2>"$WORK/rec.log") &
   REC_PID=$!
@@ -84,13 +84,31 @@ while read -r msg; do
 done < "$WORK/keep.txt"
 N=$(( $(wc -l < "$WORK/secrets.tsv") + $(wc -l < "$WORK/keep.txt") ))
 
-dir="$HOME_DIR/$SERIAL"
+# the device's data directory: <home>/v1/<device-id> (0.4+; meta.json has the
+# adb serial as "addr") or <home>/<serial> (older flat layout)
+find_dir() {
+  python3 - "$HOME_DIR" "$SERIAL" <<'PY'
+import glob, json, os, sys
+home, serial = sys.argv[1:3]
+for m in sorted(glob.glob(os.path.join(home, "v1", "*", "meta.json"))) + glob.glob(os.path.join(home, "*", "meta.json")):
+    try:
+        meta = json.load(open(m))
+    except Exception:
+        continue
+    if serial in (meta.get("serial"), meta.get("addr")) or serial in (meta.get("aliases") or []):
+        print(os.path.dirname(m))
+        break
+PY
+}
+dir=""
 for t in $(seq 1 90); do
+  [ -n "$dir" ] || dir=$(find_dir)
   got=$(cat "$dir"/seg-*.jsonl 2>/dev/null | grep -c "$RUN" || true)
   [ "$got" -ge "$N" ] && break
   sleep 2
 done
-echo "recorder stored $got/$N LeakTest lines" >&2
+echo "recorder stored $got/$N LeakTest lines in $dir" >&2
+DEVICE_ID=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["serial"])' "$dir/meta.json")
 [ "$got" -ge "$N" ]
 
 OUT="$WORK/report.zip"
@@ -101,7 +119,7 @@ mkdir "$WORK/r" && (cd "$WORK/r" && unzip -q "$OUT")
 
 # offline load of the report's store
 "$BIN" --home "$WORK/r/store" --offline call logcat_search \
-  "{\"device\":\"$SERIAL\",\"filter\":\"tag=:LeakTest message:$RUN\",\"limit\":100}" > "$WORK/search.txt"
+  "{\"device\":\"$DEVICE_ID\",\"filter\":\"tag=:LeakTest message:$RUN\",\"limit\":100}" > "$WORK/search.txt"
 
 status=0
 python3 - "$WORK" "$RUN" "$dir" > "$WORK/verify.txt" <<'PY' || status=$?

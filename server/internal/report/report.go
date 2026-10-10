@@ -171,7 +171,8 @@ type DeviceInfo struct {
 }
 
 type devWork struct {
-	serial string
+	serial string // device ID (key of the recorded data)
+	addr   string // adb serial to reach it
 	dir    string // sanitized
 	st     *store.Store
 	meta   store.Meta
@@ -343,14 +344,24 @@ var reComponent = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)+
 func selectDevices(o Options) ([]*devWork, error) {
 	dirs := store.ListDeviceDirs(o.Base)
 	bySerial := map[string]string{}
+	alias := map[string]string{} // adb serial / earlier name -> device ID
 	var serials []string
 	for _, dir := range dirs {
 		st, err := store.OpenReadOnly(dir, store.Config{MemRecords: 1})
 		if err != nil || st.Serial == "" {
 			continue
 		}
+		if _, dup := bySerial[st.Serial]; dup {
+			continue // the versioned directory (listed first) wins
+		}
 		bySerial[st.Serial] = dir
 		serials = append(serials, st.Serial)
+		m := st.Meta()
+		for _, a := range append([]string{m.Addr}, m.Aliases...) {
+			if _, ok := alias[a]; a != "" && !ok {
+				alias[a] = st.Serial
+			}
+		}
 	}
 	sort.Strings(serials)
 	want := o.Serials
@@ -363,6 +374,9 @@ func selectDevices(o Options) ([]*devWork, error) {
 	var out []*devWork
 	seen := map[string]bool{}
 	for _, s := range want {
+		if _, ok := bySerial[s]; !ok && alias[s] != "" {
+			s = alias[s]
+		}
 		if seen[s] {
 			continue
 		}
@@ -380,7 +394,11 @@ func selectDevices(o Options) ([]*devWork, error) {
 		if loc == nil {
 			loc, zone = time.Local, "host-local (device zone unknown)"
 		}
-		out = append(out, &devWork{serial: s, dir: store.SanitizeSerial(s), st: st, meta: m, loc: loc, zone: zone})
+		addr := m.Addr
+		if addr == "" {
+			addr = s
+		}
+		out = append(out, &devWork{serial: s, addr: addr, dir: store.SanitizeSerial(s), st: st, meta: m, loc: loc, zone: zone})
 	}
 	return out, nil
 }
@@ -389,7 +407,7 @@ func (d *devWork) online(o Options) bool {
 	if o.Shell == nil {
 		return false
 	}
-	return o.Online == nil || o.Online[d.serial]
+	return o.Online == nil || o.Online[d.addr]
 }
 
 const infoCmd = "getprop ro.build.fingerprint; getprop ro.product.model; getprop ro.product.manufacturer; getprop ro.build.version.release; getprop ro.build.version.sdk; getprop persist.sys.timezone; date +%z; cat /proc/sys/kernel/random/boot_id; date +%s"
@@ -410,7 +428,7 @@ func deviceInfo(ctx context.Context, o Options, d *devWork) *DeviceInfo {
 		return info
 	}
 	t0 := o.Now()
-	out, err := o.Shell(ctx, d.serial, infoCmd)
+	out, err := o.Shell(ctx, d.addr, infoCmd)
 	t1 := o.Now()
 	if err != nil {
 		info.Source = "recorded meta (adb failed: " + firstLine(err.Error()) + ")"
@@ -448,8 +466,8 @@ func runAmStart(ctx context.Context, o Options, d *devWork) (string, error) {
 	}
 	o.Logf("running am start -W -n %s on %s (this launches the app)", o.AmStart, d.serial)
 	start := o.Now()
-	out, err := o.Shell(ctx, d.serial, "am start -W -n '"+o.AmStart+"'")
-	text := "$ adb -s " + d.serial + " shell am start -W -n " + o.AmStart + "\n# host time " + start.Format(time.RFC3339) + "\n" + out
+	out, err := o.Shell(ctx, d.addr, "am start -W -n '"+o.AmStart+"'")
+	text := "$ adb -s " + d.addr + " shell am start -W -n " + o.AmStart + "\n# host time " + start.Format(time.RFC3339) + "\n" + out
 	if err != nil {
 		text += "\n# error: " + err.Error() + "\n"
 		return text, fmt.Errorf("--am-start: %v", err)
@@ -769,6 +787,10 @@ func (d *devWork) write(zf *zipFile, red *redact.Redactor, o Options, dbx map[st
 		m.LastTimeNs = out[len(out)-1].TimeNs
 	}
 	m.State = ""
+	if red.Enabled() {
+		// adb address (may be a LAN ip:port) and earlier names stay local
+		m.Addr, m.Aliases = "", nil
+	}
 	zf.add(base+"meta.json", jsonIndent(m))
 
 	// device.json
@@ -841,7 +863,7 @@ const dropboxSep = "\n========================================\n"
 func fetchDropbox(ctx context.Context, o Options, d *devWork) map[string][]dropboxEntry {
 	res := map[string][]dropboxEntry{}
 	for _, tag := range DropboxTags {
-		out, err := o.Shell(ctx, d.serial, "dumpsys dropbox --print "+tag)
+		out, err := o.Shell(ctx, d.addr, "dumpsys dropbox --print "+tag)
 		if err == nil && strings.Contains(out, "Permission Denial") {
 			err = errors.New("permission denied")
 		}

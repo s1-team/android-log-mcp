@@ -70,6 +70,9 @@ own parsers and prints a compatibility summary. Exit code 0 = supported
 	}
 	r := compat.Parse(sh)
 	r.Serial = *serial
+	if id, err := device.ProbeIdentity(ctx, adb, *serial); err == nil {
+		r.DeviceID, r.IDSource = id.ID, id.Source
+	}
 	if v, err := adb.Output(ctx, 5*time.Second, "version"); err == nil {
 		r.ADB = adbVersion(v)
 	}

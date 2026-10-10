@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -96,105 +95,6 @@ func (g *DiskGuard) Reason() string {
 }
 
 func mib(n uint64) string { return fmt.Sprintf("%d MiB", n>>20) }
-
-// ---- data-directory total size cap ----
-
-type segFile struct {
-	dir, path string
-	size      int64
-	mod       time.Time
-}
-
-// DirBytes is the total size of all files in the device directories under base.
-func DirBytes(base string) int64 {
-	var total int64
-	ents, _ := os.ReadDir(base)
-	for _, e := range ents {
-		if !e.IsDir() {
-			if info, err := e.Info(); err == nil {
-				total += info.Size()
-			}
-			continue
-		}
-		sub, _ := os.ReadDir(filepath.Join(base, e.Name()))
-		for _, f := range sub {
-			if info, err := f.Info(); err == nil && !f.IsDir() {
-				total += info.Size()
-			}
-		}
-	}
-	return total
-}
-
-// EnforceTotal deletes the oldest log segments across all device
-// directories under base until the directory is at most maxTotal bytes. A
-// directory recorded by this process is pruned through its store (owned);
-// one with no live writer is pruned under its writer lock; directories
-// recorded by another process are left to that process. The newest segment
-// of each device is never deleted. Returns the bytes freed.
-func EnforceTotal(base string, maxTotal int64, owned map[string]*Store) int64 {
-	if maxTotal <= 0 {
-		return 0
-	}
-	total := DirBytes(base)
-	if total <= maxTotal {
-		return 0
-	}
-	var cands []segFile
-	ents, _ := os.ReadDir(base)
-	for _, e := range ents {
-		if !e.IsDir() {
-			continue
-		}
-		dir := filepath.Join(base, e.Name())
-		tmp := &Store{Dir: dir}
-		segs, err := tmp.listSegments()
-		if err != nil || len(segs) < 2 {
-			continue
-		}
-		for _, sg := range segs[:len(segs)-1] {
-			st, err := os.Stat(sg.path)
-			if err != nil {
-				continue
-			}
-			cands = append(cands, segFile{dir: dir, path: sg.path, size: sg.size, mod: st.ModTime()})
-		}
-	}
-	sort.SliceStable(cands, func(i, j int) bool { return cands[i].mod.Before(cands[j].mod) })
-	var freed int64
-	skip := map[string]bool{} // a dir whose oldest segment could not be removed: keep order
-	for _, c := range cands {
-		if total <= maxTotal {
-			break
-		}
-		if skip[c.dir] {
-			continue
-		}
-		if st := owned[c.dir]; st != nil && st.IsWriter() {
-			if n, ok := st.RemoveOldestSegment(c.path); ok {
-				total -= n
-				freed += n
-				continue
-			}
-			skip[c.dir] = true
-			continue
-		}
-		f, ok := tryLock(filepath.Join(c.dir, "writer.lock"))
-		if !ok {
-			skip[c.dir] = true // recorded by another process
-			continue
-		}
-		err := os.Remove(c.path)
-		releaseLock(f)
-		if err != nil && !os.IsNotExist(err) {
-			skip[c.dir] = true
-			continue
-		}
-		total -= c.size
-		freed += c.size
-	}
-	return freed
-}
 
 func releaseLock(f *os.File) {
 	name := f.Name()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -135,11 +136,17 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 		}
 		devs = []*device.Device{d}
 	}
-	fmt.Fprintf(&b, "store: %s\n", t.M.Base)
+	fmt.Fprintf(&b, "store: %s (data in %s/<device-id>)\n", t.M.Base, filepath.Base(store.DataDir(t.M.Base)))
+	if !t.M.NoADB && filepath.Clean(t.M.Base) != filepath.Clean(t.M.Root.Dir) {
+		fmt.Fprintf(&b, "owner locks: %s (ANDROID_LOG_MCP_HOME is set: devices recorded by another process are only read)\n", t.M.Root.Owners())
+	}
 	fmt.Fprintf(&b, "devices (%d):\n", len(devs))
 	known := map[string]bool{}
 	for _, d := range devs {
 		known[d.Serial] = true
+		if st := d.Status(); st.State != "" {
+			known[d.Addr()] = true
+		}
 		d.Store.Refresh()
 		m := d.Store.Meta()
 		st := d.Status()
@@ -152,10 +159,18 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 		if m.Release != "" {
 			rel = fmt.Sprintf("  android %s (sdk %s)", m.Release, m.SDK)
 		}
-		fmt.Fprintf(&b, "  %s  %s  %s%s  tz %s\n", d.Serial, state, orQ(m.Model), rel, tzLabel(loc, d.TZName(), time.Now()))
+		via := ""
+		if st.State != "" && d.Addr() != d.Serial {
+			via = " (adb " + d.Addr() + ")"
+		}
+		fmt.Fprintf(&b, "  %s%s  %s  %s%s  tz %s\n", d.Serial, via, state, orQ(m.Model), rel, tzLabel(loc, d.TZName(), time.Now()))
 		stats := d.Store.Stats()
 		var rec string
 		switch {
+		case st.Owner != nil && st.Owner.Legacy:
+			rec = fmt.Sprintf("NOT recorded by this process: an older android-log-mcp (pid %d, pre-0.4 flat layout) records it into %s; this process only reads that data. Quit/upgrade the old one and this process takes over (data is migrated).", st.Owner.PID, st.Owner.DataDir)
+		case st.Owner != nil:
+			rec = "NOT recorded by this process: owned by another android-log-mcp process (" + st.Owner.String() + "); this process only reads that data"
 		case st.Paused != "":
 			rec = st.Paused
 		case st.Recording:
@@ -167,6 +182,8 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 			}
 		case st.State == "device":
 			rec = "starting recorder"
+		case !t.M.NoADB && filepath.Dir(d.Store.Dir) != filepath.Clean(store.DataDir(t.M.Base)):
+			rec = "not recording: data from an older version's layout (read-only; deleted once older than the retention window)"
 		default:
 			rec = "not recording (device not connected)"
 		}
@@ -222,6 +239,8 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 			fmt.Fprintf(&b, "  %s  %s  (not recorded: ", s, stt)
 			if stt == "unauthorized" {
 				b.WriteString("accept the \"Allow USB debugging\" prompt on the phone)\n")
+			} else if stt == "device" && t.M.AddrOf(s) == "" {
+				b.WriteString("identifying the device…)\n")
 			} else if stt == "device" {
 				fmt.Fprintf(&b, "recording limit of %d devices reached; set ANDROID_LOG_MCP_MAX_DEVICES)\n", t.M.MaxDevices)
 			} else {

@@ -59,6 +59,8 @@ type Check struct {
 // Result is the evaluated probe of one device.
 type Result struct {
 	Serial      string  `json:"serial,omitempty"`
+	DeviceID    string  `json:"device_id,omitempty"` // stable ID the recorder files data under
+	IDSource    string  `json:"id_source,omitempty"` // how DeviceID was derived
 	ADB         string  `json:"adb,omitempty"`
 	Tracking    string  `json:"track_devices,omitempty"`
 	SDK         int     `json:"sdk"`
@@ -327,8 +329,11 @@ func summarize(r Result) string {
 // Text renders r for humans.
 func (r Result) Text() string {
 	var b strings.Builder
+	if r.DeviceID != "" {
+		fmt.Fprintf(&b, "device id    %s (from %s; data in v1/%s)\n", r.DeviceID, r.IDSource, r.DeviceID)
+	}
 	if r.Serial != "" {
-		fmt.Fprintf(&b, "device       %s\n", r.Serial)
+		fmt.Fprintf(&b, "adb serial   %s\n", r.Serial)
 	}
 	fmt.Fprintf(&b, "android      %s (API %d), abi %s\n", r.Release, r.SDK, r.ABI)
 	fmt.Fprintf(&b, "fingerprint  %s\n", r.Fingerprint)

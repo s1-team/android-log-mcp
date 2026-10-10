@@ -154,11 +154,19 @@ func SanitizeSerial(s string) string {
 	return b.String()
 }
 
-// Open opens (creating if needed) the store for serial under base. It
-// becomes the writer if it can take the lock, else a follower.
+// Open opens (creating if needed) the store for serial in the flat
+// directory base/<serial>. It becomes the writer if it can take the lock,
+// else a follower. (Tests and reports; the recorder uses OpenDir with the
+// versioned layout.)
 func Open(base, serial string, cfg Config) (*Store, error) {
+	return OpenDir(filepath.Join(base, SanitizeSerial(serial)), serial, cfg, true)
+}
+
+// OpenDir opens (creating if needed) the store in dir for device serial (the
+// device ID). With tryWriter it becomes the writer if it can take the
+// directory lock; otherwise it is a follower until TryPromote.
+func OpenDir(dir, serial string, cfg Config, tryWriter bool) (*Store, error) {
 	cfg.defaults()
-	dir := filepath.Join(base, SanitizeSerial(serial))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
@@ -166,9 +174,14 @@ func Open(base, serial string, cfg Config) (*Store, error) {
 	s.Serial = serial
 	s.meta.Serial = serial
 	s.loadMeta()
-	if f, ok := tryLock(filepath.Join(dir, "writer.lock")); ok {
-		s.writer = true
-		s.lockF = f
+	if s.meta.Serial != "" && s.meta.Serial != serial && serial != "" {
+		s.meta.Serial = serial
+	}
+	if tryWriter {
+		if f, ok := tryLock(filepath.Join(dir, "writer.lock")); ok {
+			s.writer = true
+			s.lockF = f
+		}
 	}
 	if err := s.loadSegments(); err != nil {
 		return nil, err
@@ -1104,8 +1117,26 @@ func (s *Store) rewriteAuxLocked(name string, lines [][]byte) error {
 
 func timeSince(t time.Time) float64 { return time.Since(t).Seconds() }
 
-// ListDeviceDirs lists device directories under base that contain meta.json.
+// DataFormat is the on-disk format version: device data lives in
+// <root>/v<DataFormat>/<device-id>/. Directories directly under the root
+// (<root>/<serial>/) are the pre-v1 "flat" layout, still read (legacy data,
+// unzipped reports).
+const DataFormat = 1
+
+// DataDir is <base>/v<DataFormat>.
+func DataDir(base string) string { return filepath.Join(base, fmt.Sprintf("v%d", DataFormat)) }
+
+// ListDeviceDirs lists device directories that contain meta.json: first the
+// versioned ones (<base>/v1/<id>), then flat ones (<base>/<serial>).
 func ListDeviceDirs(base string) []string {
+	out := listMetaDirs(DataDir(base))
+	return append(out, listMetaDirs(base)...)
+}
+
+// ListFlatDirs lists only the flat (pre-v1) device directories under base.
+func ListFlatDirs(base string) []string { return listMetaDirs(base) }
+
+func listMetaDirs(base string) []string {
 	ents, err := os.ReadDir(base)
 	if err != nil {
 		return nil
@@ -1120,6 +1151,48 @@ func ListDeviceDirs(base string) []string {
 	}
 	return out
 }
+
+// SegmentFile is one log segment on disk.
+type SegmentFile struct {
+	Path  string
+	First uint64
+	Size  int64
+}
+
+// ListSegments lists the segment files of a device directory, oldest first.
+func ListSegments(dir string) []SegmentFile {
+	segs, _ := (&Store{Dir: dir}).listSegments()
+	out := make([]SegmentFile, len(segs))
+	for i, s := range segs {
+		out[i] = SegmentFile{Path: s.path, First: s.first, Size: s.size}
+	}
+	return out
+}
+
+// TryLock takes an exclusive, non-blocking lock file (flock on unix, an
+// exclusively created file elsewhere); it is held while the file stays open.
+func TryLock(path string) (*os.File, bool) { return tryLock(path) }
+
+// ReleaseLock releases a lock taken with TryLock.
+func ReleaseLock(f *os.File) { releaseLock(f) }
+
+// LockHeld reports whether someone currently holds the lock file at path.
+func LockHeld(path string) bool {
+	if _, err := os.Stat(path); err != nil {
+		return false
+	}
+	f, ok := tryLock(path)
+	if !ok {
+		return true
+	}
+	releaseLock(f)
+	return false
+}
+
+// Dir-level helpers for callers that manage several stores.
+
+// WriterLockHeld reports whether a process writes the device directory dir.
+func WriterLockHeld(dir string) bool { return LockHeld(filepath.Join(dir, "writer.lock")) }
 
 // Config returns the effective configuration (defaults applied).
 func (s *Store) Config() Config { return s.cfg }

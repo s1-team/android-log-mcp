@@ -520,7 +520,7 @@ agent 可以借此发现自己写的 `message:foo message:bar` 实际被解释�
   - 早于保留期（`ANDROID_LOG_MCP_MAX_AGE`，默认 1 天）的已结束进程、崩溃和 `dropbox_seen` 键被删除；
   - 设备端 DropBox 默认保留 3 天，比 1 天的默认保留期长，所以 `dropbox_seen` 键删掉后，设备上可能还有对应条目。为了不把这些旧崩溃当成新崩溃重新导入，`ApplyDropbox` 不导入早于「最新一条已存日志的时间 − 保留期」的条目（按设备时钟算，回放 fixture 也不会随日期漂移）；
   - 压缩时持有辅助文件锁，和 `AppendAux` 互斥，不会丢追加；只有变小时才重写。`*.tmp` 残留超过 10 分钟就删除。
-- **目录总量上限**（`store.EnforceTotal`，默认 2 GiB，每分钟检查一次）：
+- **目录总量上限**（0.4 起由 `layout.Sweep` 实现，见第 10 节；默认 2 GiB，每分钟检查一次）：
   - 统计所有设备目录里所有文件的大小，按 mtime 从旧到新删除分段，每台设备的最后一段不删。
   - 本进程负责录制的目录，通过它自己的 store 删除（同步内存里的段表）；没人录制的目录，先拿 `writer.lock` 再删；别的进程在录制的目录跳过，留给那个进程自己处理。
 - **剩余空间低时暂停**（`store.DiskGuard`，每 10 秒检查一次）：
@@ -546,3 +546,47 @@ agent 可以借此发现自己写的 `message:foo message:bar` 实际被解释�
 - `logcat_status` 的 `stored …` 行显示生效的保留期和每台设备的上限。
 - `report` 的默认窗口仍然是 2 小时，在 1 天以内。`--since` 超出已保留的历史时，照旧在 manifest 和输出里注明 history 起点。
 - 升级提示见 README「升级到 0.3.0」。
+
+## 10. Storage layout, device identity and ownership (issue #5)
+
+Goal (GOALS "Bounded", "Observe, never interfere"): one per-user root that owns every file the tool creates, one recorder per device per user, and no unbounded leftovers.
+
+### 10.1 Layout
+
+```
+<root> = os.UserCacheDir()/android-log-mcp
+  owners/<device-id>.lock   flock (unix) / O_EXCL file refreshed every 10 s (Windows); JSON {pid, version, data_dir, addr, home, since}
+  run/                      runtime endpoints (for the planned daemon, #3): <name>.json {pid, socket}
+  tmp/                      scratch, expires after 1 h
+  v1/<device-id>/           store format 1 (store.DataFormat); older/newer vN/ dirs are swept like legacy data
+  legacy/<suffix>/          sibling <root>.<suffix> directories, moved here at startup when no writer.lock inside is held
+  <serial>/                 pre-0.4 flat directories (migrated on connect, else read-only until they expire)
+```
+
+`ANDROID_LOG_MCP_HOME` only changes where data is written (`<HOME>/v1/<id>`); the owner lock is always taken in the real root, so a HOME process never records a device another process owns. `--offline` never sweeps, moves or migrates anything (browsing an unzipped report keeps working with its flat `store/<id>/` layout).
+
+### 10.2 Device ID
+
+`device.ResolveID(addr, props, avdName)` is a pure function (unit-tested): emulator → `avd-<name>` (`ro.boot.qemu.avd_name`, else the console's `adb emu avd name`); physical → `ro.serialno` unless empty/placeholder; fallback `fp-<sha256(manufacturer|model|android_id)[:12]>`, or with no android_id `fp-<sha256(manufacturer|model|fingerprint|addr)[:12]>`. The probe is one read-only `adb shell` (getprop ×8, `settings get secure android_id`, boot_id). The adb serial is the connection address only: `meta.json` keeps it as `addr`, earlier names as `aliases`. The manager is keyed by ID; `Manager.Get` accepts the ID, a live adb serial or an alias, and cursors carrying an alias stay valid (`Device.Matches`).
+
+Known limitation: an API ≤ 29 emulator attached via `adb connect` has no AVD name and gets an `fp-` ID.
+
+### 10.3 Attach / ownership
+
+On a new online adb serial the manager probes the identity asynchronously (retried every 10 s on failure), then `attach`:
+1. a pre-0.4 process holding `<base>/<serial>/writer.lock` → follow that directory read-only (status: "an older android-log-mcp (pid …, pre-0.4 flat layout)");
+2. else try `owners/<id>.lock`; held → follow the owner's `data_dir` read-only (status names pid, version, HOME, data dir);
+3. acquired → migrate a matching flat directory, open `<base>/v1/<id>` as writer, record.
+The maintenance tick re-attaches followers whose owner went away (takeover). Devices only on disk are opened read-only.
+
+Migration renames a flat directory into `v1/<id>` (same files, same sequence numbers; `meta.serial` becomes the ID, the old serial an alias) only if its writer lock is free, `v1/<id>` has no data yet, and it is clearly the same device: `meta.serial == ro.serialno` for a physical device, or the device's current boot_id appears in `last_boot_id`/`sessions` (boot ids are random per boot; adb serials and emulator ports are reused, so the serial alone is not enough). `ANDROID_LOG_MCP_LEGACY=keep` disables migration, sibling adoption and deletion of legacy data.
+
+### 10.4 Sweep (`layout.Sweep`, at startup and every minute)
+
+1. `run/`: remove state files whose pid is dead or whose socket does not accept a connection, orphan sockets nothing listens on, other files older than MaxAge.
+2. `owners/`: remove lock files nobody holds (under the lock; acquirers re-check the inode).
+3. `tmp/`: files older than 1 h.
+4. Age: every device directory not recorded by this process and not busy (owner lock / `writer.lock` held) — current format, other formats, flat, inside `legacy/` — loses segments whose mtime is older than MaxAge, including the newest; the directory is removed when nothing in it is newer. Directories this process records are pruned by their store (`Store.Prune`, keeps the active segment).
+5. Total cap over all managed files (device dirs of every format, `legacy/`, `tmp/`, `run/`, `owners/`): delete the oldest files first; each current-format device keeps its newest segment; non-current directories without segments are removed.
+Only known file names are deleted from a device directory, so a misconfigured HOME cannot lose unrelated files.
+

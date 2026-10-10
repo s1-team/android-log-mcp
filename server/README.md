@@ -13,11 +13,12 @@ REPLAY_DUMP=1 go test ./internal/mcpserver -run ReplayExplore -v  # 打印 fixtu
 | 包 | 职责 |
 |---|---|
 | `cmd/android-log-mcp` | 入口：MCP stdio 服务器，`call` 调试子命令，`report` 诊断包子命令，`--offline`（不用 adb，只读已有数据） |
-| `internal/device` | 设备管理（adb track-devices）、录制、ingest pipeline（`Pipeline`，fixture 回放也走这里）、DropBox |
+| `internal/device` | 设备管理（adb track-devices；按稳定设备 ID 管理，`identity.go`；所有权、旧目录迁移）、录制、ingest pipeline（`Pipeline`，fixture 回放也走这里）、DropBox |
 | `internal/logcat` | logcat 行解析、多行合并、`-v printable` 反转义 |
 | `internal/procs` | pid 到进程的生命周期表（am_proc_*、ps 快照、force-stop、重启） |
 | `internal/analysis` | 崩溃、ANR、tombstone 识别和 DropBox 合并；启动时间线 |
 | `internal/filter` | Android Studio Logcat 过滤语法的解析器（移植，含 AS 测试） |
+| `internal/layout` | Per-user data root: `owners/<device-id>.lock` ownership, `v1/<device-id>/` layout, adoption of `android-log-mcp.*` siblings into `legacy/`, and the sweep (retention + total cap over every format, legacy data, `tmp/`, `run/`, stale sockets / owner locks) |
 | `internal/store` | JSONL 分段存储；单写者多读者（flock）；最近窗口和按块的历史缓存（条数 / 字节上限，空闲释放）；保留期（`ANDROID_LOG_MCP_MAX_AGE`）、目录总量上限和低剩余空间暂停 |
 | `internal/mcpserver` | 4 个工具的实现、渲染，以及回归测试（含 replay-from-report） |
 | `internal/compat` | `compat` 子命令：只读探测设备的 logcat / ps / pm / dumpsys 功能，并用录制时的解析器评估 |

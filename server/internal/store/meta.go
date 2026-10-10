@@ -35,6 +35,14 @@ type Meta struct {
 	CrashSeq       int       `json:"crash_seq,omitempty"`
 	AnrSeq         int       `json:"anr_seq,omitempty"`
 	State          string    `json:"state,omitempty"` // last known adb state
+	// Addr is the last adb serial the device was reached at (connection
+	// address only; Serial is the stable device ID since layout v1).
+	Addr string `json:"addr,omitempty"`
+	// IDSource says how Serial (the device ID) was derived.
+	IDSource string `json:"id_source,omitempty"`
+	// Aliases are earlier names of this device's data (e.g. the adb serial
+	// of a migrated pre-v1 directory); cursors and device= accept them.
+	Aliases []string `json:"aliases,omitempty"`
 }
 
 // BootShort makes the short boot id stored in each record.
