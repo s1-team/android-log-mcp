@@ -105,10 +105,11 @@ jobs:
         working-directory: smoke
         env:
           ANDROID_LOG_MCP_ADB: ${{ runner.temp }}/no-adb   # never start the runner's adb
-          ANDROID_LOG_MCP_LINGER: "0"                     # exit with the last client
+          ANDROID_LOG_MCP_LINGER: "0"                     # no device would be kept anyway (no adb)
         run: |
           node ../npm/test/mcp_smoke.js npx android-log-mcp | tee smoke.txt
           grep -E "^service: background service pid [0-9]+, version [^,]+, protocol [0-9]+" smoke.txt
           npx android-log-mcp root --json
-          for i in $(seq 1 50); do npx android-log-mcp service status >/dev/null || break; sleep 0.2; done
-          npx android-log-mcp service status && { echo "service still running after the last client (linger 0)"; npx android-log-mcp service stop; exit 1; } || true
+          # the service exits 30 s after the last client with no pin and no recorded device (#11)
+          for i in $(seq 1 45); do npx android-log-mcp service status >/dev/null || break; sleep 2; done
+          npx android-log-mcp service status && { echo "service still running 90 s after the last client"; npx android-log-mcp service stop; exit 1; } || true
