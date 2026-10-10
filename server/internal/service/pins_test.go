@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/s1crab/android-log-mcp/server/internal/fakeadb"
+	"github.com/s1crab/android-log-mcp/server/internal/procattr"
 )
 
 func TestSetPinNeverShortens(t *testing.T) {
@@ -201,13 +203,11 @@ func TestServiceCountsCrashes(t *testing.T) {
 // deadPID is the pid of a process that has exited.
 func deadPID(t *testing.T) int {
 	t.Helper()
-	p, err := os.StartProcess(os.Args[0], []string{os.Args[0], "-test.run=^$"}, &os.ProcAttr{})
-	if err != nil {
+	cmd := procattr.Hide(exec.Command(os.Args[0], "-test.run=^$"))
+	if err := cmd.Run(); err != nil {
 		t.Fatal(err)
 	}
-	pid := p.Pid
-	p.Wait()
-	return pid
+	return cmd.Process.Pid
 }
 
 // record (the op): --for pins and starts the single online device, a
