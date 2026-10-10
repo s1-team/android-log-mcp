@@ -293,9 +293,10 @@ func TestPerDeviceIdle(t *testing.T) {
 	startDevice(t, m, "FAKEB")
 	waitFor(t, "B to stop", 5*time.Second, func() bool { return !m.Wanted("FAKEB") })
 	waitFor(t, "B's logcat to exit", 5*time.Second, func() bool { return !e.LogcatRunning("FAKEB") })
-	if b := m.Get("FAKEB"); b == nil || b.Owned() || b.Store.IsWriter() {
-		t.Fatal("B still owned / writer after its idle stop")
-	}
+	waitFor(t, "B released (read-only)", 5*time.Second, func() bool {
+		b := m.Get("FAKEB")
+		return b != nil && !b.Owned() && !b.Store.IsWriter()
+	})
 	time.Sleep(600 * time.Millisecond)
 	if !m.Wanted("FAKEA") || !e.LogcatRunning("FAKEA") {
 		t.Fatal("A stopped while a call was in flight")
