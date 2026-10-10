@@ -16,10 +16,12 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SERIAL="${1:-${ANDROID_SERIAL:-emulator-5556}}"
 EVID="${2:-}"
 ADB="${ANDROID_LOG_MCP_ADB:-$(command -v adb || echo "$HOME/android-sdk/platform-tools/adb")}"
-# The per-user root the recorder writes to (Linux). A process with
-# ANDROID_LOG_MCP_HOME set is read-only and never records, so to isolate this
-# test point the root elsewhere with XDG_CACHE_HOME=/tmp/x instead.
-HOME_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/android-log-mcp"
+# The data root (Linux): ANDROID_LOG_MCP_HOME if set, else the per-user cache
+# dir. Owner locks always live in the fixed per-user owners dir, whatever the
+# root: if another process (any root) records SERIAL, its data dir is used.
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/android-log-mcp"
+HOME_DIR="${ANDROID_LOG_MCP_HOME:-$CACHE_DIR}"
+OWNERS_DIR="$CACHE_DIR/owners"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"; [ -n "${REC_PID:-}" ] && kill "$REC_PID" 2>/dev/null || true' EXIT
 
@@ -69,10 +71,37 @@ keep at com.example.logtest.Net.call(Net.java:42) java.lang.RuntimeException and
 keep act=android.intent.action.MAIN ro.build.fingerprint persist.sys.timezone base.apk libc.so base.odex main.xml app.json
 KEEP
 
-# make sure something records the device
-if ! find "$HOME_DIR" -maxdepth 3 -name meta.json -newermt '-60 seconds' 2>/dev/null | grep -q .; then
-  echo "no active recorder seen; starting one" >&2
-  (sleep infinity | env -u ANDROID_LOG_MCP_HOME "$BIN" >/dev/null 2>"$WORK/rec.log") &
+# the device's data directory: the live owner's data_dir (owners/<id>.lock,
+# any root), else <home>/v1/<device-id> (meta.json has the adb serial as "addr")
+find_dir() {
+  python3 - "$HOME_DIR" "$OWNERS_DIR" "$SERIAL" <<'PY'
+import glob, json, os, sys
+home, owners, serial = sys.argv[1:4]
+cands = []
+for l in sorted(glob.glob(os.path.join(owners, "*.lock"))):
+    try:
+        o = json.load(open(l))
+    except Exception:
+        continue
+    if o.get("data_dir"):
+        cands.append(os.path.join(o["data_dir"], "meta.json"))
+cands += sorted(glob.glob(os.path.join(home, "v1", "*", "meta.json")))
+for m in cands:
+    try:
+        meta = json.load(open(m))
+    except Exception:
+        continue
+    if serial in (meta.get("serial"), meta.get("addr")):
+        print(os.path.dirname(m))
+        break
+PY
+}
+
+# make sure something records the device (its data dir changed recently)
+d0=$(find_dir)
+if [ -z "$d0" ] || ! find "$d0" -maxdepth 1 -newermt '-60 seconds' 2>/dev/null | grep -q .; then
+  echo "no active recorder seen; starting one (root $HOME_DIR)" >&2
+  (sleep infinity | ANDROID_LOG_MCP_HOME="$HOME_DIR" "$BIN" >/dev/null 2>"$WORK/rec.log") &
   REC_PID=$!
   sleep 15
 fi
@@ -87,22 +116,6 @@ while read -r msg; do
 done < "$WORK/keep.txt"
 N=$(( $(wc -l < "$WORK/secrets.tsv") + $(wc -l < "$WORK/keep.txt") ))
 
-# the device's data directory: <home>/v1/<device-id> (0.4+; meta.json has the
-# adb serial as "addr") or <home>/<serial> (older flat layout)
-find_dir() {
-  python3 - "$HOME_DIR" "$SERIAL" <<'PY'
-import glob, json, os, sys
-home, serial = sys.argv[1:3]
-for m in sorted(glob.glob(os.path.join(home, "v1", "*", "meta.json"))) + glob.glob(os.path.join(home, "*", "meta.json")):
-    try:
-        meta = json.load(open(m))
-    except Exception:
-        continue
-    if serial in (meta.get("serial"), meta.get("addr")) or serial in (meta.get("aliases") or []):
-        print(os.path.dirname(m))
-        break
-PY
-}
 dir=""
 for t in $(seq 1 90); do
   [ -n "$dir" ] || dir=$(find_dir)
@@ -121,7 +134,7 @@ cat "$WORK/report.stderr" >&2
 mkdir "$WORK/r" && (cd "$WORK/r" && unzip -q "$OUT")
 
 # offline load of the report's store
-"$BIN" --home "$WORK/r/store" --offline call logcat_search \
+"$BIN" --offline "$WORK/r/store" call logcat_search \
   "{\"device\":\"$DEVICE_ID\",\"filter\":\"tag=:LeakTest message:$RUN\",\"limit\":100}" > "$WORK/search.txt"
 
 status=0
@@ -154,7 +167,7 @@ def load(path):
                 out[key] = rec
     return out
 orig = load(os.path.join(store, "seg-*.jsonl"))
-rep = load(os.path.join(r, "store", "*", "seg-*.jsonl"))
+rep = load(os.path.join(r, "store", "v1", "*", "seg-*.jsonl"))
 if len(rep) != len(orig) or not orig:
     fail.append(f"LeakTest records: original {len(orig)}, report {len(rep)}")
 for k, o in orig.items():

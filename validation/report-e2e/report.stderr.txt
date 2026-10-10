@@ -1,3 +1,3 @@
-report: emulator-5556: 759 records (2026-10-10 12:58:00.025385 … 2026-10-10 13:17:47.411151), 0 crashes/ANRs, device info: live
-report: redacted: bank_card=8 cookie=4 credential=13 device_id=4 domain=13 email=5 id_card=4 ipv4=4 ipv6=4 jwt=4 mac=4 password=4 phone=8 secret=16 token=5 url_param=4
+report: avd-api29: 197 records (2026-10-10 19:19:24.842782 … 2026-10-10 19:32:10.669447), 0 crashes/ANRs, device info: live
+report: redacted: bank_card=2 cookie=1 credential=4 device_id=1 domain=4 email=2 id_card=1 ipv4=1 ipv6=1 jwt=1 mac=1 password=1 phone=2 secret=4 token=1 url_param=1
 report: review the zip before sharing it: redaction is pattern based

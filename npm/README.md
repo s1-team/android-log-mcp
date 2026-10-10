@@ -14,7 +14,7 @@
 scripts/build-npm.sh            # 版本号取自 npm/VERSION，交叉编译到 npm/dist/
 scripts/build-npm.sh 0.1.0 --pack   # 另外把所有包 npm pack 到 npm/dist/tarballs/
 python3 npm/test/mcp_smoke.py npx -y android-log-mcp   # 通过 stdio 依次发送 initialize、tools/list、logcat_status
-node npm/test/mcp_smoke.js npx android-log-mcp --offline   # 同上，只依赖 Node（CI 的 Node 版本矩阵用这个）
+node npm/test/mcp_smoke.js npx android-log-mcp --offline /tmp/alm-empty   # 同上，只依赖 Node（CI 的 Node 版本矩阵用这个）
 ```
 
 `npm/test/verify-0.1.0.txt` 是本地验证记录：用本机 verdaccio 作为 registry，跑通了 `npx -y android-log-mcp`。

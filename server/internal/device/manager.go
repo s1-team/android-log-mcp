@@ -2,7 +2,6 @@ package device
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -10,7 +9,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -21,18 +19,22 @@ import (
 // Manager tracks adb devices and their stores. Devices are keyed by their
 // stable ID (ResolveID); the adb serial is only the connection address.
 type Manager struct {
-	// Base holds device data: the per-user root, or ANDROID_LOG_MCP_HOME.
+	// Base is the data root: os.UserCacheDir()/android-log-mcp, or
+	// ANDROID_LOG_MCP_HOME / --home (relocated root; records normally), or
+	// the --offline dataset.
 	Base string
-	// Root is the per-user root; its owners/ lock decides which process
-	// records a device, whatever Base is.
+	// Root is the data root (Dir = Base) plus the owners directory, which is
+	// fixed per user (layout.DefaultOwnersDir) whatever Base is, so a device
+	// is recorded by one process per user even across roots.
 	Root       layout.Root
 	Version    string
 	Cfg        store.Config
 	MaxDevices int
-	// NoADB disables adb entirely (tests, or browsing recorded history only).
+	// NoADB (--offline <dir>): browse a dataset read-only; adb is not used
+	// and nothing is recorded, pruned or created.
 	NoADB bool
-	// MaxTotalBytes caps everything under Base (all devices and formats,
-	// legacy data, tmp/, run/); 0 disables. Default 2 GiB.
+	// MaxTotalBytes caps everything the tool manages under Base (all
+	// devices and format versions, tmp/, run/); 0 disables. Default 2 GiB.
 	MaxTotalBytes int64
 	// Disk pauses recording while free space on the data disk is low.
 	Disk *store.DiskGuard
@@ -41,7 +43,7 @@ type Manager struct {
 	adbErr    error
 	ctx       context.Context
 	mu        sync.Mutex
-	devices   map[string]*Device // by device ID (flat legacy dirs: by their stored serial)
+	devices   map[string]*Device // by device ID
 	states    map[string]string  // live adb states by adb serial (incl. unauthorized/offline)
 	addrs     map[string]string  // adb serial -> device ID
 	resolving map[string]bool
@@ -51,8 +53,8 @@ type Manager struct {
 	once      sync.Once
 }
 
-// DefaultBase is ANDROID_LOG_MCP_HOME if set, else the per-user root
-// os.UserCacheDir()/android-log-mcp.
+// DefaultBase is the data root: ANDROID_LOG_MCP_HOME if set (relocated
+// root), else os.UserCacheDir()/android-log-mcp.
 func DefaultBase() string {
 	if v := os.Getenv("ANDROID_LOG_MCP_HOME"); v != "" {
 		return v
@@ -61,7 +63,7 @@ func DefaultBase() string {
 }
 
 func NewManager(base string, cfg store.Config) *Manager {
-	m := &Manager{Base: base, Root: layout.Root{Dir: layout.DefaultDir()}, Cfg: cfg, MaxDevices: 4,
+	m := &Manager{Base: base, Root: layout.Root{Dir: base, OwnersDir: layout.DefaultOwnersDir()}, Cfg: cfg, MaxDevices: 4,
 		devices: map[string]*Device{}, states: map[string]string{}, addrs: map[string]string{}, resolving: map[string]bool{},
 		ready: make(chan struct{}), MaxTotalBytes: DefaultMaxTotalBytes, Disk: &store.DiskGuard{MinFree: DefaultMinFreeBytes}}
 	if v, err := strconv.Atoi(os.Getenv("ANDROID_LOG_MCP_MAX_DEVICES")); err == nil && v > 0 {
@@ -86,44 +88,6 @@ func (m *Manager) newDevice(st *store.Store, serial string) *Device {
 	d := newDevice(m.adb, st, serial)
 	d.disk = m.Disk
 	return d
-}
-
-// homeMode: ANDROID_LOG_MCP_HOME / --home points somewhere other than the
-// per-user root. Such a process is strictly read-only: it never records any
-// device (not even one nobody owns), and never sweeps, migrates or creates
-// anything; it is for tests, offline browsing, replay and reports.
-func (m *Manager) homeMode() bool { return !samePath(m.Base, m.Root.Dir) }
-
-// ReadOnlyReason explains why this process never records ("" if it may).
-func (m *Manager) ReadOnlyReason() string {
-	switch {
-	case m.homeMode():
-		return fmt.Sprintf("read-only: ANDROID_LOG_MCP_HOME/--home is set (%s), so this process never records any device; it only reads that directory and the data of the process that records a device. Run android-log-mcp without ANDROID_LOG_MCP_HOME/--home to record (data goes to %s).", m.Base, m.Root.Dir)
-	case m.NoADB:
-		return "read-only: --offline (adb disabled), only recorded data is browsed"
-	}
-	return ""
-}
-
-// HomeReadOnly reports whether a custom data directory makes this process read-only.
-func (m *Manager) HomeReadOnly() bool { return m.homeMode() }
-
-func samePath(a, b string) bool {
-	if a == b {
-		return true
-	}
-	aa, err1 := filepath.Abs(a)
-	bb, err2 := filepath.Abs(b)
-	if err1 != nil || err2 != nil {
-		return false
-	}
-	if ea, err := filepath.EvalSymlinks(aa); err == nil {
-		aa = ea
-	}
-	if eb, err := filepath.EvalSymlinks(bb); err == nil {
-		bb = eb
-	}
-	return aa == bb
 }
 
 func (m *Manager) maxAge() time.Duration {
@@ -171,12 +135,12 @@ func (m *Manager) maintain(ctx context.Context) {
 }
 
 // MaintainOnce applies retention (per device, then a sweep of everything
-// under the data root: other devices, old formats, legacy data, tmp/, run/,
+// under the data root: other devices, other format versions, tmp/, run/,
 // the total size cap) and, with aux, compacts the auxiliary files of the
 // devices this process writes.
 func (m *Manager) MaintainOnce(aux bool) {
-	if m.homeMode() {
-		return // read-only: never prune or delete anything
+	if m.NoADB {
+		return // --offline: never prune or delete anything
 	}
 	m.attachMu.Lock()
 	defer m.attachMu.Unlock()
@@ -230,19 +194,11 @@ func (m *Manager) dropVanished() {
 // Start begins device tracking (non-blocking).
 func (m *Manager) Start(ctx context.Context) {
 	m.ctx = ctx
-	if m.homeMode() {
-		log.Print(m.ReadOnlyReason())
-	}
-	if !m.NoADB && !m.homeMode() {
-		os.MkdirAll(m.Base, 0o755)
-		// startup sweep (--offline only browses, e.g. an unzipped report:
-		// never move, prune or delete anything there)
+	if !m.NoADB {
+		// startup sweep (--offline only browses a dataset, e.g. an unzipped
+		// report: never write, prune or delete anything there)
 		if err := m.Root.Ensure(); err != nil {
 			log.Printf("data root %s: %v", m.Root.Dir, err)
-		}
-		os.MkdirAll(store.DataDir(m.Base), 0o755)
-		for _, d := range m.Root.AdoptSiblings() {
-			log.Printf("moved %s into %s (expires with the retention window)", filepath.Base(d), d)
 		}
 		m.attachMu.Lock()
 		m.sweepLocked(nil)
@@ -442,29 +398,7 @@ func (m *Manager) recheck() {
 }
 
 func (m *Manager) foreignLive(id string, f *layout.Owner) bool {
-	if f.Legacy {
-		return store.WriterLockHeld(f.DataDir)
-	}
 	return m.Root.OwnerHeld(id)
-}
-
-// legacyWriter finds a pre-v1 version recording addr into a flat directory.
-func (m *Manager) legacyWriter(addr string) *layout.Owner {
-	bases := []string{m.Base}
-	if m.homeMode() {
-		bases = append(bases, m.Root.Dir)
-	}
-	for _, b := range bases {
-		dir := filepath.Join(b, store.SanitizeSerial(addr))
-		if store.WriterLockHeld(dir) {
-			o := &layout.Owner{DataDir: dir, Addr: addr, Version: "pre-0.4 (flat layout)", Legacy: true}
-			if bs, err := os.ReadFile(filepath.Join(dir, "writer.lock")); err == nil {
-				o.PID, _ = strconv.Atoi(strings.TrimSpace(string(bs)))
-			}
-			return o
-		}
-	}
-	return nil
 }
 
 // Attach is attach for a device whose identity is already known (tests,
@@ -507,15 +441,14 @@ func (m *Manager) collision(id Identity) (string, bool) {
 }
 
 // attach decides who records device id: this process (taking the global
-// owner lock, migrating a matching flat directory, recording into
-// <base>/v1/<id>) or another one (follow its data read-only and report it).
-// A read-only process (custom HOME) never takes ownership. Returns the ID
-// the device is filed under ("" if it is not tracked).
+// owner lock and recording into <base>/v1/<id>) or another one, possibly
+// with a different root (follow its data read-only and report it). Returns
+// the ID the device is filed under ("" if it is not tracked).
 func (m *Manager) attach(id Identity) string {
 	m.attachMu.Lock()
 	defer m.attachMu.Unlock()
-	if m.ctx != nil && m.ctx.Err() != nil {
-		return ""
+	if m.NoADB || (m.ctx != nil && m.ctx.Err() != nil) {
+		return "" // --offline never records, follows or creates anything
 	}
 	if other, ok := m.collision(id); ok {
 		base := id.ID
@@ -536,39 +469,6 @@ func (m *Manager) attach(id Identity) string {
 			return id.ID
 		}
 	}
-	if o := m.legacyWriter(id.Addr); o != nil {
-		m.follow(id, o)
-		return id.ID
-	}
-	if m.homeMode() {
-		if o, held := m.Root.ReadOwner(id.ID); held {
-			if o == nil {
-				o = &layout.Owner{}
-			}
-			m.follow(id, o)
-			return id.ID
-		}
-		// nobody records it and this process never does: show what HOME has
-		if cur != nil {
-			cur.mu.Lock()
-			cur.foreign, cur.idNote = nil, id.Collision
-			cur.mu.Unlock()
-			cur.setAddr(id.Addr)
-			return id.ID
-		}
-		dir := layout.DeviceDir(m.Base, id.ID)
-		if !exists(filepath.Join(dir, "meta.json")) {
-			return id.ID // listed by logcat_status as connected but not recorded
-		}
-		st, err := store.OpenReadOnly(dir, m.Cfg)
-		if err != nil {
-			return id.ID
-		}
-		d := m.newDevice(st, id.ID)
-		d.addr, d.idNote, d.adb = id.Addr, id.Collision, m.adb
-		m.swap(id.ID, d, "")
-		return id.ID
-	}
 	owned := 0
 	for _, d := range m.Devices() {
 		if d.Owned() {
@@ -581,6 +481,9 @@ func (m *Manager) attach(id Identity) string {
 	}
 	dir := layout.DeviceDir(m.Base, id.ID)
 	info := layout.Owner{PID: os.Getpid(), Version: m.Version, DataDir: dir, Addr: id.Addr, BootID: id.BootID, Since: time.Now().UTC()}
+	if filepath.Clean(m.Base) != filepath.Clean(layout.DefaultDir()) {
+		info.Home = m.Base
+	}
 	lock, other, err := m.Root.AcquireOwner(id.ID, info)
 	if errors.Is(err, layout.ErrOwned) {
 		if other == nil {
@@ -593,7 +496,6 @@ func (m *Manager) attach(id Identity) string {
 		log.Printf("%s: owner lock: %v", id.ID, err)
 		return ""
 	}
-	migratedFrom, oldSerial := m.migrate(id, dir)
 	st, err := store.OpenDir(dir, id.ID, m.Cfg, true)
 	if err != nil {
 		lock.Release()
@@ -602,11 +504,6 @@ func (m *Manager) attach(id Identity) string {
 	}
 	st.UpdateMeta(func(mt *store.Meta) {
 		mt.Serial, mt.Addr, mt.IDSource = id.ID, id.Addr, id.Source
-		for _, a := range []string{oldSerial, id.Addr} {
-			if a != "" && a != id.ID && !contains(mt.Aliases, a) {
-				mt.Aliases = append(mt.Aliases, a)
-			}
-		}
 	})
 	d := m.newDevice(st, id.ID)
 	d.addr = id.Addr
@@ -616,10 +513,7 @@ func (m *Manager) attach(id Identity) string {
 	if id.BootID != "" {
 		d.bootID = id.BootID
 	}
-	m.swap(id.ID, d, migratedFrom)
-	if migratedFrom != "" {
-		log.Printf("%s: migrated %s -> %s", id.ID, migratedFrom, dir)
-	}
+	m.swap(id.ID, d)
 	return id.ID
 }
 
@@ -641,12 +535,9 @@ func (m *Manager) follow(id Identity, o *layout.Owner) {
 	}
 	var st *store.Store
 	var err error
-	switch {
-	case exists(filepath.Join(dir, "meta.json")):
+	if exists(filepath.Join(dir, "meta.json")) {
 		st, err = store.OpenReadOnly(dir, m.Cfg)
-	case m.homeMode():
-		st, err = store.OpenReadOnly(o.DataDir, m.Cfg) // read-only: never create anything
-	default:
+	} else {
 		st, err = store.OpenDir(dir, id.ID, m.Cfg, false)
 	}
 	if err != nil {
@@ -658,26 +549,18 @@ func (m *Manager) follow(id Identity, o *layout.Owner) {
 	d.foreign = o
 	d.idNote = id.Collision
 	d.adb = m.adb
-	m.swap(id.ID, d, "")
+	m.swap(id.ID, d)
 	log.Printf("%s (%s): recorded by another android-log-mcp process (%s); following read-only", id.ID, id.Addr, o)
 }
 
 // swap installs d under key, retiring the previous device with that key and
-// any other entry reading the same directory (or the migrated one).
-func (m *Manager) swap(key string, d *Device, movedFrom string) {
+// any other entry reading the same directory.
+func (m *Manager) swap(key string, d *Device) {
 	m.mu.Lock()
 	var old []*Device
 	for k, e := range m.devices {
-		if k == key || e.Store.Dir == d.Store.Dir || (movedFrom != "" && e.Store.Dir == movedFrom) {
+		if k == key || e.Store.Dir == d.Store.Dir {
 			delete(m.devices, k)
-			if e.Store.Dir != d.Store.Dir && e.Store.Dir != movedFrom && exists(e.Store.Dir) && !e.Owned() && e.Status().Owner == nil {
-				// unrelated legacy data that happened to use this key: keep it browsable
-				rel, _ := filepath.Rel(m.Base, e.Store.Dir)
-				nk := k + "@" + filepath.ToSlash(rel)
-				e.Serial = nk
-				m.devices[nk] = e
-				continue
-			}
 			old = append(old, e)
 		}
 	}
@@ -691,88 +574,6 @@ func (m *Manager) swap(key string, d *Device, movedFrom string) {
 			st.Close()
 		}(e.Store)
 	}
-}
-
-// migrate moves the pre-v1 flat directory of this device into dir. A flat
-// directory belongs to the device when its stored serial is the device's
-// ro.serialno (physical devices over USB), or when it recorded the
-// device's current boot (boot IDs are random per boot) — the adb serial
-// alone is not enough (emulator ports and ip:port are reused). Returns the
-// old directory and its stored serial ("" if nothing was migrated).
-func (m *Manager) migrate(id Identity, dir string) (string, string) {
-	if exists(filepath.Join(dir, "meta.json")) {
-		return "", "" // already has v1 data; old data expires as legacy
-	}
-	var best string
-	var bestMeta store.Meta
-	for _, flat := range store.ListFlatDirs(m.Base) {
-		mt, ok := readMeta(flat)
-		if !ok {
-			continue
-		}
-		match := (id.Source == "ro.serialno" && mt.Serial == id.ID) || (id.BootID != "" && hasBoot(mt, id.BootID))
-		if match && (best == "" || mt.LastTimeNs > bestMeta.LastTimeNs) {
-			best, bestMeta = flat, mt
-		}
-	}
-	if best == "" {
-		return "", ""
-	}
-	f, ok := store.TryLock(filepath.Join(best, "writer.lock"))
-	if !ok {
-		return "", "" // still recorded by an old version
-	}
-	// our own read-only view of it must not keep files open (Windows
-	// cannot rename a directory with open files); swap drops the entry
-	m.mu.Lock()
-	for _, e := range m.devices {
-		if e.Store.Dir == best {
-			e.Store.Close()
-		}
-	}
-	m.mu.Unlock()
-	os.Remove(filepath.Join(best, "writer.lock")) // unix: while holding it
-	store.ReleaseLock(f)
-	os.Remove(filepath.Join(best, "writer.lock"))
-	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
-		return "", ""
-	}
-	os.Remove(dir) // an empty leftover
-	if err := os.Rename(best, dir); err != nil {
-		log.Printf("%s: migrating %s: %v (left in place; expires as legacy data)", id.ID, best, err)
-		return "", ""
-	}
-	return best, bestMeta.Serial
-}
-
-func readMeta(dir string) (store.Meta, bool) {
-	var mt store.Meta
-	b, err := os.ReadFile(filepath.Join(dir, "meta.json"))
-	if err != nil || json.Unmarshal(b, &mt) != nil {
-		return mt, false
-	}
-	return mt, true
-}
-
-func hasBoot(mt store.Meta, boot string) bool {
-	if mt.LastBootID == boot {
-		return true
-	}
-	for _, s := range mt.Sessions {
-		if s.BootID == boot {
-			return true
-		}
-	}
-	return false
-}
-
-func contains(l []string, s string) bool {
-	for _, x := range l {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }
 
 func exists(p string) bool { _, err := os.Stat(p); return err == nil }
@@ -814,7 +615,7 @@ func (m *Manager) Devices() []*Device {
 }
 
 // Get returns the device named by its ID, its current adb serial, or an
-// alias such as the adb serial of a migrated pre-v1 directory (nil if
+// adb serial it was last reached at (nil if
 // unknown).
 func (m *Manager) Get(name string) *Device {
 	m.mu.Lock()

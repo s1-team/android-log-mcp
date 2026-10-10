@@ -26,9 +26,9 @@ func main() {
 	if version != "" {
 		mcpserver.Version = version
 	}
-	home := flag.String("home", "", "data directory (default $ANDROID_LOG_MCP_HOME or <user cache dir>/android-log-mcp); devices owned by another process are never recorded here")
+	home := flag.String("home", "", "data root (default $ANDROID_LOG_MCP_HOME or <user cache dir>/android-log-mcp); a relocated root records normally, but never a device another process already records")
 	version := flag.Bool("version", false, "print version and exit")
-	offline := flag.Bool("offline", false, "do not use adb: only browse recorded data (e.g. an unzipped report's store/ directory)")
+	offline := flag.String("offline", "", "open the dataset in `DIR` read-only (e.g. an unzipped report's store/): no adb, never records, prunes or creates files")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `android-log-mcp %s — MCP stdio server for Android logcat
 
@@ -38,7 +38,7 @@ usage:
       env ANDROID_LOG_MCP_CALL_WAIT=5s controls how long to record before the call
   android-log-mcp [--home DIR] report [flags]   pack logs + diagnostics into a redacted zip
                                                (android-log-mcp report -h for flags)
-  android-log-mcp --home R/store --offline ...  browse an unzipped report (no adb, no recording)
+  android-log-mcp --offline R/store ...         browse a dataset read-only, e.g. an unzipped report (no adb, no writes)
   android-log-mcp compat [--serial S] [--json]  probe a device for the features this tool needs (read-only)
 
 `, mcpserver.Version)
@@ -51,8 +51,14 @@ usage:
 	}
 	log.SetOutput(os.Stderr) // stdout belongs to the MCP protocol
 	log.SetPrefix("android-log-mcp: ")
+	if *offline != "" && *home != "" {
+		fmt.Fprintln(os.Stderr, "android-log-mcp: --offline DIR already names the dataset; do not combine it with --home")
+		os.Exit(2)
+	}
 	base := *home
-	if base == "" {
+	if *offline != "" {
+		base = *offline
+	} else if base == "" {
 		base = device.DefaultBase()
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -69,7 +75,7 @@ usage:
 		os.Exit(code)
 	}
 	m := device.NewManager(base, store.ConfigFromEnv())
-	m.NoADB = *offline
+	m.NoADB = *offline != ""
 	m.Version = mcpserver.Version
 	m.Start(ctx)
 	defer m.Close()
@@ -81,7 +87,7 @@ usage:
 			os.Exit(2)
 		}
 		wait := 5 * time.Second
-		if *offline {
+		if *offline != "" {
 			wait = 0
 		}
 		if v, err := time.ParseDuration(os.Getenv("ANDROID_LOG_MCP_CALL_WAIT")); err == nil {

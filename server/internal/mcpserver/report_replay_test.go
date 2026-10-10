@@ -1,7 +1,7 @@
 package mcpserver
 
 // replay-from-report: a report built from the API 29 captures must load back
-// (a) as a data directory (--home <report>/store) and (b) as raw logcat +
+// (a) as a data directory (--offline <report>/store) and (b) as raw logcat +
 // DropBox text replayed through device.Pipeline, with the same crashes and
 // launches as the original recording, and with the injected secrets gone.
 
@@ -129,7 +129,7 @@ func TestReplayFromReport(t *testing.T) {
 		t.Errorf("note not redacted: %s", note)
 	}
 	// the same address in the log and the note maps to the same placeholder
-	segs, _ := filepath.Glob(filepath.Join(dir, "store", fxSerial, "seg-*.jsonl"))
+	segs, _ := filepath.Glob(filepath.Join(dir, "store", "v1", fxSerial, "seg-*.jsonl"))
 	if len(segs) != 1 {
 		t.Fatalf("want one segment, got %v", segs)
 	}
@@ -166,12 +166,22 @@ func TestReplayFromReport(t *testing.T) {
 		t.Errorf("device.json: %+v", info)
 	}
 
-	// --- (a) load the store directory as a data dir
+	// --- (a) load the store directory as a dataset (--offline r/store):
+	// tool calls never write anything there
+	before := treeState(t, filepath.Join(dir, "store"))
 	mgr := device.NewManager(filepath.Join(dir, "store"), store.Config{})
 	mgr.NoADB = true
 	mgr.Start(context.Background())
 	t.Cleanup(mgr.Close)
 	tools := &Tools{M: mgr}
+	if st, _ := tools.Call(context.Background(), "logcat_status", json.RawMessage(`{}`)); !strings.Contains(st, "mode: offline") {
+		t.Errorf("offline status:\n%s", st)
+	}
+	defer func() {
+		if after := treeState(t, filepath.Join(dir, "store")); after != before {
+			t.Errorf("--offline wrote to the dataset:\nbefore %s\nafter  %s", before, after)
+		}
+	}()
 	for _, q := range queries {
 		got, isErr := tools.Call(context.Background(), q[0], json.RawMessage(q[1]))
 		if isErr {
@@ -237,7 +247,7 @@ func TestReportSizeCapAndPackage(t *testing.T) {
 		t.Errorf("offline report: %+v", d)
 	}
 	dir := readZipDir(t, out)
-	seg, _ := os.ReadFile(filepath.Join(dir, "store", fxSerial, "seg-00000000000000000001.jsonl"))
+	seg, _ := os.ReadFile(filepath.Join(dir, "store", "v1", fxSerial, "seg-00000000000000000001.jsonl"))
 	lines := strings.Split(strings.TrimSpace(string(seg)), "\n")
 	if len(lines) != d.Records {
 		t.Fatalf("segment has %d lines, manifest says %d", len(lines), d.Records)
@@ -270,6 +280,19 @@ func TestReportSizeCapAndPackage(t *testing.T) {
 	if isErr || !strings.Contains(cr, "crash groups") {
 		t.Errorf("crashes from a capped report:\n%s", cr)
 	}
+}
+
+// treeState lists every path under dir with its size and mtime.
+func treeState(t *testing.T, dir string) string {
+	t.Helper()
+	var b strings.Builder
+	filepath.Walk(dir, func(p string, fi os.FileInfo, err error) error {
+		if err == nil {
+			fmt.Fprintf(&b, "%s %d %d\n", p, fi.Size(), fi.ModTime().UnixNano())
+		}
+		return nil
+	})
+	return b.String()
 }
 
 func between(s, a, b string) string {

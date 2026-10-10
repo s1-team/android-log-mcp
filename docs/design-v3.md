@@ -469,7 +469,7 @@ agent 可以借此发现自己写的 `message:foo message:bar` 实际被解释�
 
 - **不是 MCP 工具，而是 CLI 子命令**：打包要写本地文件、可能启动 App（`--am-start`），不适合交给 agent 随手调用。子命令只用 `store.OpenReadOnly` 读数据目录，不抢 writer 锁、不开始录制，和正在运行的录制进程互不影响。
 - **日志以两种形式放进包里**：
-  - `store/<serial>/`：本工具自己的格式，按窗口 / 包名裁剪，序号重排为 1..N（崩溃的 `seq` 和会话的 `first_seq` 按下界映射过去），只写一个分段（最后一个分段永不被 prune，所以过了保留期再打开也不会被删；`--offline` 也不跑后台压缩和定期清理）。`--home <解压目录>/store --offline` 直接加载，4 个工具照常可用。
+  - `store/v1/<device-id>/`（0.4 起，manifest `format` 为 `android-log-mcp-report/2`）：本工具自己的格式，按窗口 / 包名裁剪，序号重排为 1..N（崩溃的 `seq` 和会话的 `first_seq` 按下界映射过去），只写一个分段。`--offline <解压目录>/store` 只读加载（不录制、不清理、不创建文件），4 个工具照常可用。0.3 的 zip（`store/<serial>/`）不再能加载（issue #7）。
   - `devices/<serial>/logcat/<boot>.txt`：同一批记录按录制时的 `logcat -v threadtime -v epoch -v uid -v usec -v printable` 格式重新输出，每个 boot 一个文件；DropBox 条目保持 `dumpsys dropbox --print` 格式。回放测试的 `Pipeline.ReplayText` / `ApplyDropbox` 可以原样加载，崩溃识别和启动分析会重新跑一遍。已知限制：头部完全相同的相邻两条记录在回放时会被合并（与 README「合并多行消息」相同）。
 - **打码只作用于正文**：日志的 message、崩溃 / ANR / tombstone 文本、DropBox 正文、`am start` 输出和 note。时间、pid、tid、uid、级别、tag、包名、进程名和设备属性是结构化字段，不经过打码器，所以结构不可能被破坏；规则本身再排除时间戳、十六进制、堆栈帧、版本号等（单元测试 + API 29 全量 fixture 回归）。
 - **占位符 `[REDACTED:<类型>#n]`**：编号按首次出现顺序分配，同值同号；映射用每个包随机生成、用完即丢的 HMAC 密钥，内存里也只存 HMAC，包里不保存原值。`--redact-extra` 的正则、`--keep-domain` 的域名和 `--note` 的内容不写进 manifest（只记条数 / 是否有）。
@@ -547,27 +547,31 @@ agent 可以借此发现自己写的 `message:foo message:bar` 实际被解释�
 - `report` 的默认窗口仍然是 2 小时，在 1 天以内。`--since` 超出已保留的历史时，照旧在 manifest 和输出里注明 history 起点。
 - 升级提示见 README「升级到 0.3.0」。
 
-## 10. Storage layout, device identity and ownership (issue #5)
+## 10. Storage layout, device identity and ownership (issues #5, #7)
 
-Goal (GOALS "Bounded", "Observe, never interfere"): one per-user root that owns every file the tool creates, one recorder per device per user, and no unbounded leftovers.
+Goal (GOALS "Bounded", "Observe, never interfere"): one data root that owns every file the tool creates, one recorder per device per user, and no unbounded leftovers.
 
 ### 10.1 Layout
 
 ```
-<root> = os.UserCacheDir()/android-log-mcp
-  owners/<device-id>.lock   flock (unix) / O_EXCL file refreshed every 10 s (Windows); JSON {pid, version, data_dir, addr, home, since}
+<root> = ANDROID_LOG_MCP_HOME / --home, else os.UserCacheDir()/android-log-mcp
+  v1/<device-id>/           store format 1 (store.DataFormat); other vN/ dirs are swept like unowned data
   run/                      runtime endpoints (for the planned daemon, #3): <name>.json {pid, socket}
   tmp/                      scratch, expires after 1 h
-  v1/<device-id>/           store format 1 (store.DataFormat); older/newer vN/ dirs are swept like legacy data
-  legacy/<suffix>/          sibling <root>.<suffix> directories, moved here at startup when no writer.lock inside is held
-  <serial>/                 pre-0.4 flat directories (migrated on connect, else read-only until they expire)
+os.UserCacheDir()/android-log-mcp/owners/   fixed per user, whatever <root> is
+  <device-id>.lock          flock (unix) / O_EXCL file refreshed every 10 s (Windows); JSON {pid, version, data_dir, addr, home, boot_id, since}
 ```
 
-`ANDROID_LOG_MCP_HOME` (a directory other than the root) makes the process strictly read-only (issue #6): it never takes an owner lock, never records any device (not even an unowned one: `Device.run` records only while holding the owner lock), and never sweeps, migrates, adopts or creates anything. It still identifies connected devices, follows the owner's data read-only, shows data already in HOME, and states the mode on stderr and in `logcat_status`. `--offline` never sweeps, moves or migrates anything either (browsing an unzipped report keeps working with its flat `store/<id>/` layout). Tests that need recording point the root itself at a temp dir (see AGENTS.md).
+Three ways to run (issue #7, a clean break before 0.4.0):
+- **Default root:** records the devices it owns, follows the others.
+- **Relocated root** (`ANDROID_LOG_MCP_HOME` / `--home`): exactly the same, with the data elsewhere. Because the owners dir does not move, a device is never recorded by two roots at once: a process that finds the device owned elsewhere reads the owner's `data_dir` read-only and `logcat_status` names the owner (pid, version, relocated root, data dir). When the owner exits it takes over into its own root. There is no registry of roots; `owners/` is the only shared state.
+- **`--offline <dir>`:** the only read-only mode. It opens `<dir>/v1/*` with no adb and never records, prunes, migrates or creates a file, not even `owners/`, `run/` or `tmp/` (`Manager.NoADB`; `attach` and `MaintainOnce` return immediately). Used for unzipped reports and replay.
+
+Everything else under the root (pre-0.4 flat `<serial>/` dirs, `legacy/`, `android-log-mcp.*` siblings) is ignored: not listed, not read, not migrated, not counted towards the cap, not deleted. Users delete old dirs by hand (README upgrade note). Removed in #7: flat-layout migration, following pre-0.4 writers, sibling adoption into `legacy/`, the strict read-only HOME of #6, `meta.aliases`, `store.ListFlatDirs`.
 
 ### 10.2 Device ID
 
-`device.ResolveID(addr, props, avdName)` is a pure function (unit-tested): emulator → `avd-<name>` (`ro.boot.qemu.avd_name`, else the console's `adb emu avd name`); physical → `ro.serialno` unless empty/placeholder; fallback `fp-<sha256(manufacturer|model|android_id)[:12]>`, or with no android_id `fp-<sha256(manufacturer|model|fingerprint|addr)[:12]>`. The probe is one read-only `adb shell` (getprop ×8, `settings get secure android_id`, boot_id). The adb serial is the connection address only: `meta.json` keeps it as `addr`, earlier names as `aliases`. The manager is keyed by ID; `Manager.Get` accepts the ID, a live adb serial or an alias, and cursors carrying an alias stay valid (`Device.Matches`).
+`device.ResolveID(addr, props, avdName)` is a pure function (unit-tested): emulator → `avd-<name>` (`ro.boot.qemu.avd_name`, else the console's `adb emu avd name`); physical → `ro.serialno` unless empty/placeholder; fallback `fp-<sha256(manufacturer|model|android_id)[:12]>`, or with no android_id `fp-<sha256(manufacturer|model|fingerprint|addr)[:12]>`. The probe is one read-only `adb shell` (getprop ×8, `settings get secure android_id`, boot_id). The adb serial is the connection address only: `meta.json` keeps it as `addr`. The manager is keyed by ID; `Manager.Get` accepts the ID or the adb serial (`Device.Matches`).
 
 Known limitation: an API ≤ 29 emulator attached via `adb connect` has no AVD name and gets an `fp-` ID.
 
@@ -576,19 +580,17 @@ Known limitation: an API ≤ 29 emulator attached via `adb connect` has no AVD n
 ### 10.3 Attach / ownership
 
 On a new online adb serial the manager probes the identity asynchronously (retried every 10 s on failure), then `attach`:
-1. a pre-0.4 process holding `<base>/<serial>/writer.lock` → follow that directory read-only (status: "an older android-log-mcp (pid …, pre-0.4 flat layout)");
-2. else try `owners/<id>.lock`; held → follow the owner's `data_dir` read-only (status names pid, version, HOME, data dir);
-3. acquired → migrate a matching flat directory, open `<base>/v1/<id>` as writer, record.
-The maintenance tick re-attaches followers whose owner went away (takeover). Devices only on disk are opened read-only.
-
-Migration renames a flat directory into `v1/<id>` (same files, same sequence numbers; `meta.serial` becomes the ID, the old serial an alias) only if its writer lock is free, `v1/<id>` has no data yet, and it is clearly the same device: `meta.serial == ro.serialno` for a physical device, or the device's current boot_id appears in `last_boot_id`/`sessions` (boot ids are random per boot; adb serials and emulator ports are reused, so the serial alone is not enough). There is no opt-out: legacy data stays under the total cap and `MAX_AGE` (raise `MAX_AGE` to keep it longer).
+1. check for an ID collision (above);
+2. try `owners/<id>.lock` in the fixed owners dir; held → follow the owner's `data_dir` read-only, whatever root it is in (status names pid, version, relocated root, data dir);
+3. acquired → open `<root>/v1/<id>` as writer and record (`Device.run` records only while holding the owner lock).
+The maintenance tick re-attaches followers whose owner went away (takeover into this process's root). Devices only on disk are opened read-only. `report` resolves devices the same way: a device recorded by a live owner with another root is read from that owner's `data_dir`.
 
 ### 10.4 Sweep (`layout.Sweep`, at startup and every minute)
 
 1. `run/`: remove state files whose pid is dead or whose socket does not accept a connection, orphan sockets nothing listens on, other files older than MaxAge.
 2. `owners/`: remove lock files nobody holds (under the lock; acquirers re-check the inode).
 3. `tmp/`: files older than 1 h.
-4. Age: every device directory not recorded by this process and not busy (owner lock / `writer.lock` held) — current format, other formats, flat, inside `legacy/` — loses segments whose mtime is older than MaxAge, including the newest; the directory is removed when nothing in it is newer. Directories this process records are pruned by their store (`Store.Prune`, keeps the active segment).
-5. Total cap over all managed files (device dirs of every format, `legacy/`, `tmp/`, `run/`, `owners/`): delete the oldest files first; each current-format device keeps its newest segment; non-current directories without segments are removed.
-Only known file names are deleted from a device directory, so a misconfigured HOME cannot lose unrelated files.
+4. Age: every device directory under `v<N>/` not recorded by this process and not busy (owner lock / `writer.lock` held) loses segments whose mtime is older than MaxAge, including the newest; the directory is removed when nothing in it is newer. Directories this process records are pruned by their store (`Store.Prune`, keeps the active segment).
+5. Total cap over all managed files (device dirs of every `v<N>/`, `tmp/`, `run/`, `owners/` when it is under the root): delete the oldest files first; each current-format device keeps its newest segment; non-current directories without segments are removed.
+Only known file names are deleted from a device directory, and only under `v<N>/`, `tmp/`, `run/`, `owners/`, so a root pointed at a directory with other content cannot lose unrelated files. The sweep never runs with `--offline`.
 

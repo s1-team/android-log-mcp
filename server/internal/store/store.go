@@ -154,12 +154,11 @@ func SanitizeSerial(s string) string {
 	return b.String()
 }
 
-// Open opens (creating if needed) the store for serial in the flat
-// directory base/<serial>. It becomes the writer if it can take the lock,
-// else a follower. (Tests and reports; the recorder uses OpenDir with the
-// versioned layout.)
+// Open opens (creating if needed) the store for device serial (its ID) in
+// base/v<DataFormat>/<serial>. It becomes the writer if it can take the
+// lock, else a follower.
 func Open(base, serial string, cfg Config) (*Store, error) {
-	return OpenDir(filepath.Join(base, SanitizeSerial(serial)), serial, cfg, true)
+	return OpenDir(filepath.Join(DataDir(base), SanitizeSerial(serial)), serial, cfg, true)
 }
 
 // OpenDir opens (creating if needed) the store in dir for device serial (the
@@ -1118,23 +1117,17 @@ func (s *Store) rewriteAuxLocked(name string, lines [][]byte) error {
 func timeSince(t time.Time) float64 { return time.Since(t).Seconds() }
 
 // DataFormat is the on-disk format version: device data lives in
-// <root>/v<DataFormat>/<device-id>/. Directories directly under the root
-// (<root>/<serial>/) are the pre-v1 "flat" layout, still read (legacy data,
-// unzipped reports).
+// <root>/v<DataFormat>/<device-id>/ (also inside reports: store/v1/<id>/).
+// Directories of versions before 0.4 (<root>/<serial>/) are ignored.
 const DataFormat = 1
 
 // DataDir is <base>/v<DataFormat>.
 func DataDir(base string) string { return filepath.Join(base, fmt.Sprintf("v%d", DataFormat)) }
 
-// ListDeviceDirs lists device directories that contain meta.json: first the
-// versioned ones (<base>/v1/<id>), then flat ones (<base>/<serial>).
-func ListDeviceDirs(base string) []string {
-	out := listMetaDirs(DataDir(base))
-	return append(out, listMetaDirs(base)...)
-}
-
-// ListFlatDirs lists only the flat (pre-v1) device directories under base.
-func ListFlatDirs(base string) []string { return listMetaDirs(base) }
+// ListDeviceDirs lists the device directories (<base>/v1/<id> with a
+// meta.json). Anything else under base, e.g. pre-0.4 <base>/<serial>
+// directories, is ignored.
+func ListDeviceDirs(base string) []string { return listMetaDirs(DataDir(base)) }
 
 func listMetaDirs(base string) []string {
 	ents, err := os.ReadDir(base)

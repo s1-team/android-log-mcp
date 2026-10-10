@@ -114,7 +114,7 @@ func TestWindowRedactionAndLayout(t *testing.T) {
 	if d.RecordsInWindow != 3 || d.Records != 3 || d.DeviceInfo != "recorded meta (device offline)" {
 		t.Fatalf("window: %+v", d)
 	}
-	seg := read(t, dir, "store", "emu-1", "seg-00000000000000000001.jsonl")
+	seg := read(t, dir, "store", "v1", "emu-1", "seg-00000000000000000001.jsonl")
 	txt := read(t, dir, "devices", "emu-1", "logcat", "aaaabbbb.txt")
 	note := read(t, dir, "note.txt")
 	for _, s := range []string{"sekr1t-value-123", "leak@example.com", "203.0.113.5", "outside the 2h window"} {
@@ -133,7 +133,7 @@ func TestWindowRedactionAndLayout(t *testing.T) {
 		t.Errorf("structure:\n%s", txt)
 	}
 	var meta store.Meta
-	json.Unmarshal([]byte(read(t, dir, "store", "emu-1", "meta.json")), &meta)
+	json.Unmarshal([]byte(read(t, dir, "store", "v1", "emu-1", "meta.json")), &meta)
 	if len(meta.Sessions) != 1 || meta.Sessions[0].FirstSeq != 1 || meta.TZOffset != "+0800" {
 		t.Errorf("meta %+v", meta)
 	}

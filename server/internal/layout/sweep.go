@@ -14,9 +14,10 @@ import (
 
 // SweepOptions configures Sweep.
 type SweepOptions struct {
-	// Base holds the device data: the root itself, or ANDROID_LOG_MCP_HOME.
+	// Base is the data root (default dir or ANDROID_LOG_MCP_HOME).
 	Base string
-	// Root is the per-user root (owners/, run/, tmp/); nil = Base.
+	// Root names the owners dir (fixed per user) and run/, tmp/; nil =
+	// Root{Dir: Base}, i.e. owners/ under Base.
 	Root *Root
 	// MaxTotal caps all managed files under Base (0 = no cap).
 	MaxTotal int64
@@ -34,7 +35,7 @@ type SweepOptions struct {
 type SweepResult struct {
 	Freed        int64    // bytes removed
 	Files        int      // files removed
-	RemovedDirs  []string // device / legacy directories removed entirely
+	RemovedDirs  []string // device directories removed entirely
 	StaleRun     int      // run/ entries removed (dead pids, stale sockets)
 	StaleOwners  int      // abandoned owner lock files removed
 	TotalBefore  int64
@@ -70,8 +71,8 @@ func isDeviceDir(p string) bool {
 	return len(store.ListSegments(p)) > 0
 }
 
-// deviceDirs lists every device directory under base: v<N>/* (any format
-// version), flat ones directly under base, and those inside legacy/.
+// deviceDirs lists every device directory under base: v<N>/* of any format
+// version. Other directories (e.g. pre-0.4 <base>/<serial>) are ignored.
 func deviceDirs(base string) []dataDir {
 	var out []dataDir
 	ents, _ := os.ReadDir(base)
@@ -80,8 +81,7 @@ func deviceDirs(base string) []dataDir {
 			continue
 		}
 		p := filepath.Join(base, e.Name())
-		switch {
-		case versionDir.MatchString(e.Name()):
+		if versionDir.MatchString(e.Name()) {
 			cur := e.Name() == filepath.Base(store.DataDir(base))
 			sub, _ := os.ReadDir(p)
 			for _, s := range sub {
@@ -89,25 +89,13 @@ func deviceDirs(base string) []dataDir {
 					out = append(out, dataDir{path: filepath.Join(p, s.Name()), current: cur, id: s.Name()})
 				}
 			}
-		case e.Name() == "legacy":
-			filepath.WalkDir(p, func(q string, d os.DirEntry, err error) error {
-				if err == nil && d.IsDir() && q != p && isDeviceDir(q) {
-					out = append(out, dataDir{path: q})
-				}
-				return nil
-			})
-		case e.Name() == "owners" || e.Name() == "run" || e.Name() == "tmp":
-		default:
-			if isDeviceDir(p) {
-				out = append(out, dataDir{path: p})
-			}
 		}
 	}
 	return out
 }
 
 // TotalBytes is the size of all files Sweep manages under base (device
-// directories of every format, legacy/, tmp/, run/, owners/).
+// directories of every format, tmp/, run/, owners/ if it is there).
 func TotalBytes(base string) int64 {
 	var total int64
 	add := func(dir string, recursive bool) {
@@ -127,24 +115,22 @@ func TotalBytes(base string) int64 {
 			return nil
 		})
 	}
-	legacy := filepath.Join(base, "legacy") + string(filepath.Separator)
 	for _, dd := range deviceDirs(base) {
-		if !strings.HasPrefix(dd.path, legacy) { // legacy/ is walked whole below
-			add(dd.path, false)
-		}
+		add(dd.path, false)
 	}
-	for _, d := range []string{"legacy", "tmp", "run", "owners"} {
+	for _, d := range []string{"tmp", "run", "owners"} {
 		add(filepath.Join(base, d), true)
 	}
 	return total
 }
 
-// Sweep applies retention to everything under the root: stale run/ entries
-// and owner locks, tmp/ files, the MaxAge window for device directories this
-// process does not record (all formats and legacy data, removing a directory
-// once all of it has expired), and finally the total size cap (oldest
-// segments first across all devices). Directories recorded by a live
-// process (its writer.lock or owner lock is held) are left to that process.
+// Sweep applies retention to everything the tool manages under the root:
+// stale run/ entries and owner locks, tmp/ files, the MaxAge window for
+// device directories this process does not record (every format version,
+// removing a directory once all of it has expired), and finally the total
+// size cap (oldest segments first across all devices). Directories recorded
+// by a live process (its writer.lock or owner lock is held) are left to that
+// process. Unknown directories (e.g. from versions before 0.4) are ignored.
 func Sweep(o SweepOptions) SweepResult {
 	if o.Now.IsZero() {
 		o.Now = time.Now()
@@ -183,8 +169,6 @@ func Sweep(o SweepOptions) SweepResult {
 			}
 			res.expireDir(dd, cut)
 		}
-		// loose files in legacy/ (outside device dirs) expire too
-		res.addAll(removeOlder(filepath.Join(o.Base, "legacy"), cut))
 	}
 	// total cap
 	res.TotalBefore = TotalBytes(o.Base)
@@ -211,7 +195,7 @@ func Sweep(o SweepOptions) SweepResult {
 				}
 			}
 		}
-		for _, d := range []string{filepath.Join(o.Base, "legacy"), tmpBase} {
+		for _, d := range []string{tmpBase} {
 			filepath.WalkDir(d, func(p string, e os.DirEntry, err error) error {
 				if err != nil {
 					return nil
@@ -234,7 +218,7 @@ func Sweep(o SweepOptions) SweepResult {
 			if total <= o.MaxTotal {
 				break
 			}
-			if c.dd.path == "" { // loose legacy / tmp file
+			if c.dd.path == "" { // tmp file
 				if os.Remove(c.path) == nil {
 					total -= c.size
 					res.Freed += c.size
@@ -282,7 +266,6 @@ func Sweep(o SweepOptions) SweepResult {
 			res.removeDir(dd.path)
 		}
 	}
-	pruneEmpty(filepath.Join(o.Base, "legacy"), true)
 	ents, _ := os.ReadDir(o.Base)
 	for _, e := range ents {
 		if e.IsDir() && versionDir.MatchString(e.Name()) && e.Name() != filepath.Base(store.DataDir(o.Base)) {

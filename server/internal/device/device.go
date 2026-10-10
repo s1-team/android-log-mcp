@@ -201,7 +201,7 @@ type Status struct {
 	WriterPID string
 	Paused    string // non-empty: this process would record but disk space is low
 	// Owner is set when another android-log-mcp process (possibly with a
-	// different ANDROID_LOG_MCP_HOME, or an older version) records the device.
+	// different data root) records the device.
 	Owner *layout.Owner
 	// Owned: this process holds the device's owner lock (and records it).
 	Owned bool
@@ -250,22 +250,10 @@ func (d *Device) Owned() bool {
 	return d.owner != nil
 }
 
-// Matches reports whether name refers to this device: its ID, its adb
-// serial, or an alias (e.g. the adb serial of a migrated pre-v1 directory,
-// which old cursors carry).
+// Matches reports whether name refers to this device: its ID or its adb
+// serial (cursors and device= may carry either).
 func (d *Device) Matches(name string) bool {
-	if name == "" {
-		return false
-	}
-	if name == d.Serial || name == d.Addr() {
-		return true
-	}
-	for _, a := range d.Store.Meta().Aliases {
-		if a == name {
-			return true
-		}
-	}
-	return false
+	return name != "" && (name == d.Serial || name == d.Addr())
 }
 
 func (d *Device) setErr(err error) {

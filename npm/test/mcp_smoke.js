@@ -3,7 +3,7 @@
 // tools/call logcat_status, then stdin EOF must end the server with code 0.
 // Every stdout line must be JSON-RPC (the launcher must not write to stdout).
 //
-//   node npm/test/mcp_smoke.js CMD [ARGS...]     e.g. npx android-log-mcp --offline
+//   node npm/test/mcp_smoke.js CMD [ARGS...]     e.g. npx android-log-mcp --offline /tmp/empty
 "use strict";
 const { spawn } = require("child_process");
 const readline = require("readline");

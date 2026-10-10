@@ -52,12 +52,10 @@ Repository artifacts (docs, issues, commit messages, release notes) are **Englis
   - `scripts/e2e-report.sh` for the end-to-end redaction check on a device;
   - `scripts/compat-probe.sh` / `android-log-mcp compat` for the device compatibility probe;
   - the evidence and procedures in [validation/README.md](validation/README.md).
-- **Recording in tests:** `ANDROID_LOG_MCP_HOME` / `--home` makes a process read-only; it never records. To record into an isolated place, point the per-user root at a temp dir through the platform's user-cache-dir variable:
-  - Linux: `XDG_CACHE_HOME=/tmp/x` (root `/tmp/x/android-log-mcp`);
-  - macOS: `HOME=/tmp/x` (root `/tmp/x/Library/Caches/android-log-mcp`);
-  - Windows: `LocalAppData=C:\tmp\x`.
-
-  In Go tests, set `Manager.Root` and `Manager.Base` to the same temp dir (see `internal/device/ownership_test.go`). Use `ANDROID_LOG_MCP_HOME` only for read-only checks (offline, report, replay).
+- **Isolating tests:** owner locks live in a fixed per-user directory, `os.UserCacheDir()/android-log-mcp/owners`, whatever the data root. Tests must never touch the real user's owners dir (a test that takes a device's lock there would stop the user's recorder from recording it).
+  - Go: every package whose tests create a `device.Manager` or call `layout.DefaultDir` / `DefaultOwnersDir` / `device.DefaultBase` has `func TestMain(m *testing.M) { os.Exit(testhome.Run(m)) }` (`internal/testhome` points `XDG_CACHE_HOME`, `HOME`, `LocalAppData` at a temp dir). In tests, set `Manager.Root = layout.Root{Dir: base, OwnersDir: <temp>}` (see `internal/device/ownership_test.go`).
+  - Shell / manual runs: redirect the whole per-user cache dir, which moves the owners dir too: Linux `XDG_CACHE_HOME=/tmp/x`, macOS `HOME=/tmp/x`, Windows `LocalAppData=C:\tmp\x`. `ANDROID_LOG_MCP_HOME=/tmp/y` alone relocates the data root and records there, but still shares the real owners dir: use it only when that is what you want (one recorder per device across roots).
+  - Read-only checks of a dataset: `--offline <dir>` (never records, prunes or creates files).
 - **Packaging:** run `scripts/build-npm.sh [VERSION] [--pack]`. CI runs the npx smoke tests on every Node version in the matrix.
 
 ---
@@ -78,4 +76,4 @@ Repository artifacts (docs, issues, commit messages, release notes) are **Englis
 - 版本规则：1.0 之前，破坏性变更升 minor 版本，并附升级说明；1.0 之后升 major 版本。
 - 语言：仓库产出物英文为主，中文为辅。
 - 安全：开发机上禁止启动 KVM 模拟器，也不要碰 `/dev/kvm`。
-- 测试录制：设置了 `ANDROID_LOG_MCP_HOME` 的进程只读、不录制；需要隔离录制时，用 `XDG_CACHE_HOME`（Linux）/ `HOME`（macOS）/ `LocalAppData`（Windows）把每用户根目录指向临时目录。
+- 测试隔离：owner 锁固定在 `os.UserCacheDir()/android-log-mcp/owners`，与数据根目录无关，测试绝不能碰真实用户的这个目录。Go 测试用 `testhome.Run` 的 TestMain；手动运行用 `XDG_CACHE_HOME`（Linux）/ `HOME`（macOS）/ `LocalAppData`（Windows）把整个缓存目录指向临时目录。`ANDROID_LOG_MCP_HOME` 只是换数据根目录，照常录制；只读查看数据集用 `--offline <目录>`。

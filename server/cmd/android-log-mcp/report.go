@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/s1crab/android-log-mcp/server/internal/device"
+	"github.com/s1crab/android-log-mcp/server/internal/layout"
 	"github.com/s1crab/android-log-mcp/server/internal/mcpserver"
 	"github.com/s1crab/android-log-mcp/server/internal/report"
 )
@@ -68,10 +69,10 @@ func runReport(ctx context.Context, home string, args []string) int {
 	fs.Var(&keepDom, "keep-domain", "`DOMAIN` (and its subdomains) to leave unredacted, e.g. your own API host (repeatable)")
 	noRedact := fs.Bool("no-redact", false, "disable redaction (the report may then contain tokens, passwords, personal data)")
 	keepPrivate := fs.Bool("keep-private-ip", false, "do not redact private/link-local IP addresses (10/8, 192.168/16, fe80::, …)")
-	offline := fs.Bool("offline", false, "do not use adb (no live device info, DropBox or --am-start)")
+	offline := fs.Bool("no-adb", false, "do not use adb (no live device info, DropBox or --am-start)")
 	out := fs.String("o", "", "output zip (default ./android-log-mcp-report-<time>.zip)")
 	fs.StringVar(out, "out", "", "same as -o")
-	homeFlag := fs.String("home", home, "data directory")
+	homeFlag := fs.String("home", home, "data root (default $ANDROID_LOG_MCP_HOME or <user cache dir>/android-log-mcp)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -85,6 +86,7 @@ func runReport(ctx context.Context, home string, args []string) int {
 	if opt.Base == "" {
 		opt.Base = device.DefaultBase()
 	}
+	opt.OwnersDir = layout.DefaultOwnersDir()
 	if *from == "" {
 		d, err := time.ParseDuration(*since)
 		if err != nil {
@@ -135,7 +137,7 @@ func runReport(ctx context.Context, home string, args []string) int {
 		}
 	}
 	if *amStart != "" && opt.Shell == nil {
-		fmt.Fprintln(os.Stderr, "report: --am-start needs adb (and not --offline)")
+		fmt.Fprintln(os.Stderr, "report: --am-start needs adb (and not --no-adb)")
 		return 2
 	}
 	if opt.Out == "" {

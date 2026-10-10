@@ -128,7 +128,7 @@ func TestLowDiskPausesAndResumes(t *testing.T) {
 		t.Fatal("did not resume")
 	}
 	// a follower (not the writer) never reports a pause of its own
-	f, _ := store.Open(filepath.Dir(st.Dir), "d", store.Config{})
+	f, _ := store.OpenDir(st.Dir, "d", store.Config{}, true)
 	t.Cleanup(f.Close)
 	fd := newDevice(nil, f, "d")
 	fd.disk, fd.state = g, "device"

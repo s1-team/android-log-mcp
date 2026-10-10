@@ -141,7 +141,7 @@ npx -y android-log-mcp report --package com.foo --am-start com.foo/.MainActivity
 | `--no-redact` | 关闭打码（manifest 里会有警告） |
 | `--keep-private-ip` | 不打码内网地址（10/8、172.16/12、192.168/16、链路本地、ULA） |
 | `--keep-domain D` | 不打码域名 `D` 及其子域名（可重复），例如自家 API 的域名；值不写入 manifest |
-| `--offline` | 不使用 adb：不采集实时设备信息和 DropBox |
+| `--no-adb` | 不使用 adb：不采集实时设备信息和 DropBox（0.4 前叫 `--offline`） |
 | `-o FILE` | 输出路径，默认 `./android-log-mcp-report-<时间>.zip`（路径打印到 stdout，摘要打印到 stderr） |
 
 `report` 只读取数据目录，不会改动它，也不会开始录制；除 `--am-start` 外不会改变设备状态（只执行 `getprop`、`date`、`cat /proc/sys/kernel/random/boot_id`、`dumpsys dropbox --print`）。
@@ -152,7 +152,7 @@ zip 内容：
 |---|---|
 | `manifest.json` | 工具版本、生成时间、参数（`--note` / `--redact-extra` / `--keep-domain` 的值不写入）、每台设备的窗口和记录数、各文件大小、裁剪情况、各打码规则的命中次数和不同值个数、警告 |
 | `note.txt` | `--note` 的内容 |
-| `store/<serial>/` | 本工具自己的存储格式（`seg-*.jsonl`、`meta.json`、`crashes.jsonl`、`procs.jsonl`、`packages.json`），已按窗口/包名裁剪、序号重排为 1..N。可直接加载：`android-log-mcp --home <解压目录>/store --offline`（作为 MCP 服务器，或配合 `call` 调用工具） |
+| `store/v1/<device-id>/` | 本工具自己的存储格式（`seg-*.jsonl`、`meta.json`、`crashes.jsonl`、`procs.jsonl`、`packages.json`），已按窗口/包名裁剪、序号重排为 1..N。可直接只读加载：`android-log-mcp --offline <解压目录>/store`（作为 MCP 服务器，或配合 `call` 调用工具） |
 | `devices/<serial>/device.json` | `ro.build.fingerprint`、型号、厂商、Android 版本、SDK、时区和 `date +%z` 偏移、boot_id、设备与主机的时钟差（设备离线时取录制时保存的信息，并注明来源） |
 | `devices/<serial>/logcat/<boot>.txt` | 同一批记录按 `logcat -v threadtime -v epoch -v uid -v usec -v printable` 格式重新输出，每次启动（boot）一个文件，可以直接用回放测试的 `device.Pipeline.ReplayText` 加载 |
 | `devices/<serial>/dropbox/<tag>.txt` | 窗口内的 DropBox 条目（`data_app_crash`、`data_app_native_crash`、`data_app_anr`、`SYSTEM_TOMBSTONE` 及 `system_app_*`），格式同 `dumpsys dropbox --print`，可用 `Pipeline.ApplyDropbox` 加载 |
@@ -160,7 +160,7 @@ zip 内容：
 
 ```bash
 unzip foo-crash.zip -d r
-android-log-mcp --home r/store --offline call logcat_crashes '{"package":"com.foo"}'
+android-log-mcp --offline r/store call logcat_crashes '{"package":"com.foo"}'
 ```
 
 #### 隐私提示
@@ -196,28 +196,16 @@ android-log-mcp --home r/store --offline call logcat_crashes '{"package":"com.fo
 
 **打码是基于模式的，不能保证完全**：自定义格式的 token、姓名、地址、不带键名的随机串等识别不了。分享前请先检查 zip 内容；需要时用 `--redact-extra` 追加规则。`--no-redact` 生成的包可能含有 token、密码和个人信息，只应发给可信的人。
 
-## Upgrading to 0.4.0 (storage layout, issue #5)
+## Upgrading to 0.4.0 (storage layout; issues #5, #7)
 
-> **Breaking (0.x minor):** the data directory has a new, versioned layout and a single owner per device. The first start of 0.4 **moves and deletes** old data as described below.
+> **Breaking:** 0.4.0 uses a new data layout. **Old data is neither migrated nor read.** Logs recorded by 0.3 or earlier are not visible in 0.4, and 0.3 report zips cannot be loaded with `--offline`.
 
-New layout under `<user cache dir>/android-log-mcp` (Linux: `~/.cache/android-log-mcp`):
+- Data now lives in `<user cache dir>/android-log-mcp/v1/<device-id>/` (Linux: `~/.cache/android-log-mcp/v1/…`). The device ID is stable: `ro.serialno` for a physical device (the same over USB and Wi-Fi), `avd-<name>` for an emulator.
+- The old directories `~/.cache/android-log-mcp/<serial>/` (for example `emulator-5554/`) are ignored, not deleted. Delete them yourself when you no longer need them, together with any manual backups such as `~/.cache/android-log-mcp.v1-backup/`.
+- `--offline <dir>` is now the only way to open a dataset read-only, for example an unzipped report: `android-log-mcp --offline r/store`. `--home r/store --offline` no longer works. The report flag that skips adb is now `--no-adb`.
+- `ANDROID_LOG_MCP_HOME` / `--home` relocates the data root and records normally. A device that another process records (any root) is not recorded twice; it is read from that process's data directory.
 
-```
-owners/<device-id>.lock   who records the device (pid, version, data dir, adb serial), for all processes of this user
-v1/<device-id>/           the device's data (segments, meta.json, crashes, procs, ...)
-run/  tmp/                runtime state / scratch files; stale entries are swept
-legacy/<name>/            older backups adopted from sibling directories; they expire
-```
-
-- **Device ID instead of adb serial.** Data is filed under a stable ID: `ro.serialno` for physical devices (the same over USB and Wi-Fi adb), `avd-<name>` for emulators (the AVD name, not the console port), else `fp-<hash>` (see "Device ID" below). `logcat_status` shows `<id> (adb <serial>)`; `device=` accepts the ID, the current adb serial, or the old serial; cursors from 0.3 keep working. `android-log-mcp compat` prints the ID.
-- **What migrates:** when a device connects, its old flat directory `<root>/<adb serial>/` is moved to `v1/<device-id>/` unchanged (all logs, crashes, cursors' sequence numbers) if it is clearly the same device: a physical device whose old directory is named after its `ro.serialno`, or any device whose current boot was recorded there. The move is skipped while an older version still records that directory; this version then only reads it and says so in `logcat_status`, and takes over (and migrates) once the old process exits.
-- **What gets deleted:** old directories that do not match (for example an emulator that was rebooted before the upgrade) stay readable as legacy data and are **deleted once older than the retention window** (`ANDROID_LOG_MCP_MAX_AGE`, default 1 day). Sibling directories named `android-log-mcp.*` (for example a manual `android-log-mcp.v1-backup`) are **moved into `legacy/`** and expire the same way. Everything under the root, including legacy data, `tmp/` and `run/`, counts towards the 2 GiB total cap.
-- **One recorder per device per user; `ANDROID_LOG_MCP_HOME` is read-only.** Only processes using the per-user root record. A process with `ANDROID_LOG_MCP_HOME` / `--home` set (to anything other than the root) **never records any device**, not even one nobody owns. It only reads, for tests, offline browsing, replay and reports. It says so on stderr at startup and in `logcat_status` (`mode: read-only …`), and for a device recorded elsewhere it names the owner (pid, version, data dir). If you used `ANDROID_LOG_MCP_HOME` to record into a custom directory, remove it from your MCP client config: data now always goes to the per-user root.
-- **One device, one directory.** If two devices connected at the same time resolve to the same ID (for example the same AVD launched twice with `-read-only`, or two phones with the same serial), the first keeps the ID and the other is filed as `<id>~<adb serial>`; `logcat_status` explains why in a `note:` line. See "Device ID" below.
-- **Keeping old data longer:** there is no opt-out from the cleanup. Everything under the root, including `legacy/`, stays under the total cap and `ANDROID_LOG_MCP_MAX_AGE`. To keep old data longer, raise `ANDROID_LOG_MCP_MAX_AGE` (for example `7d`) before the first start of 0.4, or copy the directories you want to keep outside the root.
-- **Known limitation:** API ≤ 29 emulators reached over `adb connect` (not `emulator-NNNN`) cannot report their AVD name and get an `fp-` ID, i.e. a different directory than when attached as `emulator-NNNN`.
-
-简要说明（中文）：0.4 起数据目录改为 `v1/<设备ID>/`，设备 ID 取 `ro.serialno`（真机，USB 和无线一致）或 `avd-<AVD名>`（模拟器），旧的 `<adb serial>/` 目录在确认是同一台设备时自动迁移，其余旧目录和 `android-log-mcp.*` 兄弟目录（移到 `legacy/`）超过保留期后删除。同一用户下每台设备只由一个进程录制（`owners/<设备ID>.lock`）。设置了 `ANDROID_LOG_MCP_HOME` 的进程是只读的，从不录制任何设备（测试、离线、回放、报告用），启动时和 `logcat_status` 都会说明。两台同时连接的设备 ID 相同（例如同一个 AVD 用 `-read-only` 启动两次）时，后连上的用 `<id>~<adb serial>` 单独存放。根目录下所有内容（含 `legacy/`）都受总量上限和保留期约束；想多保留旧数据，就在首次启动 0.4 前调大 `ANDROID_LOG_MCP_MAX_AGE`。
+简要说明（中文）：0.4.0 换了新的数据目录结构（`v1/<设备ID>/`），**旧数据不会迁移，也不会被读取**；旧的 `~/.cache/android-log-mcp/<serial>/` 目录会被忽略（不删除），不需要的话请手动删除。只读打开数据集（例如解压后的诊断包）只用 `--offline <目录>`；`report` 不用 adb 的开关改名为 `--no-adb`。`ANDROID_LOG_MCP_HOME` / `--home` 只是把数据根目录换个位置，照常录制；同一台设备在同一用户下只由一个进程录制。
 
 ## 升级到 0.3.0
 
@@ -233,7 +221,7 @@ legacy/<name>/            older backups adopted from sibling directories; they e
 
 | 变量 | 含义 |
 |---|---|
-| `ANDROID_LOG_MCP_HOME` | **Read-only** data directory for tests, offline browsing, replay and reports (also `--home`). When it is set (and is not the per-user root `<user cache dir>/android-log-mcp`, Linux `~/.cache/android-log-mcp`), the process never records any device and never prunes or deletes anything. 只读数据目录：设置后该进程从不录制任何设备 |
+| `ANDROID_LOG_MCP_HOME` | Relocates the data root (also `--home`; default `<user cache dir>/android-log-mcp`, Linux `~/.cache/android-log-mcp`). The process records normally into it; owner locks stay in the fixed per-user `<user cache dir>/android-log-mcp/owners/`, so a device recorded by another process (any root) is only read. To open a dataset read-only use `--offline <dir>`. 数据根目录换位置，照常录制 |
 | `ANDROID_LOG_MCP_ADB` | adb 的路径 |
 | `ANDROID_LOG_MCP_BINARY` | （仅 npm 启动器使用）不用平台包，改用这个路径下的二进制 |
 | `ANDROID_LOG_MCP_MAX_DEVICES` | 最多同时录制几台设备，默认 4 |
@@ -243,19 +231,21 @@ legacy/<name>/            older backups adopted from sibling directories; they e
 | `ANDROID_LOG_MCP_IDLE_RELEASE` | 多久没有查询就释放缓存，默认 `2m`；设为 `0` 表示不释放。释放时历史缓存清空；只读进程连最近日志缓存一起释放，下次查询再按需加载 |
 | `ANDROID_LOG_MCP_MAX_DEVICE_MB` | 每台设备的日志上限（MiB），默认 512 |
 | `ANDROID_LOG_MCP_MAX_AGE` | 日志保留多久，默认 `1d`。接受 Go 时长（`72h`、`90m`）或天数（`1d`、`7d`、`1.5d`）。无效值或非正值会在 stderr 打一条警告并使用默认值。崩溃、`dropbox_seen` 和已结束进程这些辅助记录也按这个保留期清理。`logcat_status` 会显示当前生效的值 |
-| `ANDROID_LOG_MCP_MAX_TOTAL_MB` | 整个数据目录的上限（MiB），默认 2048；设为 `0` 表示不限制。Counts everything under the root: all devices and formats, legacy data, `tmp/`, `run/` |
+| `ANDROID_LOG_MCP_MAX_TOTAL_MB` | 整个数据目录的上限（MiB），默认 2048；设为 `0` 表示不限制。Counts everything the tool manages under the root: all devices and format versions, `tmp/`, `run/`, `owners/` (directories of older versions are ignored and not counted) |
 | `ANDROID_LOG_MCP_MIN_FREE_MB` | 数据目录所在磁盘的剩余空间低于这个值（MiB）时暂停录制，默认 512；恢复到 2 倍以上时自动续录。设为 `0` 表示关闭 |
 
 ### Data directory layout (0.4+)
 
 ```
-<root>/owners/<device-id>.lock   global owner lock + JSON {pid, version, data_dir, addr, home, since}
+<root>/v1/<device-id>/           device data, format 1 (other vN/ formats are swept like unowned data)
 <root>/run/                      runtime state (state files whose pid is dead or socket is undialable, and orphan sockets, are removed)
 <root>/tmp/                      scratch files, removed after 1 hour
-<root>/v1/<device-id>/           device data, format 1
-<root>/legacy/<name>/            adopted android-log-mcp.* siblings (expire)
-<root>/<serial>/                 pre-0.4 flat directories that were not migrated (read-only, expire)
+<cache>/android-log-mcp/owners/<device-id>.lock
+                                 owner lock + JSON {pid, version, data_dir, addr, home, boot_id, since};
+                                 fixed per user (os.UserCacheDir), whatever the root
 ```
+
+`<root>` is `<cache>/android-log-mcp` unless `ANDROID_LOG_MCP_HOME` / `--home` relocates it. Anything else under it, such as pre-0.4 `<serial>/` directories or `legacy/`, is ignored: not read, not counted, not deleted.
 
 **Device ID** (`device.ResolveID`, probed with one read-only `adb shell` that also reads the boot id):
 1. Emulator (`ro.kernel.qemu=1`, `ro.boot.qemu=1` or serial `emulator-N`): `avd-<name>` from `ro.boot.qemu.avd_name` (API 30+) or `adb emu avd name` (older images). `ro.serialno` is identical on many AVDs and console ports are reused, so neither is used.
@@ -263,7 +253,7 @@ legacy/<name>/            older backups adopted from sibling directories; they e
 3. Otherwise `fp-` + the first 12 hex digits of sha256(manufacturer|model|android_id); without a readable android_id, sha256(manufacturer|model|fingerprint|adb serial), which then changes with the transport.
 4. Collision: if another device that is connected right now already uses the ID with a different boot id (same AVD started twice with `-read-only`, duplicated serials), this one is filed as `<id>~<adb serial>` (e.g. `avd-api29~emulator-5556`) and `logcat_status` says why. Two connections with the same boot id (USB + Wi-Fi adb) are one device. Trade-off: the suffixed directory follows the adb serial, so that instance's history continues only while it keeps the address; when the first instance is gone, the next instance of that AVD uses the plain ID again (one history per AVD, which is what the ID stands for). Anything instance-specific (boot id, emulator pid) would split the history on every reboot instead.
 
-**Startup sweep and periodic maintenance** (every minute; not in `--offline`): unowned device directories of every format and legacy data lose segments older than `ANDROID_LOG_MCP_MAX_AGE` (including their newest one) and are removed once nothing in them is newer; then the total cap removes the oldest segments across everything (each current-format device keeps its newest segment). Directories written by a live process (its owner lock or `writer.lock` is held) are left to that process. Only known file names are deleted from device directories.
+**Startup sweep and periodic maintenance** (every minute; never in `--offline`): unowned device directories of every format version lose segments older than `ANDROID_LOG_MCP_MAX_AGE` (including their newest one) and are removed once nothing in them is newer; then the total cap removes the oldest segments across everything (each current-format device keeps its newest segment). Directories written by a live process (its owner lock or `writer.lock` is held) are left to that process. Only known file names are deleted from device directories.
 
 每台设备的数据放在一个子目录里（0.4 起为 `v1/<设备ID>/`），内容包括：
 
@@ -276,13 +266,13 @@ legacy/<name>/            older backups adopted from sibling directories; they e
   - 一个分段要等到它最新的一行也超过保留期才会被删除。
   - 正在写入的分段最多跨越保留期的 1/4（日志很少的设备会提前换段），所以日志最长保留约 1.25 倍保留期。
   - 录制进程每分钟检查一次。
-- 整个数据目录（包括旧格式、legacy、tmp、run）不超过 2 GiB。超出时跨设备按段删除最旧的，当前格式下每台设备的最新一段保留；只清理本进程负责录制的设备，或者当前没有进程在录制的设备。
-- 没人录制的设备目录（含旧版本数据）也按保留期删除，整个目录过期后删掉。
+- 整个数据目录（包括其他格式版本、tmp、run、owners；0.4 以前的旧目录不计入、不处理）不超过 2 GiB。超出时跨设备按段删除最旧的，当前格式下每台设备的最新一段保留；只清理本进程负责录制的设备，或者当前没有进程在录制的设备。
+- 没人录制的设备目录（`v<N>/` 下）也按保留期删除，整个目录过期后删掉。
 - 辅助文件定期压缩（启动约 30 秒后一次，之后每 10 分钟一次）：
   - `procs.jsonl`、`crashes.jsonl` 每个条目只保留最新版本；
   - 早于保留期的已结束进程、崩溃和 `dropbox_seen` 记录会被删除；早于保留期的 DropBox 条目也不再导入；
   - 遗留的 `*.tmp` 文件也会清掉。
-- `--offline`（浏览已有数据，例如解压后的诊断包）不做后台压缩和定期清理。
+- `--offline <目录>`（只读浏览数据集，例如解压后的诊断包）不录制、不清理、不创建任何文件。
 - 磁盘剩余空间低于 512 MiB 时暂停录制（`logcat_status` 会显示原因），并记一个缺口；剩余空间恢复到 1 GiB 以上后用 `logcat -T` 自动续录。
 
 内存：
@@ -291,9 +281,9 @@ legacy/<name>/            older backups adopted from sibling directories; they e
 - 只读进程（另一个进程在录制）启动时不预读日志，第一次查询时才加载，空闲后再释放。
 - `logcat_status` 的 `memory:` 一行显示当前的缓存占用。
 
-**Several clients at once:** each device is recorded by exactly one process per user, decided by `owners/<device-id>.lock` in the per-user root. Other processes read the owner's files, and `logcat_status` names the owner (pid, version, data directory). When the owner exits, another process using the per-user root takes over within about 10 seconds (a process with `ANDROID_LOG_MCP_HOME` set never does).
+**Several clients at once:** each device is recorded by exactly one process per user, decided by `owners/<device-id>.lock` in the fixed per-user owners directory (shared by all roots). Other processes, whatever their root, read the owner's data directory, and `logcat_status` names the owner (pid, version, relocated root, data directory). When the owner exits, another process takes over within about 10 seconds and records into its own root.
 
-**多个客户端同时运行**：同一用户下每台设备只有一个进程负责录制（由每用户根目录下的 `owners/<设备ID>.lock` 决定，与 `ANDROID_LOG_MCP_HOME` 无关），其他进程只读跟随，`logcat_status` 会写明录制者的 pid、版本和数据目录。录制进程退出后，其他使用每用户根目录的进程约 10 秒内接管（设置了 `ANDROID_LOG_MCP_HOME` 的进程不会接管）。
+**多个客户端同时运行**：同一用户下每台设备只有一个进程负责录制（由固定的每用户目录 `<cache>/android-log-mcp/owners/<设备ID>.lock` 决定，与数据根目录无关），其他进程不论根目录在哪都只读跟随录制者的数据目录，`logcat_status` 会写明录制者的 pid、版本和数据目录。录制进程退出后，其他进程约 10 秒内接管，录到自己的根目录。
 
 ## 已知限制
 
@@ -336,7 +326,7 @@ legacy/<name>/            older backups adopted from sibling directories; they e
 
 | 方面 | 已验证的组合 | 怎么验证的 |
 |---|---|---|
-| Node / npx | Node 20（本机 `npx -y android-log-mcp`）；Node 16.20 本机跑启动器和 MCP 握手；CI 每次提交在 ubuntu 上跑 Node 16 / 18 / 20 / 22 / 当前 LTS / current，在 macOS、Windows 上跑 Node 22 | CI 的 `npx-compat` job：安装打包好的 npm tarball，执行 `npx android-log-mcp --version`，再通过 stdio 做 MCP 握手（initialize → tools/list → logcat_status，`--offline`）（`npm/test/mcp_smoke.js`） |
+| Node / npx | Node 20（本机 `npx -y android-log-mcp`）；Node 16.20 本机跑启动器和 MCP 握手；CI 每次提交在 ubuntu 上跑 Node 16 / 18 / 20 / 22 / 当前 LTS / current，在 macOS、Windows 上跑 Node 22 | CI 的 `npx-compat` job：安装打包好的 npm tarball，执行 `npx android-log-mcp --version`，再通过 stdio 做 MCP 握手（initialize → tools/list → logcat_status，`--offline <空目录>`）（`npm/test/mcp_smoke.js`） |
 | 主机 OS / 架构 | linux x64：完整运行（后台录制、端到端验证）。linux x64、macOS（arm64）、Windows x64：单元测试和回归测试（`go test ./...`），以及上面的 npx 冒烟测试 | `.github/workflows/ci.yml` |
 | Android | API 29（Android 10，x86_64 模拟器，TCG 软件模拟）：端到端验证 + `compat` 探测 13 项全部通过 | `validation/mcp-v2/`、`validation/report-e2e/`、`validation/compat/api29-emulator-5556/` |
 | adb | platform-tools 37.0.1（adb 1.0.41），`track-devices` 正常 | 同上 |

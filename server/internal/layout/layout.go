@@ -1,17 +1,19 @@
-// Package layout owns the per-user data root of android-log-mcp:
+// Package layout owns the data root of android-log-mcp:
 //
-//	<root>/                       os.UserCacheDir()/android-log-mcp
-//	  owners/<device-id>.lock     global "who records this device" lock + JSON owner info
+//	<root>/                       os.UserCacheDir()/android-log-mcp, or ANDROID_LOG_MCP_HOME
 //	  run/                        runtime state (sockets, pid files) of live processes
 //	  tmp/                        scratch files (expire after an hour)
 //	  v1/<device-id>/             device data, format 1 (segments, meta.json, aux files)
-//	  legacy/<name>/              adopted sibling directories (android-log-mcp.*), expire
-//	  <serial>/                   pre-v1 flat device directories (migrated or expire)
 //
-// The owners/ lock always lives in the real per-user root, even when
-// ANDROID_LOG_MCP_HOME points the data somewhere else, so a device is
-// recorded by at most one process per user. Everything under the root is
-// bounded by the total size cap and the retention window (Sweep).
+//	os.UserCacheDir()/android-log-mcp/owners/<device-id>.lock
+//	                              global "who records this device" lock + JSON owner info
+//
+// The owners directory is fixed per user, independent of
+// ANDROID_LOG_MCP_HOME, so a device is recorded by at most one process per
+// user whatever root each process uses. Everything the tool manages under
+// the root is bounded by the total size cap and the retention window
+// (Sweep); anything else there (e.g. directories of versions before 0.4) is
+// ignored: never read, never deleted.
 package layout
 
 import (
@@ -27,8 +29,13 @@ import (
 	"github.com/s1crab/android-log-mcp/server/internal/store"
 )
 
-// Root is the per-user root directory.
-type Root struct{ Dir string }
+// Root is the data root plus the owners directory.
+type Root struct {
+	Dir string
+	// OwnersDir holds the owner locks; "" = <Dir>/owners. The recorder
+	// always uses DefaultOwnersDir().
+	OwnersDir string
+}
 
 // DefaultDir is os.UserCacheDir()/android-log-mcp (the temp dir if the
 // cache dir is unknown).
@@ -40,10 +47,19 @@ func DefaultDir() string {
 	return filepath.Join(d, "android-log-mcp")
 }
 
-func (r Root) Owners() string { return filepath.Join(r.Dir, "owners") }
-func (r Root) Run() string    { return filepath.Join(r.Dir, "run") }
-func (r Root) Tmp() string    { return filepath.Join(r.Dir, "tmp") }
-func (r Root) Legacy() string { return filepath.Join(r.Dir, "legacy") }
+// DefaultOwnersDir is the fixed per-user owners directory
+// (os.UserCacheDir()/android-log-mcp/owners), independent of
+// ANDROID_LOG_MCP_HOME.
+func DefaultOwnersDir() string { return filepath.Join(DefaultDir(), "owners") }
+
+func (r Root) Owners() string {
+	if r.OwnersDir != "" {
+		return r.OwnersDir
+	}
+	return filepath.Join(r.Dir, "owners")
+}
+func (r Root) Run() string { return filepath.Join(r.Dir, "run") }
+func (r Root) Tmp() string { return filepath.Join(r.Dir, "tmp") }
 
 // DeviceDir is the format-1 data directory of device id under base (the
 // root, or ANDROID_LOG_MCP_HOME).
@@ -69,12 +85,9 @@ type Owner struct {
 	Version string    `json:"version,omitempty"`
 	DataDir string    `json:"data_dir"`       // where the device's logs are written
 	Addr    string    `json:"addr,omitempty"` // adb serial used to reach it
-	Home    string    `json:"home,omitempty"` // ANDROID_LOG_MCP_HOME of the owner, if set
+	Home    string    `json:"home,omitempty"` // relocated data root (ANDROID_LOG_MCP_HOME / --home), if not the default
 	BootID  string    `json:"boot_id,omitempty"`
 	Since   time.Time `json:"since"`
-	// Legacy: a pre-v1 version recording a flat <base>/<serial> directory
-	// (no owner lock; detected through its writer.lock).
-	Legacy bool `json:"-"`
 }
 
 // String is a short human description ("pid 123, version 0.4.0, data <dir>").
@@ -84,7 +97,7 @@ func (o Owner) String() string {
 		s += ", version " + o.Version
 	}
 	if o.Home != "" {
-		s += ", ANDROID_LOG_MCP_HOME=" + o.Home
+		s += ", relocated root " + o.Home // ANDROID_LOG_MCP_HOME / --home
 	}
 	if o.DataDir != "" {
 		s += ", data " + o.DataDir
@@ -200,67 +213,21 @@ func (r Root) ReadOwner(id string) (*Owner, bool) {
 // OwnerHeld reports whether some process owns device id.
 func (r Root) OwnerHeld(id string) bool { return store.LockHeld(r.ownerPath(id)) }
 
-// ---- adopting sibling directories ----
-
-// AdoptSiblings moves sibling directories named "<root>.<suffix>" (e.g. a
-// manual "android-log-mcp.v1-backup") into <root>/legacy/<suffix>, where
-// they count against the size cap and expire with the retention window.
-// A sibling with a live writer inside is left alone. Returns the moved
-// destinations.
-func (r Root) AdoptSiblings() []string {
-	parent, name := filepath.Dir(r.Dir), filepath.Base(r.Dir)
-	ents, err := os.ReadDir(parent)
-	if err != nil {
-		return nil
-	}
-	var moved []string
+// LiveOwners returns the owner info of every device currently recorded by a
+// live process (any root), keyed by the lock file's device ID.
+func (r Root) LiveOwners() map[string]*Owner {
+	out := map[string]*Owner{}
+	ents, _ := os.ReadDir(r.Owners())
 	for _, e := range ents {
-		if !e.IsDir() || !strings.HasPrefix(e.Name(), name+".") {
+		id, ok := strings.CutSuffix(e.Name(), ".lock")
+		if !ok || e.IsDir() {
 			continue
 		}
-		src := filepath.Join(parent, e.Name())
-		if anyWriterHeld(src) {
-			continue
-		}
-		suffix := strings.TrimPrefix(e.Name(), name+".")
-		if suffix == "" {
-			continue
-		}
-		if err := os.MkdirAll(r.Legacy(), 0o755); err != nil {
-			return moved
-		}
-		dst := filepath.Join(r.Legacy(), suffix)
-		for i := 2; exists(dst); i++ {
-			dst = filepath.Join(r.Legacy(), fmt.Sprintf("%s-%d", suffix, i))
-		}
-		if os.Rename(src, dst) == nil {
-			moved = append(moved, dst)
+		if o, held := r.ReadOwner(id); held && o != nil {
+			out[id] = o
 		}
 	}
-	return moved
-}
-
-// anyWriterHeld reports whether a writer.lock up to two levels below dir is
-// held (a store recorded by a live process).
-func anyWriterHeld(dir string) bool {
-	held := false
-	filepath.WalkDir(dir, func(p string, e os.DirEntry, err error) error {
-		if err != nil || held {
-			return filepath.SkipDir
-		}
-		if e.IsDir() {
-			rel, _ := filepath.Rel(dir, p)
-			if rel != "." && strings.Count(rel, string(filepath.Separator)) >= 2 {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if e.Name() == "writer.lock" && store.LockHeld(p) {
-			held = true
-		}
-		return nil
-	})
-	return held
+	return out
 }
 
 func exists(p string) bool { _, err := os.Stat(p); return err == nil }

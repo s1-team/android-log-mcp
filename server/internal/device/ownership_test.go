@@ -2,6 +2,7 @@ package device
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,10 +14,12 @@ import (
 	"github.com/s1crab/android-log-mcp/server/internal/store"
 )
 
-func testManager(t *testing.T, base, root string) *Manager {
+// testManager records into base; owners is the shared owners directory
+// (the fixed per-user one in production, a temp dir here).
+func testManager(t *testing.T, base, owners string) *Manager {
 	t.Helper()
 	m := NewManager(base, store.Config{IdleRelease: -1})
-	m.Root = layout.Root{Dir: root}
+	m.Root = layout.Root{Dir: base, OwnersDir: owners}
 	m.ctx = context.Background()
 	m.Version = "test"
 	m.Root.Ensure()
@@ -32,34 +35,33 @@ func recs(n int, t0 int64, boot string) []*model.Record {
 	return out
 }
 
-// Two processes with different ANDROID_LOG_MCP_HOME: the first owns the
-// device; the second never records it, follows the owner's data and names
-// the owner. When the owner goes away the second may take over.
-func TestOwnershipAcrossHomes(t *testing.T) {
-	root := t.TempDir()
-	homeB := t.TempDir()
+// Two processes with different data roots (default root and a relocated
+// ANDROID_LOG_MCP_HOME) share the fixed owners dir: never both record a
+// device. The second follows the owner's data dir read-only and names the
+// owner; once the owner exits it takes over into its own root.
+func TestTwoRootsNeverBothRecord(t *testing.T) {
+	owners := filepath.Join(t.TempDir(), "owners")
+	rootA := t.TempDir()
+	rootB := t.TempDir()
 	id := Identity{ID: "avd-a", Source: "avd_name", Addr: "emulator-5554", BootID: "b1"}
 
-	m1 := testManager(t, root, root)
+	m1 := testManager(t, rootA, owners)
 	m1.Attach(id)
 	d1 := m1.Get("avd-a")
 	if d1 == nil || !d1.Owned() || !d1.Store.IsWriter() {
 		t.Fatal("first process does not own the device")
 	}
-	if d1.Store.Dir != layout.DeviceDir(root, "avd-a") {
+	if d1.Store.Dir != layout.DeviceDir(rootA, "avd-a") {
 		t.Fatalf("data dir %s", d1.Store.Dir)
 	}
 	d1.Store.Append(recs(5, time.Now().UnixNano(), "b1"))
 	d1.Store.Flush()
 
-	m2 := testManager(t, homeB, root)
+	m2 := testManager(t, rootB, owners)
 	m2.Attach(id)
 	d2 := m2.Get("emulator-5554") // by adb serial
-	if d2 == nil {
-		d2 = m2.Get("avd-a")
-	}
 	if d2 == nil || d2.Owned() || d2.Store.IsWriter() {
-		t.Fatal("second process records a device owned elsewhere")
+		t.Fatal("second root records a device owned elsewhere")
 	}
 	st := d2.Status()
 	if st.Owner == nil || st.Owner.PID != os.Getpid() || st.Owner.DataDir != d1.Store.Dir || st.Owner.Version != "test" {
@@ -72,8 +74,8 @@ func TestOwnershipAcrossHomes(t *testing.T) {
 	if d2.Store.LastSeq() != 5 {
 		t.Fatalf("follower sees %d records", d2.Store.LastSeq())
 	}
-	if _, err := os.Stat(layout.DeviceDir(homeB, "avd-a")); err == nil {
-		t.Fatal("second home got a data directory for the owned device")
+	if _, err := os.Stat(layout.DeviceDir(rootB, "avd-a")); err == nil {
+		t.Fatal("second root got a data directory for the owned device")
 	}
 	// recording loop of the follower never promotes
 	d2.adb = &ADB{Path: "/nonexistent"}
@@ -85,60 +87,154 @@ func TestOwnershipAcrossHomes(t *testing.T) {
 		t.Fatal("follower started recording")
 	}
 
-	// owner exits: a process with a custom HOME still never records
+	// owner exits: the other root takes over, into its own root
 	m1.Close()
 	m2.Attach(id)
 	d3 := m2.Get("avd-a")
-	if d3 != nil && (d3.Owned() || d3.Store.IsWriter()) {
-		t.Fatal("custom-HOME process took over recording")
+	if d3 == nil || !d3.Owned() || !d3.Store.IsWriter() || d3.Store.Dir != layout.DeviceDir(rootB, "avd-a") {
+		t.Fatalf("no takeover into the second root: %+v", d3)
 	}
-	if m2.Root.OwnerHeld("avd-a") {
-		t.Fatal("custom-HOME process took the owner lock")
+	o, held := m2.Root.ReadOwner("avd-a")
+	if !held || o.DataDir != d3.Store.Dir || o.Home != rootB {
+		t.Fatalf("owner lock %+v held %v", o, held)
 	}
-	if _, err := os.Stat(layout.DeviceDir(homeB, "avd-a")); err == nil {
-		t.Fatal("custom HOME got a data directory")
+	// and now the first root (restarted) follows the second
+	m1b := testManager(t, rootA, owners)
+	m1b.Attach(id)
+	if d := m1b.Get("avd-a"); d == nil || d.Owned() || d.Store.Dir != d3.Store.Dir {
+		t.Fatal("restarted first root does not follow the new owner")
 	}
 }
 
-// Strict HOME: a device nobody records is still not recorded by a process
-// with ANDROID_LOG_MCP_HOME set; it creates nothing in the root or HOME.
-func TestCustomHomeNeverRecords(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "root") // not created: read-only must not create it
-	home := t.TempDir()
-	m := NewManager(home, store.Config{IdleRelease: -1})
-	m.Root = layout.Root{Dir: root}
-	m.ctx = context.Background()
-	t.Cleanup(m.Close)
-	if !m.HomeReadOnly() || !strings.Contains(m.ReadOnlyReason(), "never records") {
-		t.Fatalf("reason %q", m.ReadOnlyReason())
+// ANDROID_LOG_MCP_HOME / --home relocates the data root and records
+// normally; the owner lock still lives in the fixed per-user owners dir
+// (redirected to a temp dir by TestMain).
+func TestHomeRelocationRecords(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "relocated")
+	t.Setenv("ANDROID_LOG_MCP_HOME", home)
+	if DefaultBase() != home {
+		t.Fatalf("DefaultBase %s", DefaultBase())
 	}
-	m.Attach(Identity{ID: "avd-free", Source: "avd_name", Addr: "emulator-5554", BootID: "b1"})
-	if d := m.Get("avd-free"); d != nil && (d.Owned() || d.Store.IsWriter()) {
-		t.Fatal("unowned device recorded under a custom HOME")
+	m := NewManager(DefaultBase(), store.Config{IdleRelease: -1})
+	if m.Root.Dir != home || m.Root.Owners() != layout.DefaultOwnersDir() {
+		t.Fatalf("root %+v", m.Root)
+	}
+	m.ctx = context.Background()
+	m.Version = "test"
+	m.Root.Ensure()
+	t.Cleanup(m.Close)
+	m.Attach(Identity{ID: "avd-h", Source: "avd_name", Addr: "emulator-5554", BootID: "b1"})
+	d := m.Get("avd-h")
+	if d == nil || !d.Owned() || !d.Store.IsWriter() || d.Store.Dir != layout.DeviceDir(home, "avd-h") {
+		t.Fatalf("relocated root does not record: %+v", d)
+	}
+	if !strings.HasPrefix(layout.DefaultOwnersDir(), os.Getenv("HOME")) || !strings.Contains(os.Getenv("HOME"), "alm-testhome-") {
+		t.Fatalf("owners dir %s not isolated", layout.DefaultOwnersDir())
+	}
+	if _, err := os.Stat(filepath.Join(layout.DefaultOwnersDir(), "avd-h.lock")); err != nil {
+		t.Fatalf("owner lock not in the fixed owners dir: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, "owners")); err == nil {
+		t.Fatal("owners/ created under the relocated root")
+	}
+	o, _ := m.Root.ReadOwner("avd-h")
+	if o == nil || o.DataDir != d.Store.Dir || o.Home != home {
+		t.Fatalf("owner %+v", o)
+	}
+}
+
+func snapshot(t *testing.T, dirs ...string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	for _, d := range dirs {
+		filepath.Walk(d, func(p string, fi os.FileInfo, err error) error {
+			if err != nil {
+				out[p] = "missing"
+				return nil
+			}
+			out[p] = fmt.Sprintf("%v %d %d", fi.IsDir(), fi.Size(), fi.ModTime().UnixNano())
+			return nil
+		})
+	}
+	return out
+}
+
+// --offline <dir>: browse a dataset read-only. Nothing is recorded, pruned,
+// migrated or created, not even for expired data, over-cap data, old
+// layouts or the owners dir.
+func TestOfflineNeverWrites(t *testing.T) {
+	ds := filepath.Join(t.TempDir(), "store")
+	owners := filepath.Join(t.TempDir(), "owners")
+	st, err := store.OpenDir(layout.DeviceDir(ds, "avd-r"), "avd-r", store.Config{IdleRelease: -1}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Append(recs(20, time.Now().Add(-72*time.Hour).UnixNano(), "b"))
+	st.Close()
+	old := time.Now().Add(-72 * time.Hour)
+	filepath.Walk(ds, func(p string, _ os.FileInfo, _ error) error { return os.Chtimes(p, old, old) })
+	os.MkdirAll(filepath.Join(ds, "emulator-5554"), 0o755) // old flat layout
+	os.WriteFile(filepath.Join(ds, "emulator-5554", "meta.json"), []byte(`{"serial":"emulator-5554"}`), 0o644)
+	before := snapshot(t, ds, owners)
+
+	m := NewManager(ds, store.Config{IdleRelease: -1, MaxAge: time.Hour})
+	m.Root.OwnersDir = owners
+	m.NoADB = true
+	m.MaxTotalBytes = 1
+	ctx, cancel := context.WithCancel(context.Background())
+	m.Start(ctx)
+	d := m.Get("avd-r")
+	if d == nil || d.Owned() || d.Store.IsWriter() || d.Store.LastSeq() != 20 {
+		t.Fatalf("dataset not browsable: %+v", d)
+	}
+	if m.Get("emulator-5554") != nil {
+		t.Fatal("old flat layout was read")
 	}
 	m.MaintainOnce(true)
-	for _, p := range []string{root, layout.DeviceDir(home, "avd-free")} {
-		if _, err := os.Stat(p); err == nil {
-			t.Fatalf("read-only process created %s", p)
-		}
-	}
-	// existing HOME data (e.g. an unzipped report) is shown read-only and the
-	// recorder loop never promotes it, even when the device is online
-	st, _ := store.OpenDir(layout.DeviceDir(home, "avd-old"), "avd-old", store.Config{IdleRelease: -1}, true)
-	st.Append(recs(3, time.Now().UnixNano(), "b"))
-	st.Close()
-	m.Attach(Identity{ID: "avd-old", Source: "avd_name", Addr: "emulator-5556", BootID: "b2"})
-	d := m.Get("avd-old")
-	if d == nil || d.Owned() || d.Store.LastSeq() != 3 {
-		t.Fatalf("HOME data not shown read-only: %+v", d)
-	}
-	d.adb = &ADB{Path: "/nonexistent"}
-	ctx, cancel := context.WithCancel(context.Background())
-	go d.run(ctx)
-	time.Sleep(50 * time.Millisecond)
+	m.Attach(Identity{ID: "avd-r", Source: "avd_name", Addr: "emulator-5554", BootID: "b"})
+	m.Attach(Identity{ID: "avd-new", Source: "avd_name", Addr: "emulator-5556", BootID: "c"})
 	cancel()
-	if d.Store.IsWriter() {
-		t.Fatal("read-only device promoted to writer")
+	m.Close()
+	after := snapshot(t, ds, owners)
+	if fmt.Sprint(before) != fmt.Sprint(after) {
+		t.Fatalf("offline changed files:\nbefore %v\nafter  %v", before, after)
+	}
+}
+
+// Old layouts (pre-0.4 flat <serial>/ dirs, legacy/, android-log-mcp.*
+// siblings) are ignored: not read, not migrated, not deleted.
+func TestOldLayoutIgnored(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "android-log-mcp")
+	flat := filepath.Join(root, "emulator-5556")
+	for _, dir := range []string{flat, filepath.Join(root, "legacy", "v1-backup", "emulator-5556"), filepath.Join(parent, "android-log-mcp.v1-backup", "emulator-5556")} {
+		st, err := store.OpenDir(dir, "emulator-5556", store.Config{IdleRelease: -1}, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		st.Append(recs(7, time.Now().Add(-72*time.Hour).UnixNano(), "b"))
+		st.Close()
+	}
+	old := time.Now().Add(-72 * time.Hour)
+	filepath.Walk(parent, func(p string, _ os.FileInfo, _ error) error { return os.Chtimes(p, old, old) })
+	before := snapshot(t, flat, filepath.Join(root, "legacy"), filepath.Join(parent, "android-log-mcp.v1-backup"))
+
+	m := testManager(t, root, filepath.Join(t.TempDir(), "owners"))
+	m.Cfg.MaxAge = time.Hour
+	m.MaxTotalBytes = 1
+	m.loadDirs()
+	if len(m.Devices()) != 0 {
+		t.Fatalf("old layout read: %d devices", len(m.Devices()))
+	}
+	m.sweepLocked(nil)
+	m.Attach(Identity{ID: "avd-api29", Source: "emu_avd_name", Addr: "emulator-5556", BootID: "b"})
+	d := m.Get("emulator-5556")
+	if d == nil || !d.Owned() || d.Store.Dir != layout.DeviceDir(root, "avd-api29") || d.Store.LastSeq() != 0 {
+		t.Fatalf("device not recorded fresh in v1: %+v", d)
+	}
+	m.MaintainOnce(true)
+	if after := snapshot(t, flat, filepath.Join(root, "legacy"), filepath.Join(parent, "android-log-mcp.v1-backup")); fmt.Sprint(before) != fmt.Sprint(after) {
+		t.Fatalf("old layout touched:\nbefore %v\nafter  %v", before, after)
 	}
 }
 
@@ -146,7 +242,7 @@ func TestCustomHomeNeverRecords(t *testing.T) {
 // launched twice with -read-only): never one directory.
 func TestIDCollisionGetsOwnDirectory(t *testing.T) {
 	root := t.TempDir()
-	m := testManager(t, root, root)
+	m := testManager(t, root, filepath.Join(root, "owners"))
 	m.states = map[string]string{"emulator-5554": "device", "emulator-5556": "device"}
 	first := m.Attach(Identity{ID: "avd-x", Source: "avd_name", Addr: "emulator-5554", BootID: "boot-A"})
 	second := m.Attach(Identity{ID: "avd-x", Source: "avd_name", Addr: "emulator-5556", BootID: "boot-B"})
@@ -172,7 +268,7 @@ func TestIDCollisionGetsOwnDirectory(t *testing.T) {
 // The same device over USB and Wi-Fi at once (same boot) is one device.
 func TestSameDeviceTwoTransportsIsNotACollision(t *testing.T) {
 	root := t.TempDir()
-	m := testManager(t, root, root)
+	m := testManager(t, root, filepath.Join(root, "owners"))
 	m.states = map[string]string{"R58M123ABCD": "device", "192.168.1.20:5555": "device"}
 	a := m.Attach(Identity{ID: "R58M123ABCD", Source: "ro.serialno", Addr: "R58M123ABCD", BootID: "boot-1"})
 	b := m.Attach(Identity{ID: "R58M123ABCD", Source: "ro.serialno", Addr: "192.168.1.20:5555", BootID: "boot-1"})
@@ -185,7 +281,7 @@ func TestSameDeviceTwoTransportsIsNotACollision(t *testing.T) {
 // address went away is the same device, not a collision.
 func TestRebootOrReconnectIsNotACollision(t *testing.T) {
 	root := t.TempDir()
-	m := testManager(t, root, root)
+	m := testManager(t, root, filepath.Join(root, "owners"))
 	m.states = map[string]string{"emulator-5554": "device"}
 	m.Attach(Identity{ID: "avd-x", Source: "avd_name", Addr: "emulator-5554", BootID: "boot-A"})
 	if id := m.Attach(Identity{ID: "avd-x", Source: "avd_name", Addr: "emulator-5554", BootID: "boot-A2"}); id != "avd-x" {
@@ -205,13 +301,13 @@ func TestRebootOrReconnectIsNotACollision(t *testing.T) {
 // following the first instance's data.
 func TestIDCollisionAcrossProcesses(t *testing.T) {
 	root := t.TempDir()
-	m1 := testManager(t, root, root)
+	m1 := testManager(t, root, filepath.Join(root, "owners"))
 	m1.states = map[string]string{"emulator-5554": "device"}
 	m1.Attach(Identity{ID: "avd-x", Source: "avd_name", Addr: "emulator-5554", BootID: "boot-A"})
 	if o, _ := m1.Root.ReadOwner("avd-x"); o == nil || o.BootID != "boot-A" {
 		t.Fatalf("owner info %+v", o)
 	}
-	m2 := testManager(t, root, root)
+	m2 := testManager(t, root, filepath.Join(root, "owners"))
 	m2.states = map[string]string{"emulator-5554": "device", "emulator-5556": "device"}
 	if id := m2.Attach(Identity{ID: "avd-x", Source: "avd_name", Addr: "emulator-5556", BootID: "boot-B"}); id != "avd-x~emulator-5556" {
 		t.Fatalf("second instance -> %q", id)
@@ -226,159 +322,5 @@ func TestIDCollisionAcrossProcesses(t *testing.T) {
 	}
 	if f := m2.Get("avd-x"); f == nil || f.Owned() || f.Status().Owner == nil {
 		t.Fatal("first instance not followed in m2")
-	}
-}
-
-func flatDir(t *testing.T, base, serial, boot string, n int) (string, uint64, int64) {
-	t.Helper()
-	st, err := store.Open(base, serial, store.Config{IdleRelease: -1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t0 := time.Now().Add(-time.Hour).UnixNano()
-	st.UpdateMeta(func(m *store.Meta) {
-		m.LastBootID = boot
-		m.Sessions = append(m.Sessions, store.Session{BootID: boot, Boot: store.BootShort(boot), FirstSeq: 1})
-	})
-	st.Append(recs(n, t0, store.BootShort(boot)))
-	st.AppendAux("crashes.jsonl", map[string]string{"id": "c1"})
-	last, lastNs := st.LastSeq(), st.Meta().LastTimeNs
-	st.Close()
-	return filepath.Join(base, store.SanitizeSerial(serial)), last, lastNs
-}
-
-// A flat pre-v1 directory of the connecting device is moved into
-// v1/<id> with all data; the old directory disappears; old names still
-// resolve (cursors, device=).
-func TestMigrateFlatLayout(t *testing.T) {
-	root := t.TempDir()
-	old, last, lastNs := flatDir(t, root, "emulator-5556", "boot-1111", 50)
-	other, _, _ := flatDir(t, root, "emulator-5554", "boot-2222", 10) // another emulator's old data
-
-	m := testManager(t, root, root)
-	m.loadDirs()
-	if m.Get("emulator-5556") == nil {
-		t.Fatal("legacy dir not loaded")
-	}
-	m.Attach(Identity{ID: "avd-api29", Source: "emu_avd_name", Addr: "emulator-5556", BootID: "boot-1111"})
-	d := m.Get("avd-api29")
-	if d == nil || !d.Owned() {
-		t.Fatal("not attached")
-	}
-	if d.Store.Dir != layout.DeviceDir(root, "avd-api29") {
-		t.Fatalf("dir %s", d.Store.Dir)
-	}
-	if _, err := os.Stat(old); !os.IsNotExist(err) {
-		t.Fatal("old flat directory still there")
-	}
-	if d.Store.LastSeq() != last || d.Store.Meta().LastTimeNs != lastNs {
-		t.Fatalf("data not preserved: last seq %d/%d, last time %d/%d", d.Store.LastSeq(), last, d.Store.Meta().LastTimeNs, lastNs)
-	}
-	if n := len(d.Store.ReadAux("crashes.jsonl")); n != 1 {
-		t.Fatalf("aux file lost (%d lines)", n)
-	}
-	mt := d.Store.Meta()
-	if mt.Serial != "avd-api29" || mt.Addr != "emulator-5556" || mt.IDSource != "emu_avd_name" || len(mt.Aliases) == 0 || mt.Aliases[0] != "emulator-5556" {
-		t.Fatalf("meta %+v", mt)
-	}
-	if !d.Matches("emulator-5556") || m.Get("emulator-5556") != d {
-		t.Fatal("old serial does not resolve to the migrated device")
-	}
-	for _, x := range m.Devices() {
-		if x.Store.Dir == old {
-			t.Fatal("stale entry for the moved directory")
-		}
-	}
-	// the other emulator's data (different boot) stays as legacy data
-	if _, err := os.Stat(filepath.Join(other, "meta.json")); err != nil {
-		t.Fatal("unrelated flat directory was touched")
-	}
-	if x := m.Get("emulator-5554"); x == nil || x.Store.Dir != other {
-		t.Fatal("unrelated legacy data not browsable")
-	}
-	// a new v1 store keeps appending after the migrated seqs
-	d.Store.Append(recs(3, time.Now().UnixNano(), "x"))
-	if d.Store.LastSeq() != last+3 {
-		t.Fatalf("seq continuity: %d", d.Store.LastSeq())
-	}
-}
-
-// Physical device: the old directory is named after ro.serialno (the USB
-// serial), which is also the new ID, so it migrates even after a reboot.
-func TestMigratePhysicalBySerial(t *testing.T) {
-	root := t.TempDir()
-	old, last, _ := flatDir(t, root, "R58M123ABCD", "boot-old", 7)
-	m := testManager(t, root, root)
-	m.loadDirs()
-	m.Attach(Identity{ID: "R58M123ABCD", Source: "ro.serialno", Addr: "192.168.1.20:5555", BootID: "boot-new"})
-	d := m.Get("R58M123ABCD")
-	if d == nil || !d.Owned() || d.Store.LastSeq() != last || d.Addr() != "192.168.1.20:5555" {
-		t.Fatalf("physical migration failed: %+v", d)
-	}
-	if _, err := os.Stat(old); !os.IsNotExist(err) {
-		t.Fatal("old directory remains")
-	}
-	if len(m.Devices()) != 1 {
-		t.Fatalf("%d devices", len(m.Devices()))
-	}
-}
-
-// No migration while an old version still records the flat directory: the
-// device is followed read-only and the old process is named.
-func TestLegacyWriterIsFollowed(t *testing.T) {
-	root := t.TempDir()
-	old, _, _ := flatDir(t, root, "emulator-5556", "boot-1", 4)
-	f, ok := store.TryLock(filepath.Join(old, "writer.lock"))
-	if !ok {
-		t.Fatal("lock")
-	}
-	os.WriteFile(filepath.Join(old, "writer.lock"), []byte("4242"), 0o644)
-	m := testManager(t, root, root)
-	m.loadDirs()
-	m.Attach(Identity{ID: "avd-api29", Source: "emu_avd_name", Addr: "emulator-5556", BootID: "boot-1"})
-	d := m.Get("avd-api29")
-	if d == nil || d.Owned() || d.Store.Dir != old {
-		t.Fatal("legacy writer not followed")
-	}
-	if o := d.Status().Owner; o == nil || !o.Legacy || o.PID != 4242 {
-		t.Fatalf("owner %+v", o)
-	}
-	if m.Root.OwnerHeld("avd-api29") {
-		t.Fatal("took the owner lock while an old version records the device")
-	}
-	// the old version exits: next attach migrates and owns it
-	store.ReleaseLock(f)
-	m.Attach(Identity{ID: "avd-api29", Source: "emu_avd_name", Addr: "emulator-5556", BootID: "boot-1"})
-	d = m.Get("avd-api29")
-	if d == nil || !d.Owned() || d.Store.Dir != layout.DeviceDir(root, "avd-api29") || d.Store.LastSeq() != 4 {
-		t.Fatal("no takeover/migration after the old version exited")
-	}
-}
-
-// Startup handling of a legacy backup next to the root: moved into
-// legacy/, kept while fresh, removed once older than MaxAge.
-func TestLegacyBackupAdoptedAndExpired(t *testing.T) {
-	parent := t.TempDir()
-	root := filepath.Join(parent, "android-log-mcp")
-	backup := filepath.Join(parent, "android-log-mcp.v1-backup")
-	flatDir(t, backup, "emulator-5556", "b", 5)
-	r := layout.Root{Dir: root}
-	r.Ensure()
-	if moved := r.AdoptSiblings(); len(moved) != 1 {
-		t.Fatalf("moved %v", moved)
-	}
-	m := testManager(t, root, root)
-	m.sweepLocked(nil)
-	if _, err := os.Stat(filepath.Join(root, "legacy", "v1-backup", "emulator-5556", "meta.json")); err != nil {
-		t.Fatal("fresh legacy data removed early")
-	}
-	old := time.Now().Add(-48 * time.Hour)
-	filepath.Walk(filepath.Join(root, "legacy"), func(p string, _ os.FileInfo, _ error) error {
-		os.Chtimes(p, old, old)
-		return nil
-	})
-	m.sweepLocked(nil)
-	if _, err := os.Stat(filepath.Join(root, "legacy")); !os.IsNotExist(err) {
-		t.Fatal("expired legacy backup not removed")
 	}
 }

@@ -75,37 +75,25 @@ func TestOwnerLockExclusive(t *testing.T) {
 	l3.Release()
 }
 
-func TestAdoptSiblings(t *testing.T) {
-	parent := t.TempDir()
-	r := Root{Dir: filepath.Join(parent, "android-log-mcp")}
-	os.MkdirAll(r.Dir, 0o755)
-	devDir(t, filepath.Join(parent, "android-log-mcp.v1-backup", "emulator-5556"), 2, 100, time.Now())
-	devDir(t, filepath.Join(parent, "android-log-mcp.busy", "emulator-5554"), 1, 100, time.Now())
-	devDir(t, filepath.Join(parent, "other-tool.v1", "x"), 1, 100, time.Now())
-	f, ok := store.TryLock(filepath.Join(parent, "android-log-mcp.busy", "emulator-5554", "writer.lock"))
-	if !ok {
-		t.Fatal("lock")
-	}
-	defer store.ReleaseLock(f)
-	moved := r.AdoptSiblings()
-	if len(moved) != 1 || moved[0] != filepath.Join(r.Legacy(), "v1-backup") {
-		t.Fatalf("moved %v", moved)
-	}
-	if !exists(filepath.Join(r.Legacy(), "v1-backup", "emulator-5556", "meta.json")) || exists(filepath.Join(parent, "android-log-mcp.v1-backup")) {
-		t.Fatal("v1-backup not moved into legacy/")
-	}
-	if !exists(filepath.Join(parent, "android-log-mcp.busy")) {
-		t.Fatal("a sibling with a live writer was moved")
-	}
-	if !exists(filepath.Join(parent, "other-tool.v1")) {
-		t.Fatal("unrelated directory moved")
+// Old layouts (pre-0.4 flat <serial>/ dirs, legacy/, android-log-mcp.*
+// siblings) are ignored: not read, not migrated, not deleted, even when old.
+func oldLayout(t *testing.T, base string, mod time.Time) []string {
+	devDir(t, filepath.Join(base, "emulator-5554"), 2, 100, mod)
+	devDir(t, filepath.Join(base, "legacy", "v1-backup", "emulator-5556"), 2, 100, mod)
+	devDir(t, filepath.Join(filepath.Dir(base), filepath.Base(base)+".v1-backup", "emulator-5556"), 2, 100, mod)
+	return []string{
+		filepath.Join(base, "emulator-5554", "seg-00000000000000000001.jsonl"),
+		filepath.Join(base, "emulator-5554", "meta.json"),
+		filepath.Join(base, "legacy", "v1-backup", "emulator-5556", "seg-00000000000000000101.jsonl"),
+		filepath.Join(filepath.Dir(base), filepath.Base(base)+".v1-backup", "emulator-5556", "meta.json"),
 	}
 }
 
-// Retention applies to every format, legacy data and tmp/; what this
-// process records is left to its store, and unknown files are never touched.
+// Retention applies to every format version and tmp/; what this process
+// records is left to its store; old layouts and unknown files are never
+// touched.
 func TestSweepMaxAgeAcrossVersions(t *testing.T) {
-	base := t.TempDir()
+	base := filepath.Join(t.TempDir(), "android-log-mcp")
 	now := time.Now()
 	old := now.Add(-48 * time.Hour)
 	fresh := now.Add(-time.Hour)
@@ -114,10 +102,8 @@ func TestSweepMaxAgeAcrossVersions(t *testing.T) {
 	write(t, filepath.Join(base, "v1", "avd-mixed", "seg-00000000000000009999.jsonl"), 100, fresh)
 	devDir(t, filepath.Join(base, "v1", "avd-owned"), 2, 100, old) // recorded by us: untouched
 	devDir(t, filepath.Join(base, "v0", "dev"), 2, 100, old)       // older format
-	devDir(t, filepath.Join(base, "emulator-5554"), 2, 100, old)   // flat pre-v1
-	devDir(t, filepath.Join(base, "emulator-5556"), 2, 100, fresh) // flat, still fresh
-	devDir(t, filepath.Join(base, "legacy", "v1-backup", "emulator-5556"), 2, 100, old)
-	write(t, filepath.Join(base, "legacy", "v1-backup", "notes.txt"), 5, old)
+	devDir(t, filepath.Join(base, "v2", "dev"), 2, 100, fresh)     // other format, still fresh
+	ignored := oldLayout(t, base, old)
 	write(t, filepath.Join(base, "tmp", "report-123.zip"), 50, now.Add(-2*time.Hour))
 	write(t, filepath.Join(base, "tmp", "fresh.tmp"), 50, now)
 	write(t, filepath.Join(base, "my-notes.txt"), 5, old) // not ours
@@ -126,7 +112,7 @@ func TestSweepMaxAgeAcrossVersions(t *testing.T) {
 	owned := &store.Store{Dir: filepath.Join(base, "v1", "avd-owned")}
 	res := Sweep(SweepOptions{Base: base, MaxAge: 24 * time.Hour, Owned: map[string]*store.Store{owned.Dir: owned}, Now: now})
 
-	gone := []string{"v1/avd-old", "v0", "emulator-5554", "legacy", "tmp/report-123.zip",
+	gone := []string{"v1/avd-old", "v0", "tmp/report-123.zip",
 		"v1/avd-mixed/seg-00000000000000000001.jsonl", "v1/avd-mixed/seg-00000000000000000101.jsonl"}
 	for _, g := range gone {
 		if exists(filepath.Join(base, g)) {
@@ -134,37 +120,43 @@ func TestSweepMaxAgeAcrossVersions(t *testing.T) {
 		}
 	}
 	kept := []string{"v1/avd-owned/seg-00000000000000000001.jsonl", "v1/avd-mixed/seg-00000000000000009999.jsonl",
-		"emulator-5556/seg-00000000000000000001.jsonl", "tmp/fresh.tmp", "my-notes.txt", "photos/a.jpg", "v1"}
+		"v2/dev/seg-00000000000000000001.jsonl", "tmp/fresh.tmp", "my-notes.txt", "photos/a.jpg", "v1"}
 	for _, k := range kept {
 		if !exists(filepath.Join(base, k)) {
 			t.Errorf("%s was removed", k)
 		}
 	}
-	if len(res.RemovedDirs) < 4 {
+	for _, p := range ignored {
+		if !exists(p) {
+			t.Errorf("old-layout file %s was touched", p)
+		}
+	}
+	if len(res.RemovedDirs) < 2 {
 		t.Errorf("removed dirs %v", res.RemovedDirs)
 	}
 }
 
-// The total cap counts every format, legacy data and tmp/ and removes the
-// oldest files first; each current-format device keeps its newest segment.
+// The total cap counts every format version, tmp/, run/ and owners/ and
+// removes the oldest files first; each current-format device keeps its
+// newest segment. Old layouts are neither counted nor removed.
 func TestSweepTotalCapAcrossVersions(t *testing.T) {
-	base := t.TempDir()
+	base := filepath.Join(t.TempDir(), "android-log-mcp")
 	now := time.Now()
-	devDir(t, filepath.Join(base, "legacy", "v1-backup", "e"), 3, 1000, now.Add(-10*time.Hour)) // oldest
-	devDir(t, filepath.Join(base, "emulator-5554"), 3, 1000, now.Add(-8*time.Hour))
+	ignored := oldLayout(t, base, now.Add(-20*time.Hour))
+	devDir(t, filepath.Join(base, "v0", "e"), 3, 1000, now.Add(-10*time.Hour)) // oldest
 	devDir(t, filepath.Join(base, "v1", "avd-a"), 3, 1000, now.Add(-6*time.Hour))
 	write(t, filepath.Join(base, "tmp", "x.zip"), 1000, now.Add(-7*time.Hour))
 	write(t, filepath.Join(base, "run", "junk.txt"), 10, now)
 	total := TotalBytes(base)
-	if total < 10000 {
-		t.Fatalf("TotalBytes %d", total)
+	if total < 7000 || total > 7100 {
+		t.Fatalf("TotalBytes %d (old layouts must not count)", total)
 	}
-	res := Sweep(SweepOptions{Base: base, MaxTotal: 4000, Now: now})
-	if !res.CapTriggered || res.TotalAfter > 4000 {
+	res := Sweep(SweepOptions{Base: base, MaxTotal: 3500, Now: now})
+	if !res.CapTriggered || res.TotalAfter > 3500 {
 		t.Fatalf("after sweep %d bytes (%+v)", res.TotalAfter, res)
 	}
-	if exists(filepath.Join(base, "legacy")) || exists(filepath.Join(base, "tmp", "x.zip")) {
-		t.Error("oldest (legacy, tmp) not removed first")
+	if exists(filepath.Join(base, "v0")) || exists(filepath.Join(base, "tmp", "x.zip")) {
+		t.Error("oldest (v0, tmp) not removed first")
 	}
 	if !exists(filepath.Join(base, "v1", "avd-a", "seg-00000000000000000201.jsonl")) {
 		t.Error("newest segment of a current device removed")
@@ -174,29 +166,31 @@ func TestSweepTotalCapAcrossVersions(t *testing.T) {
 	if segs := store.ListSegments(filepath.Join(base, "v1", "avd-a")); len(segs) != 1 {
 		t.Errorf("avd-a has %d segments", len(segs))
 	}
-	if exists(filepath.Join(base, "emulator-5554")) {
-		t.Error("flat legacy dir without segments not removed")
+	for _, p := range ignored {
+		if !exists(p) {
+			t.Errorf("old-layout file %s was touched", p)
+		}
 	}
 }
 
 func TestSweepSkipsLiveWriterAndOwner(t *testing.T) {
 	base := t.TempDir()
 	old := time.Now().Add(-72 * time.Hour)
-	devDir(t, filepath.Join(base, "emulator-5554"), 2, 100, old) // an old version records it
-	devDir(t, filepath.Join(base, "v1", "avd-b"), 2, 100, old)   // owned by another process
-	f, ok := store.TryLock(filepath.Join(base, "emulator-5554", "writer.lock"))
+	devDir(t, filepath.Join(base, "v0", "dev"), 2, 100, old)   // an old version records it
+	devDir(t, filepath.Join(base, "v1", "avd-b"), 2, 100, old) // owned by another process
+	f, ok := store.TryLock(filepath.Join(base, "v0", "dev", "writer.lock"))
 	if !ok {
 		t.Fatal("lock")
 	}
 	defer store.ReleaseLock(f)
-	r := Root{Dir: base}
+	r := Root{Dir: base, OwnersDir: filepath.Join(t.TempDir(), "owners")}
 	l, _, err := r.AcquireOwner("avd-b", Owner{PID: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer l.Release()
-	Sweep(SweepOptions{Base: base, MaxAge: time.Hour, MaxTotal: 1})
-	for _, p := range []string{"emulator-5554/seg-00000000000000000001.jsonl", "v1/avd-b/seg-00000000000000000001.jsonl"} {
+	Sweep(SweepOptions{Base: base, Root: &r, MaxAge: time.Hour, MaxTotal: 1})
+	for _, p := range []string{"v0/dev/seg-00000000000000000001.jsonl", "v1/avd-b/seg-00000000000000000001.jsonl"} {
 		if !exists(filepath.Join(base, p)) {
 			t.Errorf("%s removed although recorded by a live process", p)
 		}
