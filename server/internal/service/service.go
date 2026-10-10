@@ -55,12 +55,16 @@ type Service struct {
 	mstop context.CancelFunc
 	tools *mcpserver.Tools
 
-	clients  int
-	inflight atomic.Int64
-	stopOnce sync.Once
-	stopping chan struct{}
-	done     chan struct{}
-	reason   string
+	clients   int
+	lingerT   *time.Timer
+	lingerGen int
+	idleSince time.Time
+	idleFor   time.Duration
+	inflight  atomic.Int64
+	stopOnce  sync.Once
+	stopping  chan struct{}
+	done      chan struct{}
+	reason    string
 }
 
 // Hello is the first request of a client.
@@ -162,6 +166,12 @@ func Start(opt Options) (*Service, error) {
 	}
 	s.srv = &ipc.Server{Handler: s.handle, OnConn: s.onConn}
 	go s.srv.Serve(l)
+	s.mu.Lock()
+	n := s.clients
+	s.mu.Unlock()
+	if n == 0 {
+		s.clientsChanged(0) // a service nobody connects to does not stay forever
+	}
 	if err := s.writeState(); err != nil {
 		log.Printf("service: writing %s: %v", opt.Control.StatePath(), err)
 	}

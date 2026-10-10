@@ -1,0 +1,155 @@
+package main
+
+import (
+	"io"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+)
+
+// fakeADBEnv installs the fake adb and returns env entries for it plus its
+// state directory.
+func fakeADBEnv(t *testing.T) ([]string, string) {
+	t.Helper()
+	d := t.TempDir()
+	name := "adb"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	src, err := os.Open(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer src.Close()
+	dst, err := os.OpenFile(filepath.Join(d, name), os.O_CREATE|os.O_WRONLY, 0o755)
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(dst, src)
+	dst.Close()
+	state := filepath.Join(d, "state")
+	os.MkdirAll(state, 0o755)
+	t.Cleanup(func() {
+		if pid := readPID(state, "server.pid"); pid > 0 {
+			if p, err := os.FindProcess(pid); err == nil {
+				p.Kill()
+				waitGoneQuiet(pid)
+			}
+		}
+	})
+	return []string{"ANDROID_LOG_MCP_ADB=" + filepath.Join(d, name), "ALM_FAKE_ADB_DIR=" + state}, state
+}
+
+func readPID(dir, name string) int {
+	b, err := os.ReadFile(filepath.Join(dir, name))
+	if err != nil {
+		return 0
+	}
+	pid, _ := strconv.Atoi(strings.TrimSpace(string(b)))
+	return pid
+}
+
+func waitFile(t *testing.T, dir, name string) int {
+	t.Helper()
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		if pid := readPID(dir, name); pid > 0 {
+			return pid
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("%s not written", name)
+	return 0
+}
+
+func waitGoneQuiet(pid int) bool {
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		if !processAlive(pid) {
+			return true
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return false
+}
+
+// The adb server is shared with other tools: stopping or killing the
+// service ends its own adb children but never the server.
+func TestADBServerSurvivesService(t *testing.T) {
+	adbEnv, state := fakeADBEnv(t)
+	env := isoEnv(t, adbEnv...)
+	for _, how := range []string{"stop", "kill"} {
+		os.Remove(filepath.Join(state, "track.pid"))
+		out, errOut, code := cliEnv(t, env, "call", "logcat_status")
+		if code != 0 {
+			t.Fatalf("%s: call: %d %s %s", how, code, out, errOut)
+		}
+		svc, _ := servicePID(t, out)
+		server := waitFile(t, state, "server.pid")
+		track := waitFile(t, state, "track.pid")
+		if how == "stop" {
+			if _, e, c := cliEnv(t, env, "service", "stop"); c != 0 {
+				t.Fatalf("stop: %d %s", c, e)
+			}
+		} else {
+			p, _ := os.FindProcess(svc)
+			p.Kill()
+		}
+		waitGone(t, svc)
+		if !waitGoneQuiet(track) {
+			t.Fatalf("%s: adb child (track-devices, pid %d) outlived the service", how, track)
+		}
+		if !processAlive(server) {
+			t.Fatalf("%s: the adb server (pid %d) was killed with the service", how, server)
+		}
+	}
+}
+
+// The service stops on its own once the linger time after its last client
+// has passed, and not while a client is connected; the default linger is
+// the planned 10 min (2 × buffer span, ≤ 1 h).
+func TestServiceLinger(t *testing.T) {
+	env := isoEnv(t)
+	out, _, code := cliEnv(t, env, "call", "logcat_status")
+	if code != 0 || !strings.Contains(out, "linger: 10m0s (default: max(10m0s, 2 × device log buffer span") || !strings.Contains(out, "at most 1h0m0s") {
+		t.Fatalf("default linger:\n%s", out)
+	}
+	cliEnv(t, env, "service", "stop")
+
+	env = isoEnv(t, "ANDROID_LOG_MCP_LINGER=1s")
+	s := startMCP(t, env)
+	pid, _ := servicePID(t, s.status(t))
+	time.Sleep(2500 * time.Millisecond)
+	if !processAlive(pid) {
+		t.Fatal("service stopped while an MCP client was connected")
+	}
+	s.cs.Close()
+	waitGone(t, pid)
+	log, _ := os.ReadFile(filepath.Join(controlDirOf(env), "log", "service.log"))
+	if !strings.Contains(string(log), "no client for 1s (linger") {
+		t.Fatalf("service log:\n%s", log)
+	}
+}
+
+// controlDirOf is the control dir (= default data root) of an isoEnv.
+func controlDirOf(env []string) string {
+	get := func(k string) string {
+		for i := len(env) - 1; i >= 0; i-- {
+			if v, ok := strings.CutPrefix(env[i], k+"="); ok {
+				return v
+			}
+		}
+		return ""
+	}
+	switch runtime.GOOS {
+	case "windows":
+		return filepath.Join(get("LocalAppData"), "android-log-mcp")
+	case "darwin":
+		return filepath.Join(get("HOME"), "Library", "Caches", "android-log-mcp")
+	}
+	return filepath.Join(get("XDG_CACHE_HOME"), "android-log-mcp")
+}

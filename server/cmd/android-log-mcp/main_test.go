@@ -16,6 +16,9 @@ import (
 // Test-only knobs (never read by the real binary): ALM_TEST_VERSION,
 // ALM_TEST_PROTO, ALM_TEST_MINPROTO, ALM_TEST_NO_SPAWN.
 func TestMain(m *testing.M) {
+	if isFakeADB() {
+		os.Exit(fakeADB(os.Args[1:]))
+	}
 	if os.Getenv("ALM_RUN_MAIN") != "" {
 		if v := os.Getenv("ALM_TEST_VERSION"); v != "" {
 			mcpserver.Version = v

@@ -220,7 +220,16 @@ func (m *Manager) Start(ctx context.Context) {
 		d.adb = m.adb
 	}
 	m.mu.Unlock()
-	go m.adb.Watch(ctx, m.onDevices)
+	go func() {
+		// start the adb server outside our process group first (it is
+		// shared with other tools and must outlive us), then watch
+		sctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		if err := m.adb.StartServer(sctx); err != nil && ctx.Err() == nil {
+			log.Printf("adb start-server: %v", err)
+		}
+		cancel()
+		m.adb.Watch(ctx, m.onDevices)
+	}()
 	go func() { // don't block the first tool call forever
 		sleep(ctx, 5*time.Second)
 		m.once.Do(func() { close(m.ready) })
@@ -643,6 +652,19 @@ func (m *Manager) Get(name string) *Device {
 		}
 	}
 	return fallback
+}
+
+// ReplaySpan is the longest time span the log buffer of a device recorded
+// in this run holds (newest - oldest line of its main buffer, measured
+// at every (re)connect); 0 if none was measured.
+func (m *Manager) ReplaySpan() time.Duration {
+	var max time.Duration
+	for _, d := range m.Devices() {
+		if v := time.Duration(d.spanNs.Load()); v > max {
+			max = v
+		}
+	}
+	return max
 }
 
 // AddrOf returns the device ID an adb serial resolved to ("" if unknown).

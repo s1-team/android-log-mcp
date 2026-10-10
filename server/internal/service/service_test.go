@@ -166,3 +166,58 @@ func TestLogFileRotation(t *testing.T) {
 		t.Fatalf("log files: %d", len(ents))
 	}
 }
+
+func TestLingerFor(t *testing.T) {
+	for _, c := range []struct {
+		span time.Duration
+		env  string
+		want time.Duration
+	}{
+		{0, "", 10 * time.Minute},
+		{3 * time.Minute, "", 10 * time.Minute},
+		{8 * time.Minute, "", 16 * time.Minute},
+		{40 * time.Minute, "", time.Hour},
+		{0, "0", 0},
+		{0, "2s", 2 * time.Second},
+		{0, "90", 90 * time.Second},
+		{0, "forever", -1},
+		{0, "bogus", 10 * time.Minute},
+	} {
+		if got, _ := lingerFor(c.span, c.env); got != c.want {
+			t.Errorf("lingerFor(%s, %q) = %s, want %s", c.span, c.env, got, c.want)
+		}
+	}
+	if _, how := lingerFor(0, ""); !strings.Contains(how, "default") || !strings.Contains(how, "10m0s") {
+		t.Errorf("description %q", how)
+	}
+}
+
+func TestLingerStopsAfterLastClient(t *testing.T) {
+	t.Setenv(LingerEnv, "300ms")
+	ctrl := testControl(t)
+	s := startTest(t, ctrl, "0.4.0")
+	c, err := Dial(context.Background(), ctrl, "0.4.0", "mcp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(700 * time.Millisecond) // longer than the linger: a client is connected
+	select {
+	case <-s.Done():
+		t.Fatal("stopped while a client was connected")
+	default:
+	}
+	var info Info
+	c.Do(context.Background(), "status", nil, &info)
+	if !strings.Contains(info.Linger, "300ms") {
+		t.Fatalf("linger text %q", info.Linger)
+	}
+	c.Close()
+	select {
+	case <-s.Done():
+		if !strings.Contains(s.Reason(), "linger") {
+			t.Fatalf("reason %q", s.Reason())
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("did not stop after the last client")
+	}
+}

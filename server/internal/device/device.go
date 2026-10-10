@@ -7,11 +7,12 @@ import (
 	"fmt"
 	"hash/fnv"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/s1crab/android-log-mcp/server/internal/analysis"
@@ -54,6 +55,7 @@ type Device struct {
 	crashMu    sync.Mutex // serializes ID assignment + persistence
 	disk       *store.DiskGuard
 	runWG      sync.WaitGroup // the recorder goroutine (run)
+	spanNs     atomic.Int64   // replay span of the device's main log buffer (measureSpan)
 }
 
 // errDiskPaused ends a recording session because free disk space is low.
@@ -445,6 +447,7 @@ func (d *Device) recordOnce(ctx context.Context) error {
 		// processes of earlier boots are certainly gone now
 		CloseOtherBoots(d.Store, boot)
 	}
+	go d.measureSpan(ctx)
 	pipe := NewPipeline(d.Store, boot, loc)
 	pipe.NeedDropbox = d.requestDropbox
 	pipe.OnUnknownPID = func() { d.maybeSeedPS(ctx) }
@@ -466,7 +469,7 @@ func (d *Device) recordOnce(ctx context.Context) error {
 	defer cancel()
 	// Note: never rely on `logcat --uid` (missing on API 29) or multiple
 	// `--pid` (only one is honoured); all filtering happens on our side.
-	cmd := exec.CommandContext(cctx, d.adb.Path, append([]string{"-s", d.Addr()}, logcat.Args(resume)...)...)
+	cmd := adbCmd(cctx, d.adb.Path, append([]string{"-s", d.Addr()}, logcat.Args(resume)...)...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
@@ -590,6 +593,33 @@ func (d *Device) recordOnce(ctx context.Context) error {
 		}
 	}
 }
+
+var epochLine = regexp.MustCompile(`^\s*(\d{9,})\.(\d+)\s`)
+
+// measureSpan measures how much time the device's main log buffer holds
+// (now - its oldest line): the service lingers about twice that long after
+// its last client (issue #3). Read-only: the device-side `head` stops the
+// dump after the first lines.
+func (d *Device) measureSpan(ctx context.Context) {
+	out, err := d.adb.Shell(ctx, d.Addr(), 20*time.Second, "logcat -d -b main -v epoch | head -n 3")
+	if err != nil {
+		return
+	}
+	for _, ln := range strings.Split(out, "\n") {
+		m := epochLine.FindStringSubmatch(ln)
+		if m == nil {
+			continue
+		}
+		sec, _ := strconv.ParseInt(m[1], 10, 64)
+		if span := d.Now().Sub(time.Unix(sec, 0)); span > 0 {
+			d.spanNs.Store(int64(span))
+		}
+		return
+	}
+}
+
+// ReplaySpan is the last measured span of the main log buffer (0: unknown).
+func (d *Device) ReplaySpan() time.Duration { return time.Duration(d.spanNs.Load()) }
 
 func (d *Device) maybeSeedPS(ctx context.Context) {
 	d.mu.Lock()

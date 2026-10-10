@@ -63,7 +63,7 @@ func FindADB() (string, error) {
 func (a *ADB) Output(ctx context.Context, timeout time.Duration, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, a.Path, args...)
+	cmd := adbCmd(ctx, a.Path, args...)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
@@ -160,7 +160,7 @@ func ReadTrackFrames(r io.Reader, fn func([]DevState)) error {
 func (a *ADB) Watch(ctx context.Context, fn func([]DevState, error)) {
 	backoff := time.Second
 	for ctx.Err() == nil {
-		cmd := exec.CommandContext(ctx, a.Path, "track-devices")
+		cmd := adbCmd(ctx, a.Path, "track-devices")
 		stdout, err := cmd.StdoutPipe()
 		if err == nil {
 			err = cmd.Start()
