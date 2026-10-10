@@ -547,26 +547,33 @@ agent 可以借此发现自己写的 `message:foo message:bar` 实际被解释�
 - `report` 的默认窗口仍然是 2 小时，在 1 天以内。`--since` 超出已保留的历史时，照旧在 manifest 和输出里注明 history 起点。
 - 升级提示见 README「升级到 0.3.0」。
 
-## 10. Storage layout, device identity and ownership (issues #5, #7, #9, #10)
+## 10. Storage layout and device identity (issues #3, #5, #7, #9, #10)
 
-Goal (GOALS "Bounded", "Observe, never interfere"): one data root that owns every file the tool creates, one recorder per device per user, and no unbounded leftovers.
+Goal (GOALS "Bounded", "Observe, never interfere"): one data root that owns every file the tool creates, one recorder per user, and no unbounded leftovers.
 
 ### 10.1 Layout
 
 ```
-<root> = os.UserCacheDir()/android-log-mcp (fixed since #10; `android-log-mcp root` prints it)
-  v1/<device-id>/           store format 1 (store.DataFormat); other vN/ dirs are swept like unowned data
-  run/                      runtime endpoints (for the planned daemon, #3): <name>.json {pid, socket}
+<control> = os.UserCacheDir()/android-log-mcp       fixed per user; also the default data root
+  run/                      0700 (Windows: protected DACL, user + SYSTEM)
+    service.lock            held by the one background service (§11)
+    service.json            {pid, socket, version, proto, root, exe, embedded, started} (0600)
+    service.sock            AF_UNIX socket (0600); long paths fall back to /tmp/alm-<uid>/<hash>.sock
+    spawn.lock              serializes clients starting the service
+    config.lock             serializes set-root
+  config.json               {"root", "cleanup": [old roots with leftovers]} (set-root; absent = default)
+<root> (config.json root, else <control>)
+  v1/<device-id>/           store format 1 (store.DataDir); other vN/ dirs are swept like unrecorded data
   tmp/                      scratch, expires after 1 h
-os.UserCacheDir()/android-log-mcp/owners/   fixed per user, whatever <root> is
-  <device-id>.lock          flock (unix) / LockFileEx on a byte past EOF (Windows); JSON {pid, version, data_dir, addr, boot_id, since}
+  bin/<version>-<sha12>/    the service binary (copied by the client that starts it)
+  log/service.log(.1)       service log, 1 MiB + one rotation; crash.log(.1) (debug.SetCrashOutput)
 ```
 
-Two ways to run (issue #7, revised by #9 and #10):
-- **Recording (default):** the root is fixed to `os.UserCacheDir()/android-log-mcp`. There is no env var, flag or config file for it. `ANDROID_LOG_MCP_HOME` and `--home` were removed in #9; if either is still set, the process exits 2 with an error saying the root is fixed and a configurable root is planned in #3, so a client configuration is never silently ignored. The process records the devices it owns and follows the others.
-- **`--offline <dir>`:** the only read-only mode. It opens `<dir>/v1/*` with no adb and never records, prunes, migrates or creates a file, not even `owners/`, `run/` or `tmp/` (`Manager.NoADB`; `attach` and `MaintainOnce` return immediately). Used for unzipped reports and replay.
+Two ways to run:
+- **Normal (default):** MCP and `call` processes are thin clients of the background service (§11), which is the only process that opens the data root. `ANDROID_LOG_MCP_HOME` and `--home` were removed in #9; if either is still set, the process exits 2 with an error that names `set-root`, so a client configuration is never silently ignored.
+- **`--offline <dir>`:** the only read-only mode, fully in-process. It opens `<dir>/v1/*` with no adb, never talks to the service and never records, prunes, migrates or creates a file (`Manager.NoADB`; `attach` and `MaintainOnce` return immediately). Used for unzipped reports and replay.
 
-Everything else under the root (pre-0.4 flat `<serial>/` dirs, `legacy/`, `android-log-mcp.*` siblings) is ignored: not listed, not read, not migrated, not counted towards the cap, not deleted. Users delete old dirs by hand (README upgrade note). Removed in #7: flat-layout migration, following pre-0.4 writers, sibling adoption into `legacy/`, the strict read-only HOME of #6, `meta.aliases`, `store.ListFlatDirs`.
+Everything else under the root (pre-0.4 flat `<serial>/` dirs, `legacy/`) is ignored: not listed, not read, not counted, not deleted. A legacy `owners/` dir (0.4 dev builds) is removed by the sweep (known names only).
 
 ### 10.2 Device ID
 
@@ -574,46 +581,71 @@ Everything else under the root (pre-0.4 flat `<serial>/` dirs, `legacy/`, `andro
 
 Known limitation: an API ≤ 29 emulator attached via `adb connect` has no AVD name and gets an `fp-` ID.
 
-**Collisions (issue #6).** Two devices online at the same time may resolve to one ID (the same AVD launched twice with `-read-only`; duplicated serials). They are told apart by boot id: same ID, different adb serial, both online, different boot id ⇒ a different device. The check uses this process's devices and the owner lock (which records `boot_id`, kept current after reboots), so it also works across processes. The later device gets `<id>~<sanitized adb serial>`; `logcat_status` shows a `note:` explaining it. Same boot id (USB + Wi-Fi adb) is one device; a new boot on the same serial, or on a new serial after the old one went offline, is the same device (reboot / reconnect). Trade-off: the suffixed ID depends on the adb serial, so it is only stable while that instance keeps its address; once the first instance is gone, the next instance of the AVD files under the plain ID again (history is per AVD, not per emulator process). Instance-specific IDs (boot id, emulator pid) were rejected because they split history on every reboot.
+**Collisions (issue #6).** Two devices online at the same time may resolve to one ID (the same AVD launched twice with `-read-only`; duplicated serials). They are told apart by boot id within the service: same ID, different adb serial, both online, different boot id ⇒ a different device, filed as `<id>~<sanitized adb serial>` with a `note:` in `logcat_status`. Same boot id (USB + Wi-Fi adb) is one device; a new boot on the same serial, or on a new serial after the old one went offline, is the same device. The suffixed ID is only stable while that instance keeps its address (history is per AVD, not per emulator process).
 
-### 10.3 Attach / ownership
+### 10.3 Attach
 
-On a new online adb serial the manager probes the identity asynchronously (retried every 10 s on failure), then `attach`:
-1. check for an ID collision (above);
-2. try `owners/<id>.lock` in the fixed owners dir; held → follow the owner's `data_dir` read-only (status names pid, version, data dir);
-3. acquired → open `<root>/v1/<id>` as writer and record (`Device.run` records only while holding the owner lock).
-The maintenance tick re-attaches followers whose owner went away (takeover into this process's root). Devices only on disk are opened read-only. `report` resolves devices the same way: a device recorded by a live owner with another root is read from that owner's `data_dir`.
+On a new online adb serial the service's manager probes the identity asynchronously (retried every 10 s on failure), then `attach`: check for an ID collision; open `<root>/v1/<id>` as writer and record. If the store's `writer.lock` is held by another process (an older android-log-mcp, or a second service pointed at the same directory by hand), the device is shown as **NOT recorded** with that pid and is opened read-only; the maintenance tick retries. Since the service is the only writer per user, the per-device owner locks, follow mode and takeover logic of #5–#9 were removed (#3).
 
-### 10.4 Sweep (`layout.Sweep`, at startup and every minute)
+### 10.4 Sweep (`layout.Sweep`, in the service at start and every minute)
 
-1. `run/`: remove state files whose pid is dead or whose socket does not accept a connection, orphan sockets nothing listens on, other files older than MaxAge.
-2. `owners/`: remove lock files nobody holds (under the lock; acquirers re-check the inode).
+1. `run/`: remove state files whose pid is dead or whose socket does not accept a connection, orphan sockets, other files older than MaxAge; never `*.lock` files (held locks would be lost).
+2. Legacy `owners/`: lock files nobody holds, then the dir.
 3. `tmp/`: files older than 1 h.
-4. Age: every device directory under `v<N>/` not recorded by this process and not busy (owner lock / `writer.lock` held) loses segments whose mtime is older than MaxAge, including the newest; the directory is removed when nothing in it is newer. Directories this process records are pruned by their store (`Store.Prune`, keeps the active segment).
-5. Total cap over all managed files (device dirs of every `v<N>/`, `tmp/`, `run/`, `owners/` when it is under the root): delete the oldest files first; each current-format device keeps its newest segment; non-current directories without segments are removed.
-Only known file names are deleted from a device directory, and only under `v<N>/`, `tmp/`, `run/`, `owners/`, so a root pointed at a directory with other content cannot lose unrelated files. The sweep never runs with `--offline`.
+4. `bin/`: keep the running binary's dir (`Manager.KeepBin`) and the newest other one (by binary mtime; reuse touches it); delete older ones (known names only).
+5. Age: every device directory under `v<N>/` not recorded by this process and not busy (`writer.lock` held) loses segments older than MaxAge, including the newest; the directory is removed when nothing in it is newer. Recorded directories are pruned by their store (`Store.Prune`).
+6. Total cap over all managed files (device dirs of every `v<N>/`, `tmp/`, `run/`, `bin/`, `log/`): delete the oldest files first; each current-format device keeps its newest segment.
+Only known file names are deleted. The sweep never runs with `--offline`.
 
 ### 10.5 Locks
 
-`store.TryLock` is the only lock primitive. It is used for `owners/<id>.lock` and `v1/<id>/writer.lock`, and is held while the file stays open:
-- **unix:** `flock(LOCK_EX|LOCK_NB)` (`store/lock_unix.go`).
-- **Windows:** `LockFileEx(LOCKFILE_EXCLUSIVE_LOCK|LOCKFILE_FAIL_IMMEDIATELY)` via `golang.org/x/sys/windows` (`store/lock_windows.go`). It locks one byte at offset 2^62. Windows byte-range locks are mandatory, so locking the content would make the owner JSON at offset 0 unreadable to `ReadOwner` in other processes; a range past EOF is allowed and still excludes other lockers.
-- **Other platforms** (neither unix nor windows): a fallback `O_EXCL` file that is stale after 1 min unless refreshed (`store.RefreshLock`, called by `OwnerLock.Refresh` on the maintenance tick; a no-op elsewhere).
+`store.TryLock` is the only lock primitive, held while the file stays open: `flock(LOCK_EX|LOCK_NB)` on unix; `LockFileEx(EXCLUSIVE|FAIL_IMMEDIATELY)` on one byte at offset 2^62 on Windows (so the content stays readable); an `O_EXCL` file elsewhere. The OS releases it on close or process death. Used for `run/service.lock`, `run/spawn.lock`, `run/config.lock` and `v1/<id>/writer.lock`. Tested on all three CI OSes (`store/lock_test.go`).
 
-With flock and LockFileEx the OS releases the lock when the handle is closed or the process dies, so there is no pid check and no staleness heuristic. Whether an owner is live is `store.LockHeld`. `AcquireOwner` re-checks the inode on unix, because the sweep / a releasing owner unlinks the file while holding the lock. Tested on all three CI OSes: exclusivity, the content readable while locked, release on close, and release when the holder process is killed (`store/lock_test.go`).
+### 10.6 `set-root` (issue #3; history in #9, #10)
 
-### 10.6 No `set-root` in 0.4 (issues #9, #10)
+#9's live switch coordinated many independent writers through a config file and owner-lock acknowledgements; #10 reverted it because of four races (failed moves never retried; the original old root lost on a retried switch; `--delete-old` racing with readers on Windows; concurrent set-roots not exclusive). With one service as the only writer it is a request to that writer (`service/setroot.go`):
 
-#9 added `set-root <dir> --keep-old|--delete-old` with a live switch coordinated across all running processes: a config file with a pending marker; each recorder moving its devices on its tick and acknowledging in its owner lock; set-root waiting, then keeping or deleting the old root. It was reverted before 0.4.0 because review found races inherent in coordinating many independent writers:
-1. **A failed move was never retried.** The manager set its base before moving devices; if the move failed, the device kept recording in the old root.
-2. **The original old root could become unmanaged.** A retry with a different target after a timeout overwrote the pending `from`.
-3. **Deleting the old root raced with readers on Windows.** Readers could still have old-root files open during `--delete-old`.
-4. **Concurrent set-root runs were not mutually exclusive.**
+1. `set-root DIR (--keep-old|--delete-old) [--timeout 60s] [--json]` sends `set-root` to the running service. With no service, the CLI takes `run/service.lock` itself (so none starts meanwhile) and runs the same steps without recording; it never starts a service.
+2. The service write-locks its op mutex (waits for in-flight tool calls, bounded by `--timeout`), takes `run/config.lock` (bounded; "another set-root is in progress"), and validates DIR (`layout.ValidateTarget`: absolute, resolved, not the current root, not inside or a parent of it, not inside the control dir, new/empty or an earlier root, writable).
+3. Stop recording (`Manager.Close`: streams end, stores flushed and closed).
+4. `device.CarryOver`: for every device dir of the old root, `store.ContinueIn` copies `meta.json` (sessions, gaps, the `logcat -T` resume point) and the aux files into the new root and sets `seq_floor` (seqs continue, cursors stay monotonic), `holes` (seqs recorded elsewhere when moving back into a root used before) and `resume_dedup` (hashes of the lines stored at the resume timestamp, which `logcat -T` repeats and the new directory cannot compare against).
+5. Commit: `config.json` written atomically (tmp + rename).
+6. Start a new manager on the new root; the service log and crash log move along; `service.json` is rewritten.
+7. Old root: `--keep-old` leaves it; `--delete-old` removes only `v<N>/`, `tmp/`, `bin/`, `log/` (and `run/` outside the control dir), then the old root if empty. Leftovers (e.g. open files on Windows) are reported (exit 3), noted in `config.json` `cleanup` and retried when the service starts.
 
-Decision: all writes, including a root switch, will live in **one** process, the background service (#3). There, set-root becomes a request to the single writer under a config lock: stop recording, switch, handle the old root, restart. Until then the root is fixed and there is no config file.
+Any failure before step 5 rolls back: carried state removed or restored from a backup, a target created by this switch removed, recording restarted in the old root, `config.json` untouched. Tests: `cmd/android-log-mcp/setroot_test.go` (no-service and service paths, keep/delete, validation, rollback injected at carry and commit, config-lock timeout, concurrent set-roots, deleting the default root keeps `run/` and `config.json`), `store/continue_test.go`, `device/carry_test.go`, `layout/setroot_test.go`; live in `scripts/service-e2e.sh` with markers around both switches.
 
-Kept from #9:
-- the removal of HOME/`--home`;
-- `android-log-mcp root [--json]`;
-- the Windows `LockFileEx` locks (§10.5);
-- a store fix. The last seq can lie above the in-memory window, for example with an empty newest segment after a seq jump. `Store.Scan` now clamps to the window instead of indexing past it; this crashed the recorder live in #9. A new segment is started after a seq jump, and the in-memory window resets on a jump. Covered by `store/seqjump_test.go`.
+## 11. Background service (issue #3)
+
+One long-lived process per user records every device and answers every tool call; MCP processes are thin stdio proxies. GOALS "local only" holds: AF_UNIX only, no TCP fallback, no token.
+
+### 11.1 Processes and IPC
+
+- `internal/ipc`: newline-delimited JSON frames (≤ 4 MiB) `{id, op, body}` → `{id, body, error}`, request ids, `cancel` op, ≤ 64 connections. Socket in `run/` (0700, socket 0600, `SetUnlinkOnClose`); peer check `SO_PEERCRED` (Linux) / `LOCAL_PEERCRED` (macOS); on Windows a protected DACL `D:P(A;OICI;FA;;;<user SID>)(A;OICI;FA;;;SY)` on `run/`. Without AF_UNIX (Windows < 10 1803) `ipc.ErrUnsupported` carries the minimum-version message. Named pipes are a possible future option.
+- Ops: `hello {proto, version, pid, role}` → `{proto, min_proto, version, pid, root, embedded, tools, instructions}`; `call`, `status`, `stop`, `handoff`, `report`, `set-root`. Everything but `hello`/`status` needs a hello first. Tool calls take the op mutex shared; `set-root` takes it exclusively.
+- The client answers MCP `initialize` / `tools/list` from the tool definitions and instructions in the service's hello, so client and service never disagree on schemas (fallback: its own, if the service cannot be reached; every call then reports the problem and retries).
+
+### 11.2 Start, fallback, recovery
+
+- `service.Client.ensure`: dial; on failure, under `run/spawn.lock`: copy the binary to `<root>/bin/<version>-<sha12>/` (`InstallBinary`, atomic rename; reuse touches it), start `service --detached` (unix `Setsid`; Windows `DETACHED_PROCESS|CREATE_NEW_PROCESS_GROUP|CREATE_BREAKAWAY_FROM_JOB`, retried without breakaway on ACCESS_DENIED), wait ≤ 10 s for the socket.
+- **In-process fallback:** if the spawn fails (or after 3 spawns within a minute), the client runs `service.Start` itself (`Embedded` reason, logs tee'd to stderr and the service log) and serves the same socket; other clients use it. When that process exits, the others reconnect and start a new service.
+- **Recovery:** a broken connection (`ipc.ErrClosed`) makes the client reconnect (starting a service if needed) and retry the call, up to 3 attempts; tools are read-only, so a retry is safe.
+- `service.lock` is the single-instance guarantee; a second `service` exits with "already running (pid, version)".
+
+### 11.3 Versions
+
+`Proto`/`MinProto` (currently 1/1) are separate from the semver. On hello the client compares versions (`CompareVersions`: semver, pre-release < release, build metadata ignored): if the **service is older**, the client sends `handoff` (refused by the service unless the client is newer), waits ≤ 30 s for it to stop and starts its own. Otherwise it uses the service if `ProtoCompatible(client proto, service min, service proto)`; an older compatible client gets a note in `logcat_status`; an incompatible one fails with `ErrIncompatible` ("Upgrade this client…") and never replaces the newer service. `report`/`set-root` never hand off.
+
+### 11.4 Lifecycle
+
+- **Linger** (`service/linger.go`): after the last connection closes (also counted from service start), stop after `max(10 min, 2 × replay span)`, at most 1 h; the replay span is the device's `main` buffer from oldest to newest line, measured with `logcat -d -b main -v epoch | head -n 3` at each (re)connect, the maximum over devices. `ANDROID_LOG_MCP_LINGER` overrides (`0`, `forever`/`-1`, a duration; bare numbers are seconds). In-process (embedded) services have no linger: they live as long as their client. Until a first client has connected, the countdown is at least `StartGrace` (30 s), so `LINGER=0` cannot stop a service before the client that started it connects.
+- **Stop** (`service stop`, signal, handoff, linger): stop accepting, let in-flight requests finish and their replies be written (≤ 5 s), close connections, stop the manager (stores flushed), remove `service.json`, release the lock.
+- **adb:** `adb start-server` runs in its own process group (`Setpgid`) before `track-devices`, so the adb server is never a child of the service and is never killed. adb children of the service get `Pdeathsig=SIGKILL` on Linux and otherwise end on a broken pipe when the service exits. (A Windows Job Object was considered and not used, to rule out any risk to the adb server.)
+
+### 11.5 Report
+
+`report` sends `ReportArgs` (output path made absolute by the CLI, `--note @file` read by the CLI); the service flushes its stores and builds the zip with its own adb (`service.BuildReport`). With no service, the CLI holds `run/service.lock` and builds it in-process; it never starts a service. `--offline DIR report` packs that dataset without adb.
+
+### 11.6 Tests
+
+Unit: `ipc` (framing, cancel, limits, socket-path fallback, permissions/ACL, peer check), `service` (single instance, ops, handoff only to newer, versions, linger, log rotation), `layout` (sweep of `bin/`, `run/` locks, legacy `owners/`). Multi-process (`cmd/android-log-mcp`, the test binary re-executes itself as the CLI, and a copy of itself named `adb` is a fake adb): clients share and recover from a killed service; in-process fallback and takeover; version handoff both ways and the incompatible-protocol error; linger with 1 s; the adb server survives `service stop` and `kill -9` of the service; report via the service and without one; set-root (above). All on Linux, macOS and Windows in CI.

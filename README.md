@@ -105,7 +105,7 @@ tag:A | tag:B   (tag:A | level:error) & package:com.foo
 ### 调试子命令（`call`）
 
 ```bash
-# 先录制 5 秒（可用 ANDROID_LOG_MCP_CALL_WAIT=20s 调整），然后调用一次工具并打印结果
+# 通过后台服务调用一次工具并打印结果；如果服务是这次调用才启动的，先等它录制 5 秒（ANDROID_LOG_MCP_CALL_WAIT=20s 可调）
 npx -y android-log-mcp call logcat_search '{"filter":"level:error","limit":20}'
 ```
 
@@ -196,16 +196,48 @@ android-log-mcp --offline r/store call logcat_crashes '{"package":"com.foo"}'
 
 **打码是基于模式的，不能保证完全**：自定义格式的 token、姓名、地址、不带键名的随机串等识别不了。分享前请先检查 zip 内容；需要时用 `--redact-extra` 追加规则。`--no-redact` 生成的包可能含有 token、密码和个人信息，只应发给可信的人。
 
-## Upgrading to 0.4.0 (storage layout; issues #5, #7, #9, #10)
+## Upgrading to 0.4.0 (storage layout, background service; issues #3, #5, #7, #9, #10)
 
 > **Breaking:** 0.4.0 uses a new data layout. **Old data is neither migrated nor read.** Logs recorded by 0.3 or earlier are not visible in 0.4, and 0.3 report zips cannot be loaded with `--offline`.
 
 - Data now lives in `<user cache dir>/android-log-mcp/v1/<device-id>/` (Linux: `~/.cache/android-log-mcp/v1/…`). The device ID is stable: `ro.serialno` for a physical device (the same over USB and Wi-Fi), `avd-<name>` for an emulator.
 - The old directories `~/.cache/android-log-mcp/<serial>/` (for example `emulator-5554/`) are ignored, not deleted. Delete them yourself when you no longer need them, together with any manual backups such as `~/.cache/android-log-mcp.v1-backup/`.
 - `--offline <dir>` is now the only way to open a dataset read-only, for example an unzipped report: `android-log-mcp --offline r/store`. `--home r/store --offline` no longer works. The report flag that skips adb is now `--no-adb`.
-- **`ANDROID_LOG_MCP_HOME` and `--home` are removed** (issues #9, #10). The data root is fixed: `<user cache dir>/android-log-mcp` (print it with `android-log-mcp root`). The MCP server takes no directory parameter. If the variable is still set in an MCP client's `env`, or `--home` is in its `args`, the server exits with an error that says so: remove it from the client configuration. A configurable root (`set-root`, moving the data while recording) is planned together with the background service (#3).
+- **`ANDROID_LOG_MCP_HOME` and `--home` are removed** (issues #9, #10). The data root is `<user cache dir>/android-log-mcp` by default (print it with `android-log-mcp root`) and is moved for every client with `android-log-mcp set-root <dir> --keep-old|--delete-old` (see below). The MCP server takes no directory parameter. If the variable is still set in an MCP client's `env`, or `--home` is in its `args`, the server exits with an error that says so: remove it from the client configuration.
+- **One background service per user records everything** (issue #3). The process your MCP client starts is now a thin client: it starts the service when none runs, forwards tool calls to it, and exits with the client. Recording therefore **continues for a while after the last MCP client closes** (the linger time, 10 min to 1 h; see "Background service"). Nothing changes in the MCP client configuration. Check it with `android-log-mcp service status`, stop it with `android-log-mcp service stop`.
+- **Minimum Windows version: Windows 10 1803 / Windows Server 2019** (the service uses AF_UNIX sockets). On older Windows the client exits with an error saying so.
+- When a newer android-log-mcp client starts, it replaces an older running service; an older client uses a newer service as long as it speaks a compatible protocol, and otherwise asks you to upgrade. A 0.3 process that still runs uses its own old directories and does not conflict, but it keeps its own recording; close old MCP clients after upgrading.
 
-简要说明（中文）：0.4.0 换了新的数据目录结构（`v1/<设备ID>/`），**旧数据不会迁移，也不会被读取**；旧的 `~/.cache/android-log-mcp/<serial>/` 目录会被忽略（不删除），不需要的话请手动删除。只读打开数据集（例如解压后的诊断包）只用 `--offline <目录>`；`report` 不用 adb 的开关改名为 `--no-adb`。**`ANDROID_LOG_MCP_HOME` 和 `--home` 已移除**：数据根目录固定为 `<用户缓存目录>/android-log-mcp`（用 `android-log-mcp root` 查看）；MCP 客户端配置里如果还设置了它们，服务器会报错退出，请删掉。可配置的根目录（`set-root`）计划随后台服务（#3）一起提供。
+简要说明（中文）：0.4.0 换了新的数据目录结构（`v1/<设备ID>/`），**旧数据不会迁移，也不会被读取**；旧的 `~/.cache/android-log-mcp/<serial>/` 目录会被忽略（不删除），不需要的话请手动删除。只读打开数据集（例如解压后的诊断包）只用 `--offline <目录>`；`report` 不用 adb 的开关改名为 `--no-adb`。**`ANDROID_LOG_MCP_HOME` 和 `--home` 已移除**：数据根目录默认是 `<用户缓存目录>/android-log-mcp`（`android-log-mcp root` 查看），用 `android-log-mcp set-root <目录> --keep-old|--delete-old` 为所有客户端统一切换。**每个用户只有一个后台服务负责录制**：MCP 客户端启动的进程只是薄客户端，最后一个客户端关闭后服务还会继续录制一段时间（10 分钟到 1 小时）。用 `android-log-mcp service status|stop` 查看或停止。**Windows 最低要求 Windows 10 1803 / Server 2019**（AF_UNIX）。
+
+## Background service (0.4+; issue #3)
+
+```
+MCP client ─stdio─ android-log-mcp (thin client) ─┐
+MCP client ─stdio─ android-log-mcp (thin client) ─┼─ AF_UNIX socket ─ android-log-mcp service (one per user)
+android-log-mcp call / report / set-root ─────────┘                    records every device, answers every tool call
+```
+
+- **One service per user.** It holds `run/service.lock` in the control directory `<user cache dir>/android-log-mcp`, records all connected devices into the data root, and answers all tool calls. Clients never open data files (except `--offline`), so there is one cache, one sweep and one writer.
+- **Started on demand.** A client that finds no service copies its own binary to `<root>/bin/<version>-<hash>/` (so the npx cache can be cleaned or updated while the service runs; at most the running and one other version are kept) and starts it detached. If that fails, the client runs the service **in its own process** and serves the same socket for other clients; when it exits, the other clients start a new one. After 3 service exits within a minute a client stops respawning and runs it in-process.
+- **Crash recovery.** If the service dies, every client reconnects on its next call, one of them starts a new service, and the call is retried (all tools are read-only). Recording resumes with `logcat -T` and deduplication; anything the device buffer dropped meanwhile is marked as a gap.
+- **Linger.** After the last client disconnects the service keeps recording for `max(10 min, 2 × device log buffer span)`, at most 1 h (the span is how much history the device's `main` buffer holds; the longest of all devices). A new client cancels the countdown. `ANDROID_LOG_MCP_LINGER` overrides it (`30m`, `0` = exit with the last client, `forever`); it is read by the service when it starts, so set it in the MCP client's `env`. `logcat_status` shows the current value and why. A freshly started service waits at least 30 s for its first client, whatever the linger.
+- **Versions.** A client replaces the service only if the service is **older** (it asks it to hand off, waits for it to stop and starts its own version). A newer service is used as is. Clients and service also carry a protocol version: an older client that the newer service still supports works normally (status says so); an incompatible one fails with an error asking you to upgrade and never replaces the newer service.
+- **Visibility.** The client's stderr names the service it uses (pid, version, protocol, root); `logcat_status` starts with `service: … pid N, version V, protocol P` and `root:`, `linger:`, `service log:` lines.
+- **Commands:** `android-log-mcp service status [--json]`, `android-log-mcp service stop` (clients start it again when they need it), `android-log-mcp service` (run it in the foreground, logging to stderr too).
+- **Security.** The socket lives in `<control dir>/run/` (0700) and is 0600 on Linux/macOS; the service also checks that the peer runs as the same user (`SO_PEERCRED` / `LOCAL_PEERCRED`). On Windows the run directory and socket get a protected ACL for the current user and SYSTEM only. No TCP, no network listener (GOALS: local only). Very long socket paths fall back to `/tmp/alm-<uid>/` (`%TEMP%\alm-<hash>\` on Windows).
+- **Service log:** `<root>/log/service.log` (1 MiB, one rotated copy) and `log/crash.log` for Go runtime crashes; both count towards the total size cap.
+- adb: the service runs `adb start-server` outside its own process group and never kills the adb server; its own `adb` children (track-devices, logcat) end with it.
+
+### `set-root`: moving the data root
+
+```bash
+android-log-mcp set-root /data/alm --keep-old     # move; leave the old root as it is
+android-log-mcp set-root /data/alm --delete-old   # move; remove our directories from the old root
+android-log-mcp root [--json]                     # where the data is now
+```
+
+Exactly one of `--keep-old` / `--delete-old` is required (no prompts). `DIR` must be absolute, writable, new or empty (or an earlier android-log-mcp root), and must not be the current root, inside it, or a parent of it. The running service takes `run/config.lock`, waits for running tool calls, stops recording, carries each device's state into the new root (the seq numbers and the `logcat -T` resume point, so recording continues without a gap or duplicates), writes `<control dir>/config.json` atomically and resumes recording there. **Any failure before that commit is rolled back** and the old root stays in use. With no service running, the command does the switch itself (it does not start a service). `--delete-old` removes only `v<N>/`, `tmp/`, `bin/`, `log/` (and `run/` outside the control directory), then the old root if it is empty; what cannot be removed (for example a file open on Windows) is reported with exit status 3 and retried when the service next starts. **History recorded before the switch stays in the old root and is not queried** (open it with `--offline <old root>` if you kept it). The control directory (socket, locks, `config.json`) never moves.
 
 ## 升级到 0.3.0
 
@@ -230,21 +262,26 @@ android-log-mcp --offline r/store call logcat_crashes '{"package":"com.foo"}'
 | `ANDROID_LOG_MCP_IDLE_RELEASE` | 多久没有查询就释放缓存，默认 `2m`；设为 `0` 表示不释放。释放时历史缓存清空；只读进程连最近日志缓存一起释放，下次查询再按需加载 |
 | `ANDROID_LOG_MCP_MAX_DEVICE_MB` | 每台设备的日志上限（MiB），默认 512 |
 | `ANDROID_LOG_MCP_MAX_AGE` | 日志保留多久，默认 `1d`。接受 Go 时长（`72h`、`90m`）或天数（`1d`、`7d`、`1.5d`）。无效值或非正值会在 stderr 打一条警告并使用默认值。崩溃、`dropbox_seen` 和已结束进程这些辅助记录也按这个保留期清理。`logcat_status` 会显示当前生效的值 |
-| `ANDROID_LOG_MCP_MAX_TOTAL_MB` | 整个数据目录的上限（MiB），默认 2048；设为 `0` 表示不限制。Counts everything the tool manages under the root: all devices and format versions, `tmp/`, `run/`, `owners/` (directories of older versions are ignored and not counted) |
+| `ANDROID_LOG_MCP_MAX_TOTAL_MB` | 整个数据目录的上限（MiB），默认 2048；设为 `0` 表示不限制。Counts everything the tool manages under the root: all devices and format versions, `tmp/`, `run/`, `bin/`, `log/` (directories of older versions are ignored and not counted) |
+| `ANDROID_LOG_MCP_LINGER` | How long the background service keeps recording after the last client disconnects: a duration (`30m`; a bare number is seconds), `0` (exit with the last client) or `forever`. Default `max(10m, 2 × device log buffer span)`, at most `1h`. Read by the service when it starts |
+| `ANDROID_LOG_MCP_CALL_WAIT` | `call` only: how long a service that this call started records before the tool runs (default `5s`) |
 | `ANDROID_LOG_MCP_MIN_FREE_MB` | 数据目录所在磁盘的剩余空间低于这个值（MiB）时暂停录制，默认 512；恢复到 2 倍以上时自动续录。设为 `0` 表示关闭 |
 
 ### Data directory layout (0.4+)
 
 ```
-<root>/v1/<device-id>/           device data, format 1 (other vN/ formats are swept like unowned data)
-<root>/run/                      runtime state (state files whose pid is dead or socket is undialable, and orphan sockets, are removed)
-<root>/tmp/                      scratch files, removed after 1 hour
-<root>/owners/<device-id>.lock  owner lock (flock / LockFileEx) + JSON {pid, version, data_dir, addr, boot_id, since}
+<control dir> = <user cache dir>/android-log-mcp   (fixed; also the default data root)
+  run/                     0700: service.lock, service.json {pid, version, proto, root}, service.sock, spawn.lock, config.lock
+  config.json              {"root": "<dir>"} written by set-root (absent = the default root)
+<root>/v1/<device-id>/     device data, format 1 (other vN/ formats are swept like unrecorded data)
+<root>/tmp/                scratch files, removed after 1 hour
+<root>/bin/<version>-<hash>/android-log-mcp   service binaries: the running one and at most one other
+<root>/log/service.log     service log (1 MiB + one rotated copy), crash.log
 ```
 
-`<root>` is fixed: `<user cache dir>/android-log-mcp` (Linux `~/.cache/android-log-mcp`, macOS `~/Library/Caches/android-log-mcp`, Windows `%LocalAppData%\android-log-mcp`). `android-log-mcp root [--json]` prints it. There is no setting to move it in 0.4; a configurable root is planned with the background service (#3, #10). `--offline <dir>` opens another dataset read-only. Anything else under the root, such as pre-0.4 `<serial>/` directories or `legacy/`, is ignored: not read, not counted, not deleted.
+`<user cache dir>` is Linux `~/.cache`, macOS `~/Library/Caches`, Windows `%LocalAppData%`. `android-log-mcp root [--json]` prints the current root (and the control dir, config file, socket and running service). `--offline <dir>` opens another dataset read-only. Anything else under the root, such as pre-0.4 `<serial>/` directories or `legacy/`, is ignored: not read, not counted, not deleted. A leftover `owners/` directory from 0.4 development builds is removed.
 
-**Startup sweep and periodic maintenance** (every minute; never in `--offline`): unowned device directories of every format version lose segments older than `ANDROID_LOG_MCP_MAX_AGE` (including their newest one) and are removed once nothing in them is newer; then the total cap removes the oldest segments across everything (each current-format device keeps its newest segment). Directories written by a live process (its owner lock or `writer.lock` is held) are left to that process. Only known file names are deleted from device directories.
+**Sweep and periodic maintenance** (in the service, at start and every minute; never in `--offline`): device directories that are not being recorded, of every format version, lose segments older than `ANDROID_LOG_MCP_MAX_AGE` (including their newest one) and are removed once nothing in them is newer; then the total cap removes the oldest files across everything (each current-format device keeps its newest segment). Directories whose `writer.lock` is held by another process are left alone. Only known file names are deleted.
 
 每台设备的数据放在一个子目录里（0.4 起为 `v1/<设备ID>/`），内容包括：
 
@@ -257,7 +294,7 @@ android-log-mcp --offline r/store call logcat_crashes '{"package":"com.foo"}'
   - 一个分段要等到它最新的一行也超过保留期才会被删除。
   - 正在写入的分段最多跨越保留期的 1/4（日志很少的设备会提前换段），所以日志最长保留约 1.25 倍保留期。
   - 录制进程每分钟检查一次。
-- 整个数据目录（包括其他格式版本、tmp、run、owners；0.4 以前的旧目录不计入、不处理）不超过 2 GiB。超出时跨设备按段删除最旧的，当前格式下每台设备的最新一段保留；只清理本进程负责录制的设备，或者当前没有进程在录制的设备。
+- 整个数据目录（包括其他格式版本、tmp、run、bin、log；0.4 以前的旧目录不计入、不处理）不超过 2 GiB。超出时跨设备按段删除最旧的，当前格式下每台设备的最新一段保留。
 - 没人录制的设备目录（`v<N>/` 下）也按保留期删除，整个目录过期后删掉。
 - 辅助文件定期压缩（启动约 30 秒后一次，之后每 10 分钟一次）：
   - `procs.jsonl`、`crashes.jsonl` 每个条目只保留最新版本；
@@ -269,19 +306,20 @@ android-log-mcp --offline r/store call logcat_crashes '{"package":"com.foo"}'
 内存：
 - 每台设备在内存里只缓存最近 20000 条日志（同时不超过约 16 MiB），更早的日志查询时从磁盘按块读取，并放进一个 32 MiB 的 LRU 缓存。
 - 2 分钟没有查询就释放历史缓存。
-- 只读进程（另一个进程在录制）启动时不预读日志，第一次查询时才加载，空闲后再释放。
 - `logcat_status` 的 `memory:` 一行显示当前的缓存占用。
 
-**Several clients at once:** each device is recorded by exactly one process per user. This is decided by `owners/<device-id>.lock` in the fixed per-user owners directory, an OS lock (`flock` on Linux/macOS, `LockFileEx` on Windows) that is released when the process exits. Other processes read the owner's data directory, and `logcat_status` names the owner (pid, version, data directory). When the owner exits, another process takes over within about 10 seconds.
+**Several clients at once:** all MCP clients of a user share the one background service (see "Background service"), so every device is recorded once and every client sees the same data immediately. A store's `writer.lock` is still taken as defence in depth: if another process (for example an older android-log-mcp) writes a device's directory, the service does not record that device and `logcat_status` says so.
 
-**多个客户端同时运行**：同一用户下每台设备只有一个进程负责录制（由固定的每用户目录 `<cache>/android-log-mcp/owners/<设备ID>.lock` 决定，与数据根目录无关），其他进程只读跟随录制者的数据目录，`logcat_status` 会写明录制者的 pid、版本和数据目录。锁是操作系统的文件锁（Linux/macOS 用 `flock`，Windows 用 `LockFileEx`），进程退出时自动释放；录制进程退出后，其他进程约 10 秒内接管。
+**多个客户端同时运行**：同一用户的所有 MCP 客户端共用一个后台服务，每台设备只录制一次，所有客户端看到的数据完全一致。如果另一个进程（例如旧版 android-log-mcp）正在写某台设备的目录（持有 `writer.lock`），服务不会录制这台设备，`logcat_status` 会说明。
 
 ## 已知限制
 
-- **没有独立 daemon**：录制随 MCP 进程存在，所有 MCP 客户端都关闭后录制就停止。下次启动时会用 `logcat -T <上次时间>` 续录并去重。如果设备的 ring buffer 在此期间已经被覆盖，丢失的部分会被记为缺口，并在 `status` 和搜索结果里标出。`Tools.Call(name, rawArgs)` 是预留的接口，以后可以换成"薄代理 + 常驻 daemon"（计划见 issue #3）。在那之前，每个 MCP 客户端都会有一个进程；不负责录制的进程空闲时只占十几 MiB（见上面的「内存」）。
+- **Recording stops after the linger time.** The background service records only while some client is connected and for the linger time after (10 min – 1 h, `ANDROID_LOG_MCP_LINGER`). The next start resumes with `logcat -T <last time>` and deduplicates; if the device's ring buffer was overwritten in between, the lost part is recorded as a gap and shown in `status` and search results. 后台服务只在有客户端连接时以及之后的 linger 时间内录制；下次启动用 `logcat -T` 续录，期间被设备覆盖的部分记为缺口。
+- **`set-root` does not move history.** Logs recorded before a switch stay in the old root (`--keep-old`) or are deleted (`--delete-old`); queries only see the current root. `set-root` 不搬迁历史数据。
+- **Windows:** needs Windows 10 1803 / Server 2019 or later (AF_UNIX). Named pipes may be added later for older systems. The service has not yet been run against real devices on Windows or macOS (CI runs the multi-process tests there with a fake adb).
 - **设备 ring buffer 很小**：模拟器上每个 buffer 默认只有 2 MiB（`logcat -g`），繁忙时几分钟就会被覆盖。录制开始之前的日志能拿到多少取决于它；更早的崩溃只能从 DropBox 补（`logcat_crashes` 会注明来源）。
 - **不使用设备端过滤**：API 29 的 logcat 没有 `--uid`，`--pid` 也只认一个，所以本工具总是录制全部 buffer（main、system、crash、events），按包、pid 和 uid 的过滤都在主机端完成。
-- **读取延迟（刷新策略）**：录制进程每收到一批日志就写入并 flush（不等缓冲区满），另有约 800 ms 的延迟队列用来等 pid→进程映射。所以跟随读取的进程（另一个 MCP 客户端）通常在约 1 秒内就能看到新日志。v1 实测时出现过读者落后约 3.5 分钟的情况：根因是设备端积压，即 TCG 软件模拟下 logcat 首次 `-D` 导出整个 buffer 很慢；另外旧版本的写入缓冲区要攒满才落盘，也会加剧延迟。现在 `logcat_status` 会区分三种情况并明确说明：录制进程停写、设备端积压（最新日志落后于设备时钟，但仍在持续写入）、设备本身安静。
+- **读取延迟（刷新策略）**：录制进程每收到一批日志就写入并 flush（不等缓冲区满），另有约 800 ms 的延迟队列用来等 pid→进程映射。所以新日志通常在约 1 秒内就能查到。v1 实测时出现过读者落后约 3.5 分钟的情况：根因是设备端积压，即 TCG 软件模拟下 logcat 首次 `-D` 导出整个 buffer 很慢；另外旧版本的写入缓冲区要攒满才落盘，也会加剧延迟。现在 `logcat_status` 会区分三种情况并明确说明：录制进程停写、设备端积压（最新日志落后于设备时钟，但仍在持续写入）、设备本身安静。
 - **设备时钟漂移**：TCG 软件模拟的模拟器，设备时钟可能比主机慢一分多钟（v2 实测：同一时刻相差 −104 s）。所以录制进程每 30 秒会重新测一次设备时钟（`date +%s.%N`），跟随读取的进程用这个最新的测量值。"现在"、相对时间（如 `30m`）和延迟判断都以这个估计为准。偏差超过 5 秒时，`logcat_status` 会显示出来。v1 看到的"读者落后 3.5 分钟"，很可能主要就是这个漂移：当时设备时间只在启动时测过一次。
 - **时区**：以设备上 `date +%z` 的偏移为准。`persist.sys.timezone` 只在偏移一致时才用作显示名（例如模拟器报 Asia/Kuching，但主机是 Asia/Shanghai，两者都是 +08:00）；偏移不一致时按 `UTC±hhmm` 显示并给出说明。所有输出都会标注偏移。
 - **`-v printable`**：logcat 会把非 ASCII 字节转义成 `\ooo`（新版本是 `\xHH`）。本工具在入库前把转义还原成 UTF-8，搜索、匹配和显示都用原文；无效的 UTF-8 序列保留转义写法。旧版本存下的记录在读取时也会还原。`\b` 这类 C 转义保持原样。
@@ -306,7 +344,7 @@ android-log-mcp --offline r/store call logcat_crashes '{"package":"com.foo"}'
   - 一份完整快照里没有出现的存活条目会被关闭，原因标为 `gone (not in ps)`。如果日志流还在回放积压（落后快照超过 30 秒），快照不会用来关闭条目，以免抢在积压中的死亡事件之前。
   - boot_id 变化时，上一次启动中仍存活的进程会以 `device rebooted` 关闭，并在 `logcat_status` 的 "before the last reboot" 中列出。
   - `log -t` 等 shell 命令打出的行，进程短命且查不到名字，会显示为 `?(uid shell)`。
-- **存储格式**：JSONL 没有压缩。Windows 上的文件锁只是尽力而为（O_EXCL 锁文件加过期判断），未在 Windows 上测试。
+- **存储格式**：JSONL 没有压缩。文件锁在 Linux/macOS 上用 `flock`，Windows 上用 `LockFileEx`。
 - **设备时钟估算**：设备与主机的时钟偏移用 `date +%s` 估算，精度约为 1 秒加一次 adb 往返的时间，只用于"现在"和相对时间的换算。日志时间戳本身直接来自设备。
 
 ## 兼容性
@@ -317,8 +355,8 @@ android-log-mcp --offline r/store call logcat_crashes '{"package":"com.foo"}'
 
 | 方面 | 已验证的组合 | 怎么验证的 |
 |---|---|---|
-| Node / npx | Node 20（本机 `npx -y android-log-mcp`）；Node 16.20 本机跑启动器和 MCP 握手；CI 每次提交在 ubuntu 上跑 Node 16 / 18 / 20 / 22 / 当前 LTS / current，在 macOS、Windows 上跑 Node 22 | CI 的 `npx-compat` job：安装打包好的 npm tarball，执行 `npx android-log-mcp --version`，再通过 stdio 做 MCP 握手（initialize → tools/list → logcat_status，`--offline <空目录>`）（`npm/test/mcp_smoke.js`） |
-| 主机 OS / 架构 | linux x64：完整运行（后台录制、端到端验证）。linux x64、macOS（arm64）、Windows x64：单元测试和回归测试（`go test ./...`），以及上面的 npx 冒烟测试 | `.github/workflows/ci.yml` |
+| Node / npx | Node 20（本机 `npx -y android-log-mcp`）；Node 16.20 本机跑启动器和 MCP 握手；CI 每次提交在 ubuntu 上跑 Node 16 / 18 / 20 / 22 / 当前 LTS / current，在 macOS、Windows 上跑 Node 22 | CI 的 `npx-compat` job：安装打包好的 npm tarball，执行 `npx android-log-mcp --version`，再通过 stdio 做 MCP 握手（initialize → tools/list → logcat_status，`--offline <空目录>`；再不带 `--offline` 经后台服务做一次握手）（`npm/test/mcp_smoke.js`） |
+| 主机 OS / 架构 | **Minimum host OS: Windows 10 1803 / Windows Server 2019 (AF_UNIX for the background service; older Windows gets a clear error), any supported macOS / Linux.** linux x64：完整运行（后台录制、端到端验证）。linux x64、macOS（arm64）、Windows x64：单元测试和回归测试（`go test ./...`），以及上面的 npx 冒烟测试 | `.github/workflows/ci.yml` |
 | Android | API 29（Android 10，x86_64 模拟器，TCG 软件模拟）：端到端验证 + `compat` 探测 13 项全部通过 | `validation/mcp-v2/`、`validation/report-e2e/`、`validation/compat/api29-emulator-5556/` |
 | adb | platform-tools 37.0.1（adb 1.0.41），`track-devices` 正常 | 同上 |
 
@@ -357,6 +395,7 @@ scripts/compat-probe.sh <SERIAL> out/            # 从源码构建并把结果�
   - `go test ./...` 全部通过，其中移植了 Android Studio 的过滤器解析器测试。
   - 回归测试会把 `server/internal/testdata/api29/`（API 29 模拟器的真实输出）里的 logcat 和 DropBox 数据，经过和线上相同的 ingest pipeline（`device.Pipeline`）回放，再调用 MCP 工具断言输出（`server/internal/mcpserver/replay_test.go`）。
   - `report`：每条打码规则都有正反例单元测试（`server/internal/redact`），并在 API 29 全部真实日志上确认时间、pid、tid、级别、tag 不变；回放测试会把 fixture 打成包，再分别按数据目录和原始 logcat + DropBox 文本加载回来，确认崩溃和启动时间线和原始录制一致（`server/internal/mcpserver/report_replay_test.go`）。在 emulator-5556 上用 `scripts/e2e-report.sh` 注入 21 条假密钥（15 种类型）和 4 条结构反例，打包后全部打码、日志头完整、离线加载正常，记录在 `validation/report-e2e/`。
+  - Background service (0.4): `scripts/service-e2e.sh emulator-5556` through the npm launcher: two MCP clients share one service; after `kill -9` of the service both recover with one new service and a line logged while it was down is recorded; `set-root` to another root (`--keep-old`) and back (`--delete-old`) with `log -t` markers: each marker recorded exactly once across the roots, the boundary line that `logcat -T` repeats is not stored twice; linger exit 5 s after the last client with `ANDROID_LOG_MCP_LINGER=5s`. Multi-process tests (single instance, crash/restart, in-process fallback, version handoff both ways and the incompatible-protocol error, linger, set-root keep/delete/rollback/lock timeout/concurrency, adb server survives the service, socket/dir permissions, bounded `bin/` and service log) run on Linux, macOS and Windows in CI with a fake adb.
   - 在 emulator-5556（Android 10 / API 29，TCG）上做了端到端验证：冷启动、HOT 启动、onNewIntent、Java 崩溃、SIGSEGV、SIGABRT、`:remote` 进程及其崩溃、广播 ANR、`log -t` 标记，以及非 ASCII 字符的处理。输出保存在 `validation/mcp-v2/`。
 - **未验证**：
   - Android 11 及以上的 `wm_*` 事件格式：只有单元测试。
@@ -371,7 +410,7 @@ scripts/compat-probe.sh <SERIAL> out/            # 从源码构建并把结果�
 |---|---|
 | `server/` | Go 模块 `github.com/s1crab/android-log-mcp/server`，包括源码、单元测试和回归测试 fixture（`internal/testdata/api29`） |
 | `npm/` | npm 启动器和包模板。用 `scripts/build-npm.sh [版本] [--pack]` 交叉编译并组装所有包 |
-| `scripts/` | `build-npm.sh`（打 npm 包）、`e2e-report.sh`（在真机 / 模拟器上验证 `report` 的打码）、`compat-probe.sh`（设备兼容性探测） |
+| `scripts/` | `build-npm.sh`（打 npm 包）、`e2e-report.sh`（在真机 / 模拟器上验证 `report` 的打码）、`service-e2e.sh`（在真机 / 模拟器上经 npm 启动器检查后台服务：共享、崩溃恢复、set-root 连续性、linger）、`compat-probe.sh`（设备兼容性探测） |
 | `validation/` | 在 API 29 模拟器上的实测记录：结论、触发脚本、测试 App 源码、MCP 工具的实际输出（v1 在 `mcp/`，v2 在 `mcp-v2/`） |
 | `docs/` | 项目目标（`GOALS.md`）、调研和设计文档 |
 | `AGENTS.md` | 给 agent 和贡献者的工作约定（流程、发版、版本规则、安全规则） |

@@ -1,8 +1,8 @@
 {
   "format": "android-log-mcp-report/2",
   "tool": "android-log-mcp",
-  "version": "0.3.0",
-  "generated_at": "2026-10-10T20:28:16+08:00",
+  "version": "0.4.0-dev",
+  "generated_at": "2026-10-10T21:27:28+08:00",
   "args": [
     "report",
     "--serial",
@@ -10,7 +10,7 @@
     "--since",
     "20m",
     "-o",
-    "/tmp/tmp.oqXD2pUgPI/report.zip",
+    "/tmp/tmp.nOPRG9sDgy/report.zip",
     "--note",
     "<omitted>"
   ],
@@ -28,23 +28,23 @@
       "serial": "avd-api29",
       "dir": "avd-api29",
       "zone": "Asia/Kuching",
-      "device_now": "2026-10-10 20:26:31 +0800",
-      "window_from": "2026-10-10 20:06:31.407 +0800",
+      "device_now": "2026-10-10 21:27:31 +0800",
+      "window_from": "2026-10-10 21:07:31.287 +0800",
       "boots": [
         "ccb368e7"
       ],
-      "records_in_window": 242,
-      "records": 242,
-      "first_record": "2026-10-10 20:06:47.122542",
-      "last_record": "2026-10-10 20:26:35.417665",
+      "records_in_window": 282,
+      "records": 282,
+      "first_record": "2026-10-10 21:07:38.836800",
+      "last_record": "2026-10-10 21:27:35.046164",
       "crashes": 0,
-      "procs": 149,
+      "procs": 169,
       "device_info": "live"
     }
   ],
   "limits": {
     "max_bytes": 52428800,
-    "log_bytes": 76178,
+    "log_bytes": 92951,
     "dropped_records": 0,
     "dropped_bytes": 0
   },
@@ -110,11 +110,11 @@
   "files": [
     {
       "path": "store/v1/avd-api29/seg-00000000000000000001.jsonl",
-      "bytes": 48159
+      "bytes": 58584
     },
     {
       "path": "devices/avd-api29/logcat/ccb368e7.txt",
-      "bytes": 28019
+      "bytes": 34367
     },
     {
       "path": "store/v1/avd-api29/crashes.jsonl",
@@ -122,7 +122,7 @@
     },
     {
       "path": "store/v1/avd-api29/procs.jsonl",
-      "bytes": 27487
+      "bytes": 31580
     },
     {
       "path": "store/v1/avd-api29/packages.json",
@@ -130,11 +130,11 @@
     },
     {
       "path": "store/v1/avd-api29/meta.json",
-      "bytes": 680
+      "bytes": 935
     },
     {
       "path": "devices/avd-api29/device.json",
-      "bytes": 598
+      "bytes": 595
     },
     {
       "path": "note.txt",

@@ -52,10 +52,12 @@ Repository artifacts (docs, issues, commit messages, release notes) are **Englis
   - `scripts/e2e-report.sh` for the end-to-end redaction check on a device;
   - `scripts/compat-probe.sh` / `android-log-mcp compat` for the device compatibility probe;
   - the evidence and procedures in [validation/README.md](validation/README.md).
-- **Isolating tests:** owner locks live in a fixed per-user directory, `os.UserCacheDir()/android-log-mcp/owners`, whatever the data root. Tests must never touch the real user's owners dir (a test that takes a device's lock there would stop the user's recorder from recording it).
-  - Go: every package whose tests create a `device.Manager` or call `layout.DefaultDir` / `DefaultOwnersDir` has `func TestMain(m *testing.M) { os.Exit(testhome.Run(m)) }` (`internal/testhome` points `XDG_CACHE_HOME`, `HOME`, `LocalAppData` at a temp dir). In tests, set `Manager.Root = layout.Root{Dir: base, OwnersDir: <temp>}` (see `internal/device/ownership_test.go`).
-  - Shell / manual runs: redirect the whole per-user cache dir, which moves the data root and the owners dir: Linux `XDG_CACHE_HOME=/tmp/x`, macOS `HOME=/tmp/x`, Windows `LocalAppData=C:\tmp\x`. The data root is fixed (no `ANDROID_LOG_MCP_HOME` since 0.4.0); to read a dataset read-only use `--offline <dir>`.
-  - Read-only checks of a dataset: `--offline <dir>` (never records, prunes or creates files).
+- **Isolating tests:** the background service, its control directory (`os.UserCacheDir()/android-log-mcp`: `run/service.lock`, the socket, `config.json`) and the default data root are fixed per user. Tests must never touch the real user's control dir, config or service (a test that stops, replaces or `set-root`s the real service would break the user's recording).
+  - Go: every package whose tests create a `device.Manager`, start a service or call `layout.DefaultDir` has `func TestMain(m *testing.M) { os.Exit(testhome.Run(m)) }` (`internal/testhome` points `XDG_CACHE_HOME`, `HOME`, `LocalAppData` at a temp dir). Multi-process tests in `cmd/android-log-mcp` give every child its own cache dir with `isoEnv` (and a nonexistent `ANDROID_LOG_MCP_ADB`, or the fake adb of `fakeADBEnv`); the spawned service inherits it.
+  - Shell / manual runs: redirect the whole per-user cache dir, which moves the control dir, the service and the default root: Linux `XDG_CACHE_HOME=/tmp/x`, macOS `HOME=/tmp/x`, Windows `LocalAppData=C:\tmp\x`. Stop such a test service with the same environment (`… android-log-mcp service stop`).
+  - Read-only checks of a dataset: `--offline <dir>` (in-process; never talks to the service, never records, prunes or creates files).
+  - Live checks against the real service on the dev box: `scripts/service-e2e.sh` and `scripts/e2e-report.sh` (they use the real control dir on purpose; `service-e2e.sh` switches the root and back).
+- **Never kill the adb server** (`adb kill-server`, or killing its process) in code, tests or scripts: other tools and the user depend on it. The service starts it outside its own process group and only its own `adb` children end with it.
 - **Packaging:** run `scripts/build-npm.sh [VERSION] [--pack]`. CI runs the npx smoke tests on every Node version in the matrix.
 
 ---
@@ -76,4 +78,5 @@ Repository artifacts (docs, issues, commit messages, release notes) are **Englis
 - 版本规则：1.0 之前，破坏性变更升 minor 版本，并附升级说明；1.0 之后升 major 版本。
 - 语言：仓库产出物英文为主，中文为辅。
 - 安全：开发机上禁止启动 KVM 模拟器，也不要碰 `/dev/kvm`。
-- 测试隔离：owner 锁固定在 `os.UserCacheDir()/android-log-mcp/owners`，与数据根目录无关，测试绝不能碰真实用户的这个目录。Go 测试用 `testhome.Run` 的 TestMain；手动运行用 `XDG_CACHE_HOME`（Linux）/ `HOME`（macOS）/ `LocalAppData`（Windows）把整个缓存目录指向临时目录。数据根目录是固定的（0.4.0 起没有 `ANDROID_LOG_MCP_HOME`）；只读查看数据集用 `--offline <目录>`。
+- 测试隔离：后台服务、控制目录（`os.UserCacheDir()/android-log-mcp`：`run/`、socket、`config.json`）和默认数据根目录都是每用户固定的，测试绝不能碰真实用户的这些东西。Go 测试用 `testhome.Run` 的 TestMain，多进程测试用 `isoEnv`；手动运行用 `XDG_CACHE_HOME`（Linux）/ `HOME`（macOS）/ `LocalAppData`（Windows）把整个缓存目录指向临时目录。只读查看数据集用 `--offline <目录>`。
+- 绝不要杀 adb server。

@@ -7,8 +7,9 @@
 # `adb shell log -t LeakTest …`, waits until the recorder stored them, builds a
 # report, and verifies: no secret survives anywhere in the zip; every LeakTest
 # line keeps its time/pid/tid/level/tag; the report loads back offline.
-# Needs a recorder for SERIAL (an MCP client running android-log-mcp, or
-# `sleep infinity | android-log-mcp &`); otherwise one is started for the test.
+# The background service records SERIAL; `call logcat_status` starts it if
+# none runs (it then stays for its linger time). The report is built by the
+# service.
 # Read-only for the device apart from the injected log lines.
 set -euo pipefail
 
@@ -17,15 +18,13 @@ SERIAL="${1:-${ANDROID_SERIAL:-emulator-5556}}"
 EVID="${2:-}"
 ADB="${ANDROID_LOG_MCP_ADB:-$(command -v adb || echo "$HOME/android-sdk/platform-tools/adb")}"
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"; [ -n "${REC_PID:-}" ] && kill "$REC_PID" 2>/dev/null || true' EXIT
+trap 'rm -rf "$WORK"' EXIT
 
 BIN="$WORK/android-log-mcp"
 (cd "$ROOT/server" && go build -o "$BIN" ./cmd/android-log-mcp)
-# The data root is fixed (`android-log-mcp root`). Owner locks live in its
-# owners dir (Linux): if another process records SERIAL, its data dir is used.
-CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/android-log-mcp"
+# make sure the service runs (and records SERIAL), then use its data root
+ANDROID_LOG_MCP_CALL_WAIT=10s "$BIN" call logcat_status >/dev/null 2>"$WORK/call.log" || { cat "$WORK/call.log" >&2; exit 1; }
 HOME_DIR="$("$BIN" root 2>/dev/null)"
-OWNERS_DIR="$CACHE_DIR/owners"
 "$ADB" -s "$SERIAL" get-state >/dev/null
 
 RUN="LT$(date +%s)"
@@ -70,22 +69,13 @@ keep at com.example.logtest.Net.call(Net.java:42) java.lang.RuntimeException and
 keep act=android.intent.action.MAIN ro.build.fingerprint persist.sys.timezone base.apk libc.so base.odex main.xml app.json
 KEEP
 
-# the device's data directory: the live owner's data_dir (owners/<id>.lock,
-# any root), else <home>/v1/<device-id> (meta.json has the adb serial as "addr")
+# the device's data directory: <root>/v1/<device-id> (meta.json has the
+# adb serial as "addr")
 find_dir() {
-  python3 - "$HOME_DIR" "$OWNERS_DIR" "$SERIAL" <<'PY'
+  python3 - "$HOME_DIR" "$SERIAL" <<'PY'
 import glob, json, os, sys
-home, owners, serial = sys.argv[1:4]
-cands = []
-for l in sorted(glob.glob(os.path.join(owners, "*.lock"))):
-    try:
-        o = json.load(open(l))
-    except Exception:
-        continue
-    if o.get("data_dir"):
-        cands.append(os.path.join(o["data_dir"], "meta.json"))
-cands += sorted(glob.glob(os.path.join(home, "v1", "*", "meta.json")))
-for m in cands:
+home, serial = sys.argv[1:3]
+for m in sorted(glob.glob(os.path.join(home, "v1", "*", "meta.json"))):
     try:
         meta = json.load(open(m))
     except Exception:
@@ -95,15 +85,6 @@ for m in cands:
         break
 PY
 }
-
-# make sure something records the device (its data dir changed recently)
-d0=$(find_dir)
-if [ -z "$d0" ] || ! find "$d0" -maxdepth 1 -newermt '-60 seconds' 2>/dev/null | grep -q .; then
-  echo "no active recorder seen; starting one (root $HOME_DIR)" >&2
-  (sleep infinity | "$BIN" >/dev/null 2>"$WORK/rec.log") &
-  REC_PID=$!
-  sleep 15
-fi
 
 i=0
 while IFS=$'\t' read -r typ msg secret; do

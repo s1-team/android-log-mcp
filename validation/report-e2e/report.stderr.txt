@@ -1,3 +1,4 @@
-report: avd-api29: 242 records (2026-10-10 20:06:47.122542 … 2026-10-10 20:26:35.417665), 0 crashes/ANRs, device info: live
+report: built by the android-log-mcp service (pid 580579, version 0.4.0-dev) from /home/box/.cache/android-log-mcp
+report: avd-api29: 282 records (2026-10-10 21:07:38.836800 … 2026-10-10 21:27:35.046164), 0 crashes/ANRs, device info: live
 report: redacted: bank_card=2 cookie=1 credential=4 device_id=1 domain=4 email=2 id_card=1 ipv4=1 ipv6=1 jwt=1 mac=1 password=1 phone=2 secret=4 token=1 url_param=1
 report: review the zip before sharing it: redaction is pattern based

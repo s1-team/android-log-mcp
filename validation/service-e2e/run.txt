@@ -1,0 +1,48 @@
+# scripts/service-e2e.sh emulator-5556 (2026-10-10, Asia/Shanghai; binary 0.4.0-dev at fcadeaa, via npm/android-log-mcp/bin/android-log-mcp.js)
+# device status/cursor lines omitted
+21:31:01 default root /home/box/.cache/android-log-mcp control /home/box/.cache/android-log-mcp
+21:31:01 PASS starts at the default root
+21:31:01 service pid seen by A/B: 580579 580579 clients A/B: 588163 588178
+21:31:01 PASS two MCP clients share one background service
+21:31:01 service: background service pid 580579, version 0.4.0-dev, protocol 1, up 4m28s, clients 2
+root: /home/box/.cache/android-log-mcp
+linger: 1h0m0s (default: max(10m0s, 2 × device log buffer span 18h9m19s), at most 1h0m0s) after the last client disconnects
+21:31:01 PASS service status reports 3 connections (2 MCP clients + this status call)
+21:31:01 PASS recording
+21:31:02 logged marker alm-85c66d-1
+21:31:03 PASS marker 1 recorded
+21:31:03 PASS service 580579 killed (SIGKILL)
+21:31:04 logged marker alm-85c66d-2
+21:31:06 new service pid seen by A/B: 588232 588232
+21:31:06 PASS both clients recovered with one new service
+21:31:11 PASS line logged while the service was down recorded, nothing twice: {'alm-85c66d-1': 1, 'alm-85c66d-2': 1}
+21:31:12 logged marker alm-85c66d-3
+21:31:14 PASS marker 3 recorded before the switch
+21:31:15 logged marker alm-85c66d-3b
+21:31:15 PASS set-root /tmp/alm-newroot --keep-old (exit 0) 
+21:31:15 set-root: {"old_root": "/home/box/.cache/android-log-mcp", "new_root": "/tmp/alm-newroot", "old": "keep", "devices": ["avd-api29"], "service_pid": 588232, "took": "84ms"}
+21:31:15 PASS switched by the running service (same pid)
+21:31:20 PASS service records in the new root (status)
+21:31:22 logged marker alm-85c66d-4
+21:31:23 logged marker alm-85c66d-5
+21:31:25 default (old) root: {'alm-85c66d-1': 1, 'alm-85c66d-2': 1, 'alm-85c66d-3': 1, 'alm-85c66d-3b': 0, 'alm-85c66d-4': 0, 'alm-85c66d-5': 0}
+21:31:25 new root:           {'alm-85c66d-1': 0, 'alm-85c66d-2': 0, 'alm-85c66d-3': 0, 'alm-85c66d-3b': 1, 'alm-85c66d-4': 1, 'alm-85c66d-5': 1}
+21:31:25 PASS boundary line repeated by logcat -T is not stored again in the new root
+21:31:25 PASS line logged right before the switch recorded exactly once: old 0, new 1
+21:31:25 PASS after the switch, lines go to the new root
+21:31:25 PASS set-root back /home/box/.cache/android-log-mcp --delete-old (exit 0) 
+21:31:25 set-root back: {"old_root": "/tmp/alm-newroot", "new_root": "/home/box/.cache/android-log-mcp", "old": "delete", "devices": ["avd-api29"], "service_pid": 588232, "removed": ["/tmp/alm-newroot/log", "/tmp/alm-newroot/tmp", "/tmp/alm-newroot/v1"], "old_root_removed": true, "took": "9ms"}
+21:31:25 PASS old root deleted
+21:31:29 PASS service records in the default root again
+21:31:31 logged marker alm-85c66d-6
+21:31:32 default root after switching back: {'alm-85c66d-1': 1, 'alm-85c66d-2': 1, 'alm-85c66d-3': 1, 'alm-85c66d-3b': 0, 'alm-85c66d-4': 0, 'alm-85c66d-5': 0, 'alm-85c66d-6': 1}
+21:31:32 PASS boundary line of the new root not stored again after switching back
+21:31:32 PASS default root keeps its history; new-root history is not in it (as documented)
+21:31:32 service stop: service: stopped (pid 588232)
+21:31:34 linger line: ['linger: 5s (ANDROID_LOG_MCP_LINGER) after the last client disconnects']
+21:31:39 PASS service 588904 exited 5.0s after the last client (linger 5s)
+21:31:41 default linger line: ['linger: 10m0s (default: max(10m0s, 2 × device log buffer span (not measured yet)), at most 1h0m0s) after the last client disconnects']
+21:31:41 PASS default linger reported
+21:31:41 service stop: service: stopped (pid 588995)
+
+RESULT: OK

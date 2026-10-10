@@ -57,7 +57,8 @@ jobs:
   # The npm launcher across Node versions (engines: node >=16) and host OSes:
   # install the packed tarballs, run `npx android-log-mcp --version` and an
   # MCP stdio handshake (initialize, tools/list, logcat_status) with
-  # --offline <empty dataset dir> (read-only: no adb, nothing written).
+  # --offline <empty dataset dir> (read-only: no adb, nothing written), then
+  # the same through the background service (no adb, linger 0).
   npx-compat:
     needs: npm-pack
     strategy:
@@ -100,3 +101,16 @@ jobs:
       - name: MCP stdio handshake
         working-directory: smoke
         run: node ../npm/test/mcp_smoke.js npx android-log-mcp --offline "${{ runner.temp }}/alm-offline"
+      # proxy mode: the client starts the background service (detached, from
+      # a copy under <root>/bin) and forwards the call to it (issue #3)
+      - name: MCP stdio handshake through the background service
+        working-directory: smoke
+        env:
+          ANDROID_LOG_MCP_ADB: ${{ runner.temp }}/no-adb   # never start the runner's adb
+          ANDROID_LOG_MCP_LINGER: "0"                     # exit with the last client
+        run: |
+          node ../npm/test/mcp_smoke.js npx android-log-mcp | tee smoke.txt
+          grep -E "^service: background service pid [0-9]+, version [^,]+, protocol [0-9]+" smoke.txt
+          npx android-log-mcp root --json
+          for i in $(seq 1 50); do npx android-log-mcp service status >/dev/null || break; sleep 0.2; done
+          npx android-log-mcp service status && { echo "service still running after the last client (linger 0)"; npx android-log-mcp service stop; exit 1; } || true
