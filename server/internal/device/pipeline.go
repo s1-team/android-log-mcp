@@ -162,7 +162,19 @@ func (p *Pipeline) ApplyDropbox(out string) {
 	p.crashMu.Lock()
 	list := LoadCrashes(p.Store)
 	p.crashMu.Unlock()
+	// Entries older than the retention window are not imported: their
+	// dropbox_seen keys may already have been cleaned up (the device keeps
+	// DropBox for ~3 days, the default retention is 1 day), and re-importing
+	// them would show old crashes as new. The cutoff is relative to the
+	// newest stored line (device clock), not the host clock.
+	var cutoff int64
+	if last := p.Store.Meta().LastTimeNs; last > 0 {
+		cutoff = last - int64(p.Store.Config().MaxAge)
+	}
 	for _, e := range entries {
+		if e.TimeNs != 0 && e.TimeNs < cutoff {
+			continue
+		}
 		key := fmt.Sprintf("%q", e.Tag+"|"+strconv.FormatInt(e.TimeNs, 10))
 		if seen[key] {
 			continue

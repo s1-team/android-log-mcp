@@ -151,3 +151,65 @@ func TestManagerDiskDefaultsFromEnv(t *testing.T) {
 		t.Fatalf("env %d %d", m.MaxTotalBytes, m.Disk.MinFree)
 	}
 }
+
+// The aux cleanup follows the configured retention (ANDROID_LOG_MCP_MAX_AGE).
+func TestCompactAuxFollowsConfiguredRetention(t *testing.T) {
+	now := time.Now()
+	twoDays := now.Add(-48 * time.Hour).UnixNano()
+	for _, tc := range []struct {
+		maxAge time.Duration
+		kept   int
+	}{{24 * time.Hour, 0}, {7 * 24 * time.Hour, 1}} {
+		st, err := store.Open(t.TempDir(), "d", store.Config{MaxAge: tc.maxAge, IdleRelease: -1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		st.Append([]*model.Record{{TimeNs: twoDays, Tag: "T", Msg: "m", Level: 'I'}})
+		st.AppendAux("crashes", analysis.Crash{ID: "cr1", TimeNs: twoDays})
+		st.AppendAux("procs", procs.Proc{ID: "p", Boot: "b", PID: 1, Name: "x", StartNs: twoDays - 2*int64(time.Hour), EndNs: twoDays - int64(2*time.Hour) + 1})
+		st.AppendAux("procs", procs.Proc{ID: "q", Boot: "b", PID: 2, Name: "y", StartNs: now.UnixNano()})
+		st.AppendAux("dropbox_seen", json.RawMessage(fmt.Sprintf("%q", fmt.Sprintf("data_app_crash|%d", twoDays))))
+		CompactAux(st, now)
+		if n := len(st.ReadAux("crashes")); n != tc.kept {
+			t.Errorf("MaxAge %v: %d crashes kept, want %d", tc.maxAge, n, tc.kept)
+		}
+		if n := len(st.ReadAux("dropbox_seen")); n != tc.kept {
+			t.Errorf("MaxAge %v: %d dropbox keys kept, want %d", tc.maxAge, n, tc.kept)
+		}
+		// the ended process is dropped only outside the retention window
+		if n := len(st.ReadAux("procs")); n != 1+tc.kept {
+			t.Errorf("MaxAge %v: %d procs kept, want %d", tc.maxAge, n, 1+tc.kept)
+		}
+		st.Close()
+	}
+}
+
+// DropBox entries older than the retention window (relative to the newest
+// stored line) are not imported, so cleaned-up dropbox_seen keys cannot
+// bring old crashes back as new ones.
+func TestApplyDropboxSkipsEntriesOutsideRetention(t *testing.T) {
+	loc := time.UTC
+	entry := func(ts string) string {
+		return "========================================\n" + ts + " data_app_crash (text, 100 bytes)\nProcess: com.example.app\nPID: 42\n\njava.lang.RuntimeException: boom\n\tat com.example.app.Main.run(Main.java:1)\n"
+	}
+	out := "Drop box contents: 2 entries\n" + entry("2026-10-07 10:00:00") + "\n" + entry("2026-10-10 09:00:00")
+	newest := time.Date(2026, 10, 10, 12, 0, 0, 0, loc).UnixNano()
+	for _, tc := range []struct {
+		maxAge time.Duration
+		want   int
+	}{{24 * time.Hour, 1}, {7 * 24 * time.Hour, 2}} {
+		st, err := store.Open(t.TempDir(), "d", store.Config{MaxAge: tc.maxAge, IdleRelease: -1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		st.Append([]*model.Record{{TimeNs: newest, Tag: "T", Msg: "m", Level: 'I'}})
+		st.Flush()
+		p := NewPipeline(st, "b1", loc)
+		p.ApplyDropbox(out)
+		p.ApplyDropbox(out) // idempotent
+		if n := len(LoadCrashes(st)); n != tc.want {
+			t.Errorf("MaxAge %v: %d crashes imported, want %d", tc.maxAge, n, tc.want)
+		}
+		st.Close()
+	}
+}

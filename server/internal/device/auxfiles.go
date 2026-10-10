@@ -17,9 +17,8 @@ import (
 //   - procs.jsonl and crashes.jsonl keep only the newest version of each
 //     entry (the readers already use "last version wins"), in the order the
 //     entries first appeared, so LoadProcs / LoadCrashes return the same;
-//   - ended processes older than both the retention window and the oldest
-//     stored log line are dropped (nothing can refer to them any more);
-//   - crashes and dropbox_seen keys older than the retention window go.
+//   - ended processes, crashes and dropbox_seen keys older than the
+//     retention window (Config.MaxAge, ANDROID_LOG_MCP_MAX_AGE) are dropped.
 //
 // Leftover *.tmp files from interrupted rewrites are removed too.
 func CompactAux(st *store.Store, now time.Time) int64 {
@@ -28,11 +27,6 @@ func CompactAux(st *store.Store, now time.Time) int64 {
 	}
 	maxAge := st.Config().MaxAge
 	ageCut := now.Add(-maxAge).UnixNano()
-	procCut := ageCut
-	if o := st.Stats().OldestNs; o > procCut {
-		procCut = o
-	}
-	procCut -= int64(time.Hour)
 	var saved int64
 	add := func(before, after int64, _ error) { saved += before - after }
 
@@ -46,7 +40,7 @@ func CompactAux(st *store.Store, now time.Time) int64 {
 			if k == "" {
 				k = fmt.Sprintf("%s|%d|%d|%s", p.Boot, p.PID, p.StartNs, p.Name)
 			}
-			return k, !(p.EndNs > 0 && p.EndNs < procCut)
+			return k, !(p.EndNs > 0 && p.EndNs < ageCut)
 		})
 	}))
 	add(st.CompactAux("crashes", func(lines [][]byte) [][]byte {

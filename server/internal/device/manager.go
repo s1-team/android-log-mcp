@@ -108,13 +108,15 @@ func (m *Manager) maintain(ctx context.Context) {
 	}
 }
 
-// MaintainOnce applies the data-directory size cap and, with aux, compacts
+// MaintainOnce applies retention (per device and the data-directory size
+// cap) and, with aux, compacts
 // the auxiliary files of the devices this process writes.
 func (m *Manager) MaintainOnce(aux bool) {
 	owned := map[string]*store.Store{}
 	for _, d := range m.Devices() {
 		if d.Store.IsWriter() {
 			owned[d.Store.Dir] = d.Store
+			d.Store.Prune() // age / size retention, also while no segment rotates
 			if aux {
 				CompactAux(d.Store, time.Now())
 			}
@@ -144,7 +146,11 @@ func (m *Manager) Start(ctx context.Context) {
 		}
 		m.mu.Unlock()
 	}
-	go m.maintain(ctx)
+	if !m.NoADB {
+		// --offline only browses (e.g. an unzipped report): never compact or
+		// prune someone else's data in the background
+		go m.maintain(ctx)
+	}
 	if m.NoADB {
 		m.adbErr = fmt.Errorf("adb disabled")
 		m.once.Do(func() { close(m.ready) })

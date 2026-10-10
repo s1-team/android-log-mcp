@@ -469,7 +469,7 @@ agent 可以借此发现自己写的 `message:foo message:bar` 实际被解释�
 
 - **不是 MCP 工具，而是 CLI 子命令**：打包要写本地文件、可能启动 App（`--am-start`），不适合交给 agent 随手调用。子命令只用 `store.OpenReadOnly` 读数据目录，不抢 writer 锁、不开始录制，和正在运行的录制进程互不影响。
 - **日志以两种形式放进包里**：
-  - `store/<serial>/`：本工具自己的格式，按窗口 / 包名裁剪，序号重排为 1..N（崩溃的 `seq` 和会话的 `first_seq` 按下界映射过去），只写一个分段（最后一个分段永不被 prune，所以过了 7 天再打开也不会被删）。`--home <解压目录>/store --offline` 直接加载，4 个工具照常可用。
+  - `store/<serial>/`：本工具自己的格式，按窗口 / 包名裁剪，序号重排为 1..N（崩溃的 `seq` 和会话的 `first_seq` 按下界映射过去），只写一个分段（最后一个分段永不被 prune，所以过了保留期再打开也不会被删；`--offline` 也不跑后台压缩和定期清理）。`--home <解压目录>/store --offline` 直接加载，4 个工具照常可用。
   - `devices/<serial>/logcat/<boot>.txt`：同一批记录按录制时的 `logcat -v threadtime -v epoch -v uid -v usec -v printable` 格式重新输出，每个 boot 一个文件；DropBox 条目保持 `dumpsys dropbox --print` 格式。回放测试的 `Pipeline.ReplayText` / `ApplyDropbox` 可以原样加载，崩溃识别和启动分析会重新跑一遍。已知限制：头部完全相同的相邻两条记录在回放时会被合并（与 README「合并多行消息」相同）。
 - **打码只作用于正文**：日志的 message、崩溃 / ANR / tombstone 文本、DropBox 正文、`am start` 输出和 note。时间、pid、tid、uid、级别、tag、包名、进程名和设备属性是结构化字段，不经过打码器，所以结构不可能被破坏；规则本身再排除时间戳、十六进制、堆栈帧、版本号等（单元测试 + API 29 全量 fixture 回归）。
 - **占位符 `[REDACTED:<类型>#n]`**：编号按首次出现顺序分配，同值同号；映射用每个包随机生成、用完即丢的 HMAC 密钥，内存里也只存 HMAC，包里不保存原值。`--redact-extra` 的正则、`--keep-domain` 的域名和 `--note` 的内容不写进 manifest（只记条数 / 是否有）。
@@ -517,8 +517,8 @@ agent 可以借此发现自己写的 `message:foo message:bar` 实际被解释�
 
 - **辅助文件压缩**（`device.CompactAux`，只由录制者执行，启动约 30 秒后一次，之后每 10 分钟一次）：
   - `procs.jsonl` 和 `crashes.jsonl` 每个条目只保留最新版本，位置放在该条目第一次出现的地方，所以 `LoadProcs` / `LoadCrashes` 的结果不变；
-  - 已结束、并且早于 max(保留期, 最早日志) − 1 小时的进程被删除；
-  - 早于保留期的崩溃和 `dropbox_seen` 键被删除。设备端 DropBox 默认只保留 3 天，比保留期（7 天）短，所以删掉的键不会被重新导入成新崩溃；
+  - 早于保留期（`ANDROID_LOG_MCP_MAX_AGE`，默认 1 天）的已结束进程、崩溃和 `dropbox_seen` 键被删除；
+  - 设备端 DropBox 默认保留 3 天，比 1 天的默认保留期长，所以 `dropbox_seen` 键删掉后，设备上可能还有对应条目。为了不把这些旧崩溃当成新崩溃重新导入，`ApplyDropbox` 不导入早于「最新一条已存日志的时间 − 保留期」的条目（按设备时钟算，回放 fixture 也不会随日期漂移）；
   - 压缩时持有辅助文件锁，和 `AppendAux` 互斥，不会丢追加；只有变小时才重写。`*.tmp` 残留超过 10 分钟就删除。
 - **目录总量上限**（`store.EnforceTotal`，默认 2 GiB，每分钟检查一次）：
   - 统计所有设备目录里所有文件的大小，按 mtime 从旧到新删除分段，每台设备的最后一段不删。
@@ -530,3 +530,19 @@ agent 可以借此发现自己写的 `message:foo message:bar` 实际被解释�
   - 恢复时走 `logcat -T` 续录路径：第一条新记录会关闭这个缺口；如果设备 buffer 里还有已经存过的行（说明没丢数据），缺口直接删除。
   - `logcat_status` 会显示暂停原因和恢复阈值。
 
+### 9.3 可配置的保留期（v0.3.0）
+
+- 新增 `ANDROID_LOG_MCP_MAX_AGE`，默认从 7 天改成 **1 天**。它接受两种写法：
+  - Go 时长（`72h`、`90m`）；
+  - 天数后缀（`1d`、`7d`、`1.5d`）。
+- 空值使用默认值。无效值或非正值会在 stderr 打一条警告并回退到默认值。其他 `ANDROID_LOG_MCP_*` 整数变量现在出错时也会给出警告，以前是静默忽略。
+- 保留仍然按整段删除，一段里最新的一行（mtime）也超过保留期才删。原来有两个问题：
+  - 安静的设备可能好几天也写不满一个 16 MiB 的分段，而正在写入的分段永远不删，所以 1 天的保留期形同虚设；
+  - 只有换段时才检查保留期。
+- 现在的做法：
+  1. 正在写入的分段，从它第一行算起，跨度超过 MaxAge/4 就换新段（重启后也不会续写这样的旧段），所以日志最长保留约 1.25 × MaxAge；
+  2. 录制进程每分钟跑一次 `Store.Prune()`。
+- 辅助文件清理和日志用同一个保留期（见 9.2）。
+- `logcat_status` 的 `stored …` 行显示生效的保留期和每台设备的上限。
+- `report` 的默认窗口仍然是 2 小时，在 1 天以内。`--since` 超出已保留的历史时，照旧在 manifest 和输出里注明 history 起点。
+- 升级提示见 README「升级到 0.3.0」。

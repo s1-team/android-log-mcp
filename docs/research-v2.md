@@ -291,7 +291,7 @@ tag~:"^Activity(Task)?Manager$" & message~:"^(START u0|Displayed|Fully drawn|Sta
 - **格式**：只追加的分段文件，例如每段 16 MB，内容是压缩 JSONL 或长度前缀的二进制记录。每条记录包含 seq、ts、uid、pid、tid、level、tag、msg、buffer、process、package 和 boot_id。
 - **内存**：最近 N 条（例如 20 万条）的 ring 加 seq 索引，热查询走内存，冷查询顺序扫描分段文件。
 - 这样不需要 SQLite（Go 纯 Go 的 sqlite 体积较大），保持单二进制并且简单。v2 可以按需加 tag/pid 倒排索引。
-- **上限**：默认每台设备 512 MB 或 7 天，取先到者，超出后整段删除。全局另设一个上限。
+- **上限**：默认每台设备 512 MB 或 7 天，取先到者，超出后整段删除。全局另设一个上限。（实现现状：从 v0.3.0 起保留期默认 1 天，可以用 `ANDROID_LOG_MCP_MAX_AGE` 配置；全局上限 2 GiB。见 design-v3 §9。）
 - `clear` 工具可以清本地存储，也可以选择同时执行 `logcat -c`。后者需要用户在调用时显式传参。
 
 ### 4.4 logd 溢出与 chatty

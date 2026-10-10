@@ -195,7 +195,8 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 		if line != "" {
 			fmt.Fprintf(&b, "    %s\n", strings.TrimSpace(line))
 		}
-		fmt.Fprintf(&b, "    stored %s lines (%.1f MB)", commas(int(stats.Records)), float64(stats.Bytes)/1e6)
+		cfg := d.Store.Config()
+		fmt.Fprintf(&b, "    stored %s lines (%.1f MB; retention %s, max %d MiB per device)", commas(int(stats.Records)), float64(stats.Bytes)/1e6, store.FormatRetention(cfg.MaxAge), cfg.MaxBytes>>20)
 		if len(m.Gaps) > 0 {
 			fmt.Fprintf(&b, "; gaps: %d (latest: %s)", len(m.Gaps), gapText(m.Gaps[len(m.Gaps)-1], loc))
 		}

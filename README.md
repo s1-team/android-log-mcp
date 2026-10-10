@@ -194,6 +194,16 @@ android-log-mcp --home r/store --offline call logcat_crashes '{"package":"com.fo
 
 **打码是基于模式的，不能保证完全**：自定义格式的 token、姓名、地址、不带键名的随机串等识别不了。分享前请先检查 zip 内容；需要时用 `--redact-extra` 追加规则。`--no-redact` 生成的包可能含有 token、密码和个人信息，只应发给可信的人。
 
+## 升级到 0.3.0
+
+> **默认日志保留期从 7 天改成了 1 天。** 升级后第一次启动时，超过 1 天的日志分段，以及超过 1 天的崩溃、DropBox 和已结束进程记录，会被**删除**。
+> 想保持原来的行为，请在 MCP 客户端配置里设置 `ANDROID_LOG_MCP_MAX_AGE=7d`（Codex 写在 `env = { ANDROID_LOG_MCP_MAX_AGE = "7d" }`，其他客户端写在 `"env": {"ANDROID_LOG_MCP_MAX_AGE": "7d"}`）。
+
+0.3.0 的其他变化：
+- **内存上限**：最近日志缓存默认 20000 条或 16 MiB，历史缓存 32 MiB（按块 LRU）。空闲 2 分钟后释放缓存；只读进程按需加载。
+- **磁盘保护**：辅助文件定期压缩；数据目录总量上限 2 GiB；剩余空间低于 512 MiB 时暂停录制，恢复后自动续录。
+- 新增的环境变量见下表。
+
 ## 环境变量与数据目录
 
 | 变量 | 含义 |
@@ -207,6 +217,7 @@ android-log-mcp --home r/store --offline call logcat_crashes '{"package":"com.fo
 | `ANDROID_LOG_MCP_HISTORY_CACHE_MB` | 历史查询时，已解码日志块缓存的字节上限（每台设备，单位 MiB），默认 32。按块（约 512 KiB 的分段内容）做 LRU 淘汰 |
 | `ANDROID_LOG_MCP_IDLE_RELEASE` | 多久没有查询就释放缓存，默认 `2m`；设为 `0` 表示不释放。释放时历史缓存清空；只读进程连最近日志缓存一起释放，下次查询再按需加载 |
 | `ANDROID_LOG_MCP_MAX_DEVICE_MB` | 每台设备的日志上限（MiB），默认 512 |
+| `ANDROID_LOG_MCP_MAX_AGE` | 日志保留多久，默认 `1d`。接受 Go 时长（`72h`、`90m`）或天数（`1d`、`7d`、`1.5d`）。无效值或非正值会在 stderr 打一条警告并使用默认值。崩溃、`dropbox_seen` 和已结束进程这些辅助记录也按这个保留期清理。`logcat_status` 会显示当前生效的值 |
 | `ANDROID_LOG_MCP_MAX_TOTAL_MB` | 整个数据目录（所有设备，包括辅助文件）的上限（MiB），默认 2048；设为 `0` 表示不限制 |
 | `ANDROID_LOG_MCP_MIN_FREE_MB` | 数据目录所在磁盘的剩余空间低于这个值（MiB）时暂停录制，默认 512；恢复到 2 倍以上时自动续录。设为 `0` 表示关闭 |
 
@@ -217,12 +228,16 @@ android-log-mcp --home r/store --offline call logcat_crashes '{"package":"com.fo
 - `crashes.jsonl`、`procs.jsonl`、`packages.json`
 
 保留策略：
-- 每台设备总量不超过 512 MiB，且不超过 7 天，超出后按段删除最旧的。
+- 每台设备总量不超过 512 MiB，且只保留最近 1 天（`ANDROID_LOG_MCP_MAX_AGE`），超出后按段删除最旧的。
+  - 一个分段要等到它最新的一行也超过保留期才会被删除。
+  - 正在写入的分段最多跨越保留期的 1/4（日志很少的设备会提前换段），所以日志最长保留约 1.25 倍保留期。
+  - 录制进程每分钟检查一次。
 - 整个数据目录不超过 2 GiB。超出时跨设备按段删除最旧的，每台设备的最新一段永远保留；只清理本进程负责录制的设备，或者当前没有进程在录制的设备。
 - 辅助文件定期压缩（启动约 30 秒后一次，之后每 10 分钟一次）：
   - `procs.jsonl`、`crashes.jsonl` 每个条目只保留最新版本；
-  - 早于保留期（且早于最早一条日志）的已结束进程、早于保留期的崩溃和 `dropbox_seen` 记录会被删除；
+  - 早于保留期的已结束进程、崩溃和 `dropbox_seen` 记录会被删除；早于保留期的 DropBox 条目也不再导入；
   - 遗留的 `*.tmp` 文件也会清掉。
+- `--offline`（浏览已有数据，例如解压后的诊断包）不做后台压缩和定期清理。
 - 磁盘剩余空间低于 512 MiB 时暂停录制（`logcat_status` 会显示原因），并记一个缺口；剩余空间恢复到 1 GiB 以上后用 `logcat -T` 自动续录。
 
 内存：

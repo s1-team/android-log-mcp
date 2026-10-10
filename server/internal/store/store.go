@@ -36,7 +36,7 @@ import (
 type Config struct {
 	SegmentBytes int64         // rotate segments at this size (default 16 MiB)
 	MaxBytes     int64         // per-device cap (default 512 MiB)
-	MaxAge       time.Duration // per-device age cap (default 7 days)
+	MaxAge       time.Duration // retention (default 1 day; ANDROID_LOG_MCP_MAX_AGE)
 	MemRecords   int           // recent in-memory window, records (default 20k)
 	MemBytes     int64         // recent window, estimated bytes (default 16 MiB)
 	// HistoryCacheBytes caps the decoded blocks of older records kept for
@@ -55,6 +55,7 @@ const (
 	DefaultHistoryCacheBytes = 32 << 20
 	DefaultIdleRelease       = 2 * time.Minute
 	DefaultMaxBytes          = 512 << 20
+	DefaultMaxAge            = 24 * time.Hour
 )
 
 func (c *Config) defaults() {
@@ -65,7 +66,7 @@ func (c *Config) defaults() {
 		c.MaxBytes = DefaultMaxBytes
 	}
 	if c.MaxAge <= 0 {
-		c.MaxAge = 7 * 24 * time.Hour
+		c.MaxAge = DefaultMaxAge
 	}
 	if c.MemRecords <= 0 {
 		c.MemRecords = DefaultMemRecords
@@ -112,6 +113,7 @@ type Store struct {
 	cur      *os.File
 	curW     *bufio.Writer
 	curSize  int64
+	curStart int64 // time of the first record in the active segment (0 = unknown)
 	meta     Meta
 	metaMod  time.Time
 	dirty    bool
@@ -578,7 +580,7 @@ func (s *Store) Append(recs []*model.Record) error {
 	for _, r := range recs {
 		s.lastSeq++
 		r.Seq = s.lastSeq
-		if s.cur == nil || s.curSize >= s.cfg.SegmentBytes {
+		if s.cur == nil || s.curSize >= s.cfg.SegmentBytes || s.segmentTooOld(r.TimeNs) {
 			if err := s.rotateLocked(r.Seq); err != nil {
 				return err
 			}
@@ -588,6 +590,9 @@ func (s *Store) Append(recs []*model.Record) error {
 			return err
 		}
 		b = append(b, '\n')
+		if s.curSize == 0 {
+			s.curStart = r.TimeNs
+		}
 		n, err := s.curW.Write(b)
 		s.curSize += int64(n)
 		if err != nil {
@@ -628,7 +633,8 @@ func (s *Store) rotateLocked(first uint64) error {
 		f, err := os.OpenFile(s.segs[n-1].path, os.O_WRONLY|os.O_APPEND, 0o644)
 		if err == nil {
 			s.cur, s.curW, s.curSize = f, bufio.NewWriterSize(f, 256<<10), s.segs[n-1].size
-			if s.curSize < s.cfg.SegmentBytes {
+			s.curStart = firstRecordNs(s.segs[n-1].path)
+			if s.curSize < s.cfg.SegmentBytes && !s.segmentTooOld(time.Now().UnixNano()) {
 				return nil
 			}
 			f.Close()
@@ -691,6 +697,25 @@ func (s *Store) Close() {
 		s.idleT = nil
 	}
 	s.hmu.Unlock()
+}
+
+// segmentTooOld: the active segment already spans a quarter of the
+// retention window, so start a new one. Retention deletes whole segments
+// once their newest line is older than MaxAge; capping the span keeps quiet
+// devices (that never fill a segment) from keeping logs for much longer
+// than MaxAge (at most ~1.25 × MaxAge).
+func (s *Store) segmentTooOld(nowNs int64) bool {
+	return s.curStart > 0 && nowNs-s.curStart > int64(s.cfg.MaxAge/4)
+}
+
+// Prune applies the size / age retention now (writer only). The recorder
+// also prunes on every segment rotation; this catches quiet periods.
+func (s *Store) Prune() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.writer {
+		s.pruneLocked()
+	}
 }
 
 func (s *Store) prune() {
@@ -1113,16 +1138,28 @@ func (s *Store) oldestNs() int64 {
 	}
 	s.mu.RUnlock()
 	if path != "" {
-		if f, err := os.Open(path); err == nil {
-			defer f.Close()
-			br := bufio.NewReaderSize(f, 64<<10)
-			if line, err := br.ReadBytes('\n'); err == nil {
-				var r model.Record
-				if json.Unmarshal(line, &r) == nil {
-					return r.TimeNs
-				}
-			}
+		if t := firstRecordNs(path); t != 0 {
+			return t
 		}
 	}
 	return memT
+}
+
+// firstRecordNs is the time of the first complete line of a segment (0 if none).
+func firstRecordNs(path string) int64 {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0
+	}
+	defer f.Close()
+	br := bufio.NewReaderSize(f, 64<<10)
+	line, err := br.ReadBytes('\n')
+	if err != nil {
+		return 0
+	}
+	var r model.Record
+	if json.Unmarshal(line, &r) != nil {
+		return 0
+	}
+	return r.TimeNs
 }
