@@ -21,9 +21,8 @@ trap 'rm -rf "$WORK"; [ -n "${REC_PID:-}" ] && kill "$REC_PID" 2>/dev/null || tr
 
 BIN="$WORK/android-log-mcp"
 (cd "$ROOT/server" && go build -o "$BIN" ./cmd/android-log-mcp)
-# The data root is the one every process uses (`android-log-mcp root`, set
-# with set-root). Owner locks always live in the fixed per-user owners dir
-# (Linux): if another process records SERIAL, its data dir is used.
+# The data root is fixed (`android-log-mcp root`). Owner locks live in its
+# owners dir (Linux): if another process records SERIAL, its data dir is used.
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/android-log-mcp"
 HOME_DIR="$("$BIN" root 2>/dev/null)"
 OWNERS_DIR="$CACHE_DIR/owners"

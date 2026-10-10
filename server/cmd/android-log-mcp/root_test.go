@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -31,49 +30,33 @@ func cli(t *testing.T, env []string, args ...string) (string, string, int) {
 }
 
 func TestRemovedHomeIsAnError(t *testing.T) {
-	_, errOut, code := cli(t, []string{"ANDROID_LOG_MCP_HOME=/tmp/x"}, "call", "logcat_status")
-	if code != 2 || !strings.Contains(errOut, "ANDROID_LOG_MCP_HOME") || !strings.Contains(errOut, "set-root") {
-		t.Fatalf("env: code %d stderr %q", code, errOut)
-	}
-	_, errOut, code = cli(t, nil, "--home", "/tmp/x")
-	if code != 2 || !strings.Contains(errOut, "removed") || !strings.Contains(errOut, "set-root") {
-		t.Fatalf("--home: code %d stderr %q", code, errOut)
+	for _, c := range []struct {
+		env  []string
+		args []string
+	}{
+		{[]string{"ANDROID_LOG_MCP_HOME=/tmp/x"}, []string{"call", "logcat_status"}},
+		{nil, []string{"--home", "/tmp/x"}},
+		{nil, []string{"--home=/tmp/x", "report"}},
+	} {
+		_, errOut, code := cli(t, c.env, c.args...)
+		if code != 2 || !strings.Contains(errOut, "removed") || !strings.Contains(errOut, "fixed") || !strings.Contains(errOut, "issues/3") {
+			t.Fatalf("%v %v: code %d stderr %q", c.env, c.args, code, errOut)
+		}
 	}
 }
 
-func TestSetRootCLI(t *testing.T) {
-	os.Remove(layout.ConfigPath())
-	t.Cleanup(func() { os.Remove(layout.ConfigPath()) })
-	target := filepath.Join(t.TempDir(), "new")
-	for _, args := range [][]string{{"set-root", target}, {"set-root", target, "--keep-old", "--delete-old"}, {"set-root", "--keep-old"}} {
-		_, errOut, code := cli(t, nil, args...)
-		if code == 0 || !strings.Contains(errOut, "--keep-old") || !strings.Contains(errOut, "--delete-old") {
-			t.Fatalf("%v: code %d stderr %q", args, code, errOut)
-		}
-	}
-	if _, err := os.Stat(layout.ConfigPath()); err == nil {
-		t.Fatal("config written by an invalid call")
-	}
+func TestRootCommand(t *testing.T) {
 	out, _, code := cli(t, nil, "root")
 	if code != 0 || strings.TrimSpace(out) != layout.DefaultDir() {
 		t.Fatalf("root: %d %q", code, out)
 	}
-	out, errOut, code := cli(t, nil, "set-root", target, "--keep-old", "--json")
-	var res struct {
-		NewRoot string `json:"new_root"`
-		Outcome string `json:"outcome"`
-		Old     string `json:"old"`
+	out, _, code = cli(t, nil, "root", "--json")
+	var r struct{ Root, Owners string }
+	if code != 0 || json.Unmarshal([]byte(out), &r) != nil || r.Root != layout.DefaultDir() || r.Owners != layout.DefaultOwnersDir() {
+		t.Fatalf("root --json: %d %q", code, out)
 	}
-	if code != 0 || json.Unmarshal([]byte(out), &res) != nil || res.Outcome != "switched" || res.Old != "keep" {
-		t.Fatalf("set-root: %d %q %q", code, out, errOut)
-	}
-	out, _, _ = cli(t, nil, "root", "--json")
-	var cur struct{ Root, Source string }
-	if json.Unmarshal([]byte(out), &cur) != nil || cur.Source != "config" || cur.Root != res.NewRoot {
-		t.Fatalf("root after set-root: %s", out)
-	}
-	_, errOut, code = cli(t, nil, "set-root", filepath.Join(res.NewRoot, "inside"), "--keep-old")
-	if code != 2 || !strings.Contains(errOut, "inside the current root") {
-		t.Fatalf("inside: %d %q", code, errOut)
+	// set-root is not part of 0.4.0 (#10)
+	if _, _, code := cli(t, nil, "set-root", t.TempDir(), "--keep-old"); code != 2 {
+		t.Fatalf("set-root accepted: exit %d", code)
 	}
 }

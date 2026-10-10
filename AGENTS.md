@@ -53,13 +53,8 @@ Repository artifacts (docs, issues, commit messages, release notes) are **Englis
   - `scripts/compat-probe.sh` / `android-log-mcp compat` for the device compatibility probe;
   - the evidence and procedures in [validation/README.md](validation/README.md).
 - **Isolating tests:** owner locks live in a fixed per-user directory, `os.UserCacheDir()/android-log-mcp/owners`, whatever the data root. Tests must never touch the real user's owners dir (a test that takes a device's lock there would stop the user's recorder from recording it).
-  - The data root of every process comes from the per-user config file `os.UserConfigDir()/android-log-mcp/config.json` (written by `set-root`). Tests must never touch the real one either: a test that writes it would move the user's running recorders.
-  - Go: every package whose tests create a `device.Manager` or call `layout.DefaultDir` / `DefaultOwnersDir` / `ConfigPath` / `ConfiguredRoot` / `WriteConfig` / `SetRoot` has `func TestMain(m *testing.M) { os.Exit(testhome.Run(m)) }`. `internal/testhome` points `XDG_CACHE_HOME`, `XDG_CONFIG_HOME`, `HOME`, `LocalAppData`, `AppData` at a temp dir, and refuses to run unless both the cache dir and the config dir resolve inside it. In tests, set `Manager.Root = layout.Root{Dir: base, OwnersDir: <temp>}` (see `internal/device/ownership_test.go`). Leave `Manager.FollowConfig` off unless the test is about the configured root.
-  - Shell / manual runs: redirect both per-user dirs, which moves the owners dir and the config too:
-    - Linux: `XDG_CACHE_HOME=/tmp/x/cache XDG_CONFIG_HOME=/tmp/x/config`;
-    - macOS: `HOME=/tmp/x`;
-    - Windows: `LocalAppData=C:\tmp\x\local AppData=C:\tmp\x\roaming`.
-    Never run `set-root` against the real config except on purpose: it moves every running recorder of the user.
+  - Go: every package whose tests create a `device.Manager` or call `layout.DefaultDir` / `DefaultOwnersDir` has `func TestMain(m *testing.M) { os.Exit(testhome.Run(m)) }` (`internal/testhome` points `XDG_CACHE_HOME`, `HOME`, `LocalAppData` at a temp dir). In tests, set `Manager.Root = layout.Root{Dir: base, OwnersDir: <temp>}` (see `internal/device/ownership_test.go`).
+  - Shell / manual runs: redirect the whole per-user cache dir, which moves the data root and the owners dir: Linux `XDG_CACHE_HOME=/tmp/x`, macOS `HOME=/tmp/x`, Windows `LocalAppData=C:\tmp\x`. The data root is fixed (no `ANDROID_LOG_MCP_HOME` since 0.4.0); to read a dataset read-only use `--offline <dir>`.
   - Read-only checks of a dataset: `--offline <dir>` (never records, prunes or creates files).
 - **Packaging:** run `scripts/build-npm.sh [VERSION] [--pack]`. CI runs the npx smoke tests on every Node version in the matrix.
 
@@ -81,4 +76,4 @@ Repository artifacts (docs, issues, commit messages, release notes) are **Englis
 - 版本规则：1.0 之前，破坏性变更升 minor 版本，并附升级说明；1.0 之后升 major 版本。
 - 语言：仓库产出物英文为主，中文为辅。
 - 安全：开发机上禁止启动 KVM 模拟器，也不要碰 `/dev/kvm`。
-- 测试隔离：owner 锁固定在 `os.UserCacheDir()/android-log-mcp/owners`，与数据根目录无关，测试绝不能碰真实用户的这个目录。数据根目录来自每用户配置文件 `os.UserConfigDir()/android-log-mcp/config.json`（由 `set-root` 写入），测试同样不能碰它。Go 测试用 `testhome.Run` 的 TestMain（同时重定向缓存目录和配置目录）；手动运行时把缓存目录和配置目录都指向临时目录：Linux 用 `XDG_CACHE_HOME` + `XDG_CONFIG_HOME`，macOS 用 `HOME`，Windows 用 `LocalAppData` + `AppData`。`ANDROID_LOG_MCP_HOME` 已移除；只读查看数据集用 `--offline <目录>`。
+- 测试隔离：owner 锁固定在 `os.UserCacheDir()/android-log-mcp/owners`，与数据根目录无关，测试绝不能碰真实用户的这个目录。Go 测试用 `testhome.Run` 的 TestMain；手动运行用 `XDG_CACHE_HOME`（Linux）/ `HOME`（macOS）/ `LocalAppData`（Windows）把整个缓存目录指向临时目录。数据根目录是固定的（0.4.0 起没有 `ANDROID_LOG_MCP_HOME`）；只读查看数据集用 `--offline <目录>`。

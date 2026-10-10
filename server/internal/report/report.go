@@ -51,7 +51,7 @@ type ShellFunc func(ctx context.Context, serial, cmd string) (string, error)
 
 // Options configures Build.
 type Options struct {
-	Base string // data root (layout.ConfiguredRoot, or the --offline dataset)
+	Base string // data root (layout.DefaultDir, or the --offline dataset)
 	// OwnersDir is the per-user owners dir (layout.DefaultOwnersDir); a
 	// device recorded by a live process with another root is read from that
 	// owner's data dir. Empty: only Base is read.

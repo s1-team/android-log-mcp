@@ -35,8 +35,9 @@ func recs(n int, t0 int64, boot string) []*model.Record {
 	return out
 }
 
-// Two processes with different data roots (e.g. one started before a
-// set-root, one after) share the fixed owners dir: never both record a
+// Two managers with different data roots (only possible in tests and with
+// --offline since #10, but the ownership rules must not depend on the
+// root) share the fixed owners dir: never both record a
 // device. The second follows the owner's data dir read-only and names the
 // owner; once the owner exits it takes over into its own root.
 func TestTwoRootsNeverBothRecord(t *testing.T) {
@@ -95,7 +96,7 @@ func TestTwoRootsNeverBothRecord(t *testing.T) {
 		t.Fatalf("no takeover into the second root: %+v", d3)
 	}
 	o, held := m2.Root.ReadOwner("avd-a")
-	if !held || o.DataDir != d3.Store.Dir || o.Root != rootB {
+	if !held || o.DataDir != d3.Store.Dir {
 		t.Fatalf("owner lock %+v held %v", o, held)
 	}
 	// and now the first root (restarted) follows the second
@@ -106,50 +107,27 @@ func TestTwoRootsNeverBothRecord(t *testing.T) {
 	}
 }
 
-// The root configured in config.json (set-root) records normally; the owner
-// lock still lives in the fixed per-user owners dir (redirected to a temp
-// dir by TestMain) and names the root.
-func TestConfiguredRootRecords(t *testing.T) {
-	home := filepath.Join(t.TempDir(), "configured")
-	if r, err := layout.ConfiguredRoot(); err != nil || r != layout.DefaultDir() {
-		t.Fatalf("default root %q %v", r, err)
-	}
-	if err := layout.WriteConfig(layout.Config{Root: home}); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.Remove(layout.ConfigPath()) })
-	base, err := layout.ConfiguredRoot()
-	if err != nil || base != home {
-		t.Fatalf("configured root %q %v", base, err)
-	}
-	m := NewManager(base, store.Config{IdleRelease: -1})
-	if m.Root.Dir != home || m.Root.Owners() != layout.DefaultOwnersDir() {
+// The fixed default root (os.UserCacheDir()/android-log-mcp, redirected to
+// a temp dir by TestMain) records; owner locks live in its owners/ dir.
+func TestDefaultRootRecords(t *testing.T) {
+	m := NewManager(layout.DefaultDir(), store.Config{IdleRelease: -1})
+	if m.Root.Owners() != layout.DefaultOwnersDir() || filepath.Dir(layout.DefaultOwnersDir()) != layout.DefaultDir() {
 		t.Fatalf("root %+v", m.Root)
 	}
 	m.ctx = context.Background()
 	m.Version = "test"
-	m.FollowConfig = true
 	m.Root.Ensure()
 	t.Cleanup(m.Close)
 	m.Attach(Identity{ID: "avd-h", Source: "avd_name", Addr: "emulator-5554", BootID: "b1"})
 	d := m.Get("avd-h")
-	if d == nil || !d.Owned() || !d.Store.IsWriter() || d.Store.Dir != layout.DeviceDir(home, "avd-h") {
-		t.Fatalf("configured root does not record: %+v", d)
+	if d == nil || !d.Owned() || !d.Store.IsWriter() || d.Store.Dir != layout.DeviceDir(layout.DefaultDir(), "avd-h") {
+		t.Fatalf("default root does not record: %+v", d)
 	}
 	if !strings.HasPrefix(layout.DefaultOwnersDir(), os.Getenv("HOME")) || !strings.Contains(os.Getenv("HOME"), "alm-testhome-") {
 		t.Fatalf("owners dir %s not isolated", layout.DefaultOwnersDir())
 	}
-	if !strings.Contains(layout.ConfigPath(), "alm-testhome-") {
-		t.Fatalf("config %s not isolated", layout.ConfigPath())
-	}
-	if _, err := os.Stat(filepath.Join(layout.DefaultOwnersDir(), "avd-h.lock")); err != nil {
-		t.Fatalf("owner lock not in the fixed owners dir: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(home, "owners")); err == nil {
-		t.Fatal("owners/ created under the configured root")
-	}
 	o, _ := m.Root.ReadOwner("avd-h")
-	if o == nil || o.DataDir != d.Store.Dir || o.Root != home {
+	if o == nil || o.DataDir != d.Store.Dir || o.PID != os.Getpid() {
 		t.Fatalf("owner %+v", o)
 	}
 }

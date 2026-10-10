@@ -13,7 +13,7 @@ import (
 	"github.com/s1crab/android-log-mcp/server/internal/store"
 )
 
-// logcat_status of a process with another data root (e.g. started before a set-root)
+// logcat_status of a process with another data root (only in tests since #10)
 // names the process that owns a device instead of claiming to record it;
 // owner locks live in one owners dir shared by all roots.
 func TestStatusNamesForeignOwner(t *testing.T) {

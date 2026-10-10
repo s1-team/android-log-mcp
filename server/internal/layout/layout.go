@@ -1,19 +1,15 @@
 // Package layout owns the data root of android-log-mcp:
 //
-//	<root>/                       config.json's "root" (set-root), else os.UserCacheDir()/android-log-mcp
-//	  .android-log-mcp            marker: this directory is an android-log-mcp root
+//	<root>/                       os.UserCacheDir()/android-log-mcp (fixed; --offline opens another dataset read-only)
 //	  run/                        runtime state (sockets, pid files) of live processes
 //	  tmp/                        scratch files (expire after an hour)
 //	  v1/<device-id>/             device data, format 1 (segments, meta.json, aux files)
 //
 //	os.UserCacheDir()/android-log-mcp/owners/<device-id>.lock
 //	                              global "who records this device" lock + JSON owner info
-//	os.UserConfigDir()/android-log-mcp/config.json
-//	                              the configured root (config.go)
 //
-// The owners directory is fixed per user, independent of the root, so a
-// device is recorded by at most one process per user, also while the root
-// changes. Everything the tool manages under the root is bounded by the
+// The owners directory is fixed per user, so a device is recorded by at
+// most one process per user. Everything the tool manages under the root is bounded by the
 // total size cap and the retention window (Sweep); anything else there
 // (e.g. directories of versions before 0.4) is ignored: never read, never
 // deleted.
@@ -51,8 +47,7 @@ func DefaultDir() string {
 }
 
 // DefaultOwnersDir is the fixed per-user owners directory
-// (os.UserCacheDir()/android-log-mcp/owners), independent of the configured
-// root.
+// (os.UserCacheDir()/android-log-mcp/owners).
 func DefaultOwnersDir() string { return filepath.Join(DefaultDir(), "owners") }
 
 func (r Root) Owners() string {
@@ -69,19 +64,12 @@ func DeviceDir(base, id string) string {
 	return filepath.Join(store.DataDir(base), store.SanitizeSerial(id))
 }
 
-// MarkerName marks a directory as an android-log-mcp data root (set-root
-// accepts such a directory as a target even when it is not empty).
-const MarkerName = ".android-log-mcp"
-
-// Ensure creates the managed sub-directories and the root marker.
+// Ensure creates the managed sub-directories.
 func (r Root) Ensure() error {
 	for _, d := range []string{r.Owners(), r.Run(), r.Tmp(), store.DataDir(r.Dir)} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			return err
 		}
-	}
-	if m := filepath.Join(r.Dir, MarkerName); !exists(m) {
-		os.WriteFile(m, []byte("android-log-mcp data root; managed by android-log-mcp (see `android-log-mcp root`)\n"), 0o644)
 	}
 	return nil
 }
@@ -94,7 +82,6 @@ type Owner struct {
 	Version string    `json:"version,omitempty"`
 	DataDir string    `json:"data_dir"`       // where the device's logs are written
 	Addr    string    `json:"addr,omitempty"` // adb serial used to reach it
-	Root    string    `json:"root,omitempty"` // data root the owner records into; rewritten when it moves (set-root ack)
 	BootID  string    `json:"boot_id,omitempty"`
 	Since   time.Time `json:"since"`
 }

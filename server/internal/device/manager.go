@@ -19,21 +19,17 @@ import (
 // Manager tracks adb devices and their stores. Devices are keyed by their
 // stable ID (ResolveID); the adb serial is only the connection address.
 type Manager struct {
-	// Base is the data root: config.json's root (layout.ConfiguredRoot,
-	// default os.UserCacheDir()/android-log-mcp), or the --offline dataset.
+	// Base is the data root: layout.DefaultDir()
+	// (os.UserCacheDir()/android-log-mcp; fixed since #10), or the
+	// --offline dataset.
 	Base string
 	// Root is the data root (Dir = Base) plus the owners directory, which is
-	// fixed per user (layout.DefaultOwnersDir) whatever Base is, so a device
-	// is recorded by one process per user, also while the root changes.
-	Root layout.Root
-	// FollowConfig: Base is the configured root; re-read config.json on
-	// every maintenance tick and before taking ownership of a device, and
-	// move there when it changes (set-root; SyncRoot). Off for --offline
-	// and for tests that use a temp root.
-	FollowConfig bool
-	Version      string
-	Cfg          store.Config
-	MaxDevices   int
+	// fixed per user (layout.DefaultOwnersDir), so a device is recorded by
+	// one process per user.
+	Root       layout.Root
+	Version    string
+	Cfg        store.Config
+	MaxDevices int
 	// NoADB (--offline <dir>): browse a dataset read-only; adb is not used
 	// and nothing is recorded, pruned or created.
 	NoADB bool
@@ -117,9 +113,8 @@ func (m *Manager) maintain(ctx context.Context) {
 			}
 		}
 		for _, d := range m.Devices() {
-			d.owner.Refresh() // fallback lock platforms only (not unix, not windows)
+			d.owner.Refresh() // fallback lock platforms only (neither unix nor windows)
 		}
-		m.SyncRoot()
 		m.recheck()
 		if n%6 == 0 {
 			m.MaintainOnce(false)
@@ -232,14 +227,7 @@ func (m *Manager) Start(ctx context.Context) {
 // previously recorded devices are queryable even when offline (a device
 // becomes recorded when it connects and is not owned elsewhere).
 func (m *Manager) loadDirs() {
-	open := map[string]bool{}
-	for _, d := range m.Devices() {
-		open[filepath.Clean(d.Store.Dir)] = true
-	}
 	for _, dir := range store.ListDeviceDirs(m.Base) {
-		if open[filepath.Clean(dir)] {
-			continue // recorded / followed already (after a root switch)
-		}
 		st, err := store.OpenReadOnly(dir, m.Cfg)
 		if err != nil || st.Serial == "" {
 			continue
@@ -389,7 +377,7 @@ func (m *Manager) recheck() {
 		d.mu.RLock()
 		f := d.foreign
 		d.mu.RUnlock()
-		if f != nil && (!m.foreignLive(id, f) || m.ownerMoved(id, d)) {
+		if f != nil && !m.foreignLive(id, f) {
 			retry = append(retry, a)
 		}
 	}
@@ -402,13 +390,6 @@ func (m *Manager) recheck() {
 
 func (m *Manager) foreignLive(id string, f *layout.Owner) bool {
 	return m.Root.OwnerHeld(id)
-}
-
-// ownerMoved reports whether the owner of a followed device now writes
-// another directory than the one d reads (it moved to a new root).
-func (m *Manager) ownerMoved(id string, d *Device) bool {
-	o, held := m.Root.ReadOwner(id)
-	return held && o != nil && o.DataDir != "" && filepath.Clean(o.DataDir) != filepath.Clean(d.Store.Dir)
 }
 
 // Attach is attach for a device whose identity is already known (tests,
@@ -451,8 +432,8 @@ func (m *Manager) collision(id Identity) (string, bool) {
 }
 
 // attach decides who records device id: this process (taking the global
-// owner lock and recording into <base>/v1/<id>) or another one, possibly
-// with a different root (follow its data read-only and report it). Returns
+// owner lock and recording into <base>/v1/<id>) or another one (follow its
+// data read-only and report it). Returns
 // the ID the device is filed under ("" if it is not tracked).
 func (m *Manager) attach(id Identity) string {
 	m.attachMu.Lock()
@@ -460,7 +441,6 @@ func (m *Manager) attach(id Identity) string {
 	if m.NoADB || (m.ctx != nil && m.ctx.Err() != nil) {
 		return "" // --offline never records, follows or creates anything
 	}
-	m.syncRootLocked() // never take ownership into a root that is no longer configured
 	if other, ok := m.collision(id); ok {
 		base := id.ID
 		id.ID = base + "~" + store.SanitizeSerial(id.Addr)
@@ -475,7 +455,7 @@ func (m *Manager) attach(id Identity) string {
 		cur.mu.RLock()
 		f := cur.foreign
 		cur.mu.RUnlock()
-		if cur.Owned() || (f != nil && m.foreignLive(id.ID, f) && !m.ownerMoved(id.ID, cur)) {
+		if cur.Owned() || (f != nil && m.foreignLive(id.ID, f)) {
 			cur.setAddr(id.Addr)
 			return id.ID
 		}
@@ -491,7 +471,7 @@ func (m *Manager) attach(id Identity) string {
 		return id.ID
 	}
 	dir := layout.DeviceDir(m.Base, id.ID)
-	info := layout.Owner{PID: os.Getpid(), Version: m.Version, DataDir: dir, Root: m.Base, Addr: id.Addr, BootID: id.BootID, Since: time.Now().UTC()}
+	info := layout.Owner{PID: os.Getpid(), Version: m.Version, DataDir: dir, Addr: id.Addr, BootID: id.BootID, Since: time.Now().UTC()}
 	lock, other, err := m.Root.AcquireOwner(id.ID, info)
 	if errors.Is(err, layout.ErrOwned) {
 		if other == nil {

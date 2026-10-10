@@ -2,7 +2,7 @@
   "format": "android-log-mcp-report/2",
   "tool": "android-log-mcp",
   "version": "0.3.0",
-  "generated_at": "2026-10-10T20:05:20+08:00",
+  "generated_at": "2026-10-10T20:28:16+08:00",
   "args": [
     "report",
     "--serial",
@@ -10,7 +10,7 @@
     "--since",
     "20m",
     "-o",
-    "/tmp/tmp.DFiffetAUJ/report.zip",
+    "/tmp/tmp.oqXD2pUgPI/report.zip",
     "--note",
     "<omitted>"
   ],
@@ -28,23 +28,23 @@
       "serial": "avd-api29",
       "dir": "avd-api29",
       "zone": "Asia/Kuching",
-      "device_now": "2026-10-10 20:03:36 +0800",
-      "window_from": "2026-10-10 19:43:36.231 +0800",
+      "device_now": "2026-10-10 20:26:31 +0800",
+      "window_from": "2026-10-10 20:06:31.407 +0800",
       "boots": [
         "ccb368e7"
       ],
-      "records_in_window": 254,
-      "records": 254,
-      "first_record": "2026-10-10 19:44:00.026916",
-      "last_record": "2026-10-10 20:03:39.369031",
+      "records_in_window": 242,
+      "records": 242,
+      "first_record": "2026-10-10 20:06:47.122542",
+      "last_record": "2026-10-10 20:26:35.417665",
       "crashes": 0,
-      "procs": 175,
+      "procs": 149,
       "device_info": "live"
     }
   ],
   "limits": {
     "max_bytes": 52428800,
-    "log_bytes": 95057,
+    "log_bytes": 76178,
     "dropped_records": 0,
     "dropped_bytes": 0
   },
@@ -52,22 +52,22 @@
     "enabled": true,
     "placeholder": "[REDACTED:<type>#<n>] — the same value maps to the same n within this report; the mapping key is random and discarded, so values cannot be recovered",
     "hits": {
-      "bank_card": 4,
-      "cookie": 2,
-      "credential": 7,
-      "device_id": 2,
-      "domain": 8,
-      "email": 3,
-      "id_card": 2,
-      "ipv4": 2,
-      "ipv6": 2,
-      "jwt": 2,
-      "mac": 2,
-      "password": 2,
-      "phone": 4,
-      "secret": 8,
-      "token": 2,
-      "url_param": 2
+      "bank_card": 2,
+      "cookie": 1,
+      "credential": 4,
+      "device_id": 1,
+      "domain": 4,
+      "email": 2,
+      "id_card": 1,
+      "ipv4": 1,
+      "ipv6": 1,
+      "jwt": 1,
+      "mac": 1,
+      "password": 1,
+      "phone": 2,
+      "secret": 4,
+      "token": 1,
+      "url_param": 1
     },
     "unique_values": {
       "bank_card": 2,
@@ -110,11 +110,11 @@
   "files": [
     {
       "path": "store/v1/avd-api29/seg-00000000000000000001.jsonl",
-      "bytes": 56157
+      "bytes": 48159
     },
     {
       "path": "devices/avd-api29/logcat/ccb368e7.txt",
-      "bytes": 38900
+      "bytes": 28019
     },
     {
       "path": "store/v1/avd-api29/crashes.jsonl",
@@ -122,7 +122,7 @@
     },
     {
       "path": "store/v1/avd-api29/procs.jsonl",
-      "bytes": 32754
+      "bytes": 27487
     },
     {
       "path": "store/v1/avd-api29/packages.json",
@@ -130,7 +130,7 @@
     },
     {
       "path": "store/v1/avd-api29/meta.json",
-      "bytes": 829
+      "bytes": 680
     },
     {
       "path": "devices/avd-api29/device.json",

@@ -39,13 +39,11 @@ usage:
       env ANDROID_LOG_MCP_CALL_WAIT=5s controls how long to record before the call
   android-log-mcp report [flags]               pack logs + diagnostics into a redacted zip
                                                (android-log-mcp report -h for flags)
-  android-log-mcp root [--json]                print the data root (from %s)
-  android-log-mcp set-root DIR (--keep-old | --delete-old) [--json] [--timeout 150s]
-                                               move the data root for all processes, live
+  android-log-mcp root [--json]                print the data root (fixed: <user cache dir>/android-log-mcp)
   android-log-mcp --offline R/store ...         browse a dataset read-only, e.g. an unzipped report (no adb, no writes)
   android-log-mcp compat [--serial S] [--json]  probe a device for the features this tool needs (read-only)
 
-`, mcpserver.Version, layout.ConfigPath())
+`, mcpserver.Version)
 		flag.PrintDefaults()
 	}
 	for _, a := range os.Args[1:] {
@@ -68,23 +66,21 @@ usage:
 		fmt.Fprintln(os.Stderr, "android-log-mcp: error:", err)
 		os.Exit(2)
 	}
-	if flag.NArg() > 0 && (flag.Arg(0) == "root" || flag.Arg(0) == "set-root") {
-		if *offline != "" {
-			fmt.Fprintln(os.Stderr, "android-log-mcp: --offline is not used with", flag.Arg(0))
+	if flag.NArg() > 0 {
+		switch flag.Arg(0) {
+		case "call", "report", "compat", "root":
+		default: // e.g. set-root: not part of 0.4.0 (#10)
+			fmt.Fprintf(os.Stderr, "android-log-mcp: unknown command %q\n\n", flag.Arg(0))
+			flag.Usage()
 			os.Exit(2)
 		}
-		if flag.Arg(0) == "root" {
-			os.Exit(runRoot(flag.Args()[1:]))
-		}
-		os.Exit(runSetRoot(flag.Args()[1:]))
+	}
+	if flag.NArg() > 0 && flag.Arg(0) == "root" {
+		os.Exit(runRoot(flag.Args()[1:]))
 	}
 	base := *offline
 	if base == "" {
-		var err error
-		if base, err = layout.ConfiguredRoot(); err != nil {
-			fmt.Fprintln(os.Stderr, "android-log-mcp: error:", err)
-			os.Exit(2)
-		}
+		base = layout.DefaultDir() // fixed since 0.4.0 (#10)
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -101,7 +97,6 @@ usage:
 	}
 	m := device.NewManager(base, store.ConfigFromEnv())
 	m.NoADB = *offline != ""
-	m.FollowConfig = !m.NoADB
 	m.Version = mcpserver.Version
 	m.Start(ctx)
 	defer m.Close()

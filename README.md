@@ -196,16 +196,16 @@ android-log-mcp --offline r/store call logcat_crashes '{"package":"com.foo"}'
 
 **打码是基于模式的，不能保证完全**：自定义格式的 token、姓名、地址、不带键名的随机串等识别不了。分享前请先检查 zip 内容；需要时用 `--redact-extra` 追加规则。`--no-redact` 生成的包可能含有 token、密码和个人信息，只应发给可信的人。
 
-## Upgrading to 0.4.0 (storage layout; issues #5, #7, #9)
+## Upgrading to 0.4.0 (storage layout; issues #5, #7, #9, #10)
 
 > **Breaking:** 0.4.0 uses a new data layout. **Old data is neither migrated nor read.** Logs recorded by 0.3 or earlier are not visible in 0.4, and 0.3 report zips cannot be loaded with `--offline`.
 
 - Data now lives in `<user cache dir>/android-log-mcp/v1/<device-id>/` (Linux: `~/.cache/android-log-mcp/v1/…`). The device ID is stable: `ro.serialno` for a physical device (the same over USB and Wi-Fi), `avd-<name>` for an emulator.
 - The old directories `~/.cache/android-log-mcp/<serial>/` (for example `emulator-5554/`) are ignored, not deleted. Delete them yourself when you no longer need them, together with any manual backups such as `~/.cache/android-log-mcp.v1-backup/`.
 - `--offline <dir>` is now the only way to open a dataset read-only, for example an unzipped report: `android-log-mcp --offline r/store`. `--home r/store --offline` no longer works. The report flag that skips adb is now `--no-adb`.
-- **`ANDROID_LOG_MCP_HOME` and `--home` are removed** (issue #9). The data root is now one setting for all processes of the user. Set it with `android-log-mcp set-root <dir> --keep-old|--delete-old` (see [Data root](#data-root-set-root)). If the variable is still set in an MCP client's `env`, or `--home` is in its `args`, the server exits with an error that says so: remove it from the client configuration and run `set-root` once instead.
+- **`ANDROID_LOG_MCP_HOME` and `--home` are removed** (issues #9, #10). The data root is fixed: `<user cache dir>/android-log-mcp` (print it with `android-log-mcp root`). The MCP server takes no directory parameter. If the variable is still set in an MCP client's `env`, or `--home` is in its `args`, the server exits with an error that says so: remove it from the client configuration. A configurable root (`set-root`, moving the data while recording) is planned together with the background service (#3).
 
-简要说明（中文）：0.4.0 换了新的数据目录结构（`v1/<设备ID>/`），**旧数据不会迁移，也不会被读取**；旧的 `~/.cache/android-log-mcp/<serial>/` 目录会被忽略（不删除），不需要的话请手动删除。只读打开数据集（例如解压后的诊断包）只用 `--offline <目录>`；`report` 不用 adb 的开关改名为 `--no-adb`。**`ANDROID_LOG_MCP_HOME` 和 `--home` 已移除**：数据根目录改为所有进程共用的一个设置，用 `android-log-mcp set-root <目录> --keep-old|--delete-old` 修改；MCP 客户端配置里如果还设置了它们，服务器会报错退出，请删掉。
+简要说明（中文）：0.4.0 换了新的数据目录结构（`v1/<设备ID>/`），**旧数据不会迁移，也不会被读取**；旧的 `~/.cache/android-log-mcp/<serial>/` 目录会被忽略（不删除），不需要的话请手动删除。只读打开数据集（例如解压后的诊断包）只用 `--offline <目录>`；`report` 不用 adb 的开关改名为 `--no-adb`。**`ANDROID_LOG_MCP_HOME` 和 `--home` 已移除**：数据根目录固定为 `<用户缓存目录>/android-log-mcp`（用 `android-log-mcp root` 查看）；MCP 客户端配置里如果还设置了它们，服务器会报错退出，请删掉。可配置的根目录（`set-root`）计划随后台服务（#3）一起提供。
 
 ## 升级到 0.3.0
 
@@ -239,54 +239,12 @@ android-log-mcp --offline r/store call logcat_crashes '{"package":"com.foo"}'
 <root>/v1/<device-id>/           device data, format 1 (other vN/ formats are swept like unowned data)
 <root>/run/                      runtime state (state files whose pid is dead or socket is undialable, and orphan sockets, are removed)
 <root>/tmp/                      scratch files, removed after 1 hour
-<root>/.android-log-mcp          marker: this directory is an android-log-mcp data root
-<cache>/android-log-mcp/owners/<device-id>.lock
-                                 owner lock (flock / LockFileEx) + JSON {pid, version, data_dir, root, addr, boot_id, since};
-                                 fixed per user (os.UserCacheDir), whatever the root
-<config>/android-log-mcp/config.json
-                                 {"root": "<dir>"}: the data root of every process (written by set-root)
+<root>/owners/<device-id>.lock  owner lock (flock / LockFileEx) + JSON {pid, version, data_dir, addr, boot_id, since}
 ```
 
-`<root>` is `<cache>/android-log-mcp` (Linux `~/.cache/android-log-mcp`, macOS `~/Library/Caches/android-log-mcp`, Windows `%LocalAppData%\android-log-mcp`) unless `config.json` sets another one. `<config>` is `os.UserConfigDir()`: Linux `~/.config`, macOS `~/Library/Application Support`, Windows `%AppData%`. Anything else under the root, such as pre-0.4 `<serial>/` directories or `legacy/`, is ignored: not read, not counted, not deleted.
+`<root>` is fixed: `<user cache dir>/android-log-mcp` (Linux `~/.cache/android-log-mcp`, macOS `~/Library/Caches/android-log-mcp`, Windows `%LocalAppData%\android-log-mcp`). `android-log-mcp root [--json]` prints it. There is no setting to move it in 0.4; a configurable root is planned with the background service (#3, #10). `--offline <dir>` opens another dataset read-only. Anything else under the root, such as pre-0.4 `<serial>/` directories or `legacy/`, is ignored: not read, not counted, not deleted.
 
-### Data root (`set-root`)
-
-The MCP server takes no directory parameter. Every process of the user reads the data root from `config.json`, so all MCP clients always agree.
-
-```
-android-log-mcp root                          # print the current root (--json for details)
-android-log-mcp set-root /data/alm --keep-old     # move; leave the old root as it is
-android-log-mcp set-root /data/alm --delete-old   # move; delete our data in the old root
-```
-
-- **Exactly one of `--keep-old` / `--delete-old` is required.** There are no prompts.
-  - `--keep-old` prints the old path. It is no longer read or managed: delete it yourself when you no longer need it.
-  - `--delete-old` deletes only android-log-mcp's own structure there (`v<N>/`, `tmp/`, `run/`, the marker), then the old root itself if nothing else is left. Otherwise it lists what remained, for example `owners/` (shared lock dir) or `legacy/` in the default root.
-- **Validation.** The target is resolved to an absolute path. It must be writable, must not be the current root, must not be inside it or contain it, and must be new/empty, the default root, or an existing android-log-mcp root.
-- **Live switch, no restart.** set-root writes `config.json` atomically, with a pending-switch marker.
-  - Every running android-log-mcp process re-reads it on its maintenance tick (every 10 s).
-  - A process that records a device stops its logcat stream, which finishes the current segment. It continues in `<new root>/v1/<device-id>/` in a new segment, resuming with `logcat -T` (the boundary lines are deduplicated, no gap). Sessions, crash records and other device state come along, and the line numbers (seq) continue, so cursors stay valid.
-  - It then acknowledges in its owner lock. The device is never recorded by two processes.
-  - Other processes follow it to the new directory.
-  - set-root waits for every recorder's acknowledgement (`--timeout`, default 150 s), then keeps or deletes the old root. With no recorder running it switches at once.
-- **Timeout.** For example, an MCP client still runs a version without set-root. set-root then exits with status 3 and leaves the old root untouched. New processes already use the new root. Restart that client and run the same command again to finish.
-- **History is not copied.** Logs recorded before the switch stay in the old root (`--keep-old`, not shown any more) or are deleted (`--delete-old`).
-- `--json` gives a machine-readable result. `logcat_status` shows a pending switch.
-- `--offline <dir>` is unrelated: it opens a dataset read-only, whatever the root.
-
-简要说明（中文）：MCP 服务器不接受任何目录参数，数据根目录只来自 `<用户配置目录>/android-log-mcp/config.json`，默认 `<用户缓存目录>/android-log-mcp`。
-- 用 `android-log-mcp root` 查看，用 `android-log-mcp set-root <目录> --keep-old|--delete-old` 修改，两个选项必须且只能选一个。
-- 正在运行的进程不需要重启：约 10 秒内结束当前分段，在新目录里接着录制（`logcat -T` 续录、seq 连续），并在 owner 锁里确认。
-- set-root 等到所有录制进程确认后（最多 150 秒），再保留或删除旧目录。`--delete-old` 只删除本工具自己的 `v<N>/`、`tmp/`、`run/`。
-- 切换前的日志不会复制。
-
-**Device ID** (`device.ResolveID`, probed with one read-only `adb shell` that also reads the boot id):
-1. Emulator (`ro.kernel.qemu=1`, `ro.boot.qemu=1` or serial `emulator-N`): `avd-<name>` from `ro.boot.qemu.avd_name` (API 30+) or `adb emu avd name` (older images). `ro.serialno` is identical on many AVDs and console ports are reused, so neither is used.
-2. Physical device: `ro.serialno` (or `ro.boot.serialno`), unless empty, `unknown` or a placeholder such as `0123456789ABCDEF` / all one character.
-3. Otherwise `fp-` + the first 12 hex digits of sha256(manufacturer|model|android_id); without a readable android_id, sha256(manufacturer|model|fingerprint|adb serial), which then changes with the transport.
-4. Collision: if another device that is connected right now already uses the ID with a different boot id (same AVD started twice with `-read-only`, duplicated serials), this one is filed as `<id>~<adb serial>` (e.g. `avd-api29~emulator-5556`) and `logcat_status` says why. Two connections with the same boot id (USB + Wi-Fi adb) are one device. Trade-off: the suffixed directory follows the adb serial, so that instance's history continues only while it keeps the address; when the first instance is gone, the next instance of that AVD uses the plain ID again (one history per AVD, which is what the ID stands for). Anything instance-specific (boot id, emulator pid) would split the history on every reboot instead.
-
-**Startup sweep and periodic maintenance** (every minute; never in `--offline`): unowned device directories of every format version lose segments older than `ANDROID_LOG_MCP_MAX_AGE` (including their newest one) and are removed once nothing in them is newer; then the total cap removes the oldest segments across everything (each current-format device keeps its newest segment). Directories written by a live process (its owner lock or `writer.lock` is held) are left to that process. A root that was left with `set-root --keep-old` is no longer swept. Only known file names are deleted from device directories.
+**Startup sweep and periodic maintenance** (every minute; never in `--offline`): unowned device directories of every format version lose segments older than `ANDROID_LOG_MCP_MAX_AGE` (including their newest one) and are removed once nothing in them is newer; then the total cap removes the oldest segments across everything (each current-format device keeps its newest segment). Directories written by a live process (its owner lock or `writer.lock` is held) are left to that process. Only known file names are deleted from device directories.
 
 每台设备的数据放在一个子目录里（0.4 起为 `v1/<设备ID>/`），内容包括：
 
@@ -314,9 +272,9 @@ android-log-mcp set-root /data/alm --delete-old   # move; delete our data in the
 - 只读进程（另一个进程在录制）启动时不预读日志，第一次查询时才加载，空闲后再释放。
 - `logcat_status` 的 `memory:` 一行显示当前的缓存占用。
 
-**Several clients at once:** each device is recorded by exactly one process per user. This is decided by `owners/<device-id>.lock` in the fixed per-user owners directory, an OS lock (`flock` on Linux/macOS, `LockFileEx` on Windows) that is released when the process exits. Other processes read the owner's data directory, and `logcat_status` names the owner (pid, version, data directory). When the owner exits, another process takes over within about 10 seconds. All processes use the same data root (`config.json`), and a `set-root` moves all of them while they run.
+**Several clients at once:** each device is recorded by exactly one process per user. This is decided by `owners/<device-id>.lock` in the fixed per-user owners directory, an OS lock (`flock` on Linux/macOS, `LockFileEx` on Windows) that is released when the process exits. Other processes read the owner's data directory, and `logcat_status` names the owner (pid, version, data directory). When the owner exits, another process takes over within about 10 seconds.
 
-**多个客户端同时运行**：同一用户下每台设备只有一个进程负责录制（由固定的每用户目录 `<cache>/android-log-mcp/owners/<设备ID>.lock` 决定，与数据根目录无关），其他进程只读跟随录制者的数据目录，`logcat_status` 会写明录制者的 pid、版本和数据目录。锁是操作系统的文件锁（Linux/macOS 用 `flock`，Windows 用 `LockFileEx`），进程退出时自动释放；录制进程退出后，其他进程约 10 秒内接管。所有进程使用同一个数据根目录（`config.json`），`set-root` 会让它们在运行中一起切换。
+**多个客户端同时运行**：同一用户下每台设备只有一个进程负责录制（由固定的每用户目录 `<cache>/android-log-mcp/owners/<设备ID>.lock` 决定，与数据根目录无关），其他进程只读跟随录制者的数据目录，`logcat_status` 会写明录制者的 pid、版本和数据目录。锁是操作系统的文件锁（Linux/macOS 用 `flock`，Windows 用 `LockFileEx`），进程退出时自动释放；录制进程退出后，其他进程约 10 秒内接管。
 
 ## 已知限制
 

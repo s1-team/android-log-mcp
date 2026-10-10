@@ -14,7 +14,7 @@ import (
 
 // SweepOptions configures Sweep.
 type SweepOptions struct {
-	// Base is the data root (config.json's root, or the default dir).
+	// Base is the data root (the default dir; a test's temp root).
 	Base string
 	// Root names the owners dir (fixed per user) and run/, tmp/; nil =
 	// Root{Dir: Base}, i.e. owners/ under Base.
