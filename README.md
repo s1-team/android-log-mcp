@@ -4,7 +4,7 @@
 
 An MCP (Model Context Protocol) stdio server that gives AI coding agents (Claude Code, Codex CLI, Cursor, …) **read-only** access to Android logcat. It never clears logs, never starts or stops apps (except `report --am-start`, only when you ask) and never changes device settings.
 
-- **Continuous background recording.** One background service per user records every connected device (up to 4 by default) to disk, so history survives restarts and new sessions.
+- **Background recording that starts on use.** One background service per user records devices to disk, so history survives restarts and new sessions. A device is recorded from the first log tool call that uses it, backfilled from its log buffer, and until it has gone unused for the linger time; `android-log-mcp record --for 2h` keeps recording without calls.
 - **Android Studio filter syntax** (`tag:` `message~:` `-package:` `level:` `age:` `is:crash` `|` `&`, parentheses) with strict errors: a parse error gives the column and a fix instead of silently degrading to a substring match, and every response first echoes how the filter was parsed.
 - **Crashes and ANRs** (Java, native/tombstone, ANR) grouped by signature, with ANR traces and tombstones from `dumpsys dropbox` where available.
 - **App launch timelines** (COLD / WARM / HOT, TTID / TTFD) from `START u0`, `am_proc_start`, `am_on_*_called` (API ≤ 29) / `wm_on_*_called` (API ≥ 30), `Displayed` and `Fully drawn`.
@@ -153,13 +153,14 @@ The `exe/` directory holds one binary (about 11 MB), plus renamed copies only wh
 
 | Tool | Purpose | Main parameters |
 |---|---|---|
-| `logcat_status` | Devices, recording state, history range and gaps, the background service (pid, version, root, linger), and a "now" cursor; with `package`, install state and running processes | `device` `package` |
+| `logcat_status` | Starts recording the device (or keeps it recording until now + `record_for`, at most `24h`; `"0"` stops). Devices, recording and backfill state, history range and gaps, the background service (pid, version, root, linger, pins), and a "now" cursor; with `package`, install state and running processes | `device` `package` `record_for` |
 | `logcat_search` | Search logs. `view="lines"` (default) returns lines; `view="summary"` returns counts by level, tag and process, repeated messages, crash count and latest errors | `filter` `package` `tags` `min_level` `from` `to` `limit` `context` `before` `after` `wait_ms` |
 | `logcat_crashes` | Crashes and ANRs grouped by signature. With a single match or an `id`: full details (stack or tombstone, the pid's last 40 lines before the crash; for ANRs the main-thread trace and lock holders) | `package` `kinds` (java/native/anr) `from` `to` `id` `limit` |
 | `logcat_app_launches` | Launch timeline (COLD/WARM/HOT/UNKNOWN), last 30 min by default. Each `+N ms` is when a line was logged relative to the launch request; TTID / TTFD on their own line with their source (`Displayed` or `*_activity_launch_time`) | `package` `from` `to` `limit` |
 
 - **Times:** `from` / `to` accept relative times (`30m`, `2h`), device-local times (`14:05`, `2026-10-10 14:05:00`), ISO 8601 and epoch. All output is in the **device's local time zone**, and responses say which.
-- **Reproducing a bug:** call `logcat_status` for a `cursor`, let the user reproduce, then call `logcat_search(after=cursor, wait_ms=20000)`.
+- **Reproducing a bug:** call `logcat_status` for a `cursor`, let the user reproduce, then call `logcat_search(after=cursor, wait_ms=20000)`. If `logcat_status` says "backfill in progress", call it again: it returns no cursor until the device's log buffer has been read.
+- **Several devices:** a call without `device` uses the single connected device; with several connected, it starts none and lists them.
 
 Filter syntax:
 
@@ -180,7 +181,8 @@ The same key repeated is OR (`tag:A tag:B` = A or B); different keys are AND. Un
 | Command | What it does |
 |---|---|
 | `android-log-mcp` | MCP stdio server (a thin client of the background service, which it starts when needed) |
-| `android-log-mcp call TOOL [JSON]` | Call one tool through the service and print the result. If this call started the service, it first lets it record for 5 s (`ANDROID_LOG_MCP_CALL_WAIT`) |
+| `android-log-mcp call TOOL [JSON]` | Call one tool through the service and print the result (like an MCP call, it starts recording the device and waits up to 10 s for the backfill) |
+| `android-log-mcp record [--device X]... --for 2h` / `--stop` / (no flag) | Keep recording until now + the duration without tool calls or clients (a pin), stop now, or show what is recorded (see [below](#recording-pins-record-and-record_for)); `--json` for scripts |
 | `android-log-mcp report [flags]` | Diagnostic zip (see [below](#diagnostic-reports-and-privacy)); `report -h` lists the flags |
 | `android-log-mcp service [status [--json] \| stop]` | Show or stop the background service; without arguments, run it in the foreground |
 | `android-log-mcp install [--json]` | Copy this binary to a fixed path (`<user cache dir>/android-log-mcp/exe/`) and print it, for MCP clients that run the binary directly (recommended on Windows) |
@@ -194,18 +196,38 @@ The same key repeated is OR (`tag:A tag:B` = A or B); different keys are AND. Un
 ```
 MCP client ─stdio─ android-log-mcp (thin client) ─┐
 MCP client ─stdio─ android-log-mcp (thin client) ─┼─ AF_UNIX socket ─ android-log-mcp service (one per user)
-android-log-mcp call / report / set-root ─────────┘                    records every device, answers every tool call
+android-log-mcp call / report / record / set-root ┘                    records devices in use, answers every tool call
 ```
 
-- **One service per user.** It holds `run/service.lock` in the control directory `<user cache dir>/android-log-mcp`, records all connected devices into the data root and answers all tool calls. Clients never open data files (except `--offline`), so there is one cache, one writer and one sweep however many MCP clients are open.
+- **One service per user.** It holds `run/service.lock` in the control directory `<user cache dir>/android-log-mcp`, records devices into the data root and answers all tool calls. Clients never open data files (except `--offline`), so there is one cache, one writer and one sweep however many MCP clients are open.
 - **Started on demand.** A client that finds no service copies its own binary to `<root>/bin/<version>-<hash>/` (so the npx cache can change while the service runs; the running and at most one other version are kept) and starts it detached. If that is impossible, the client runs the service **in its own process** and serves the same socket for other clients; when it exits, the other clients start a new one. After 3 service exits within a minute a client stops respawning and runs it in-process.
-- **Crash recovery.** If the service dies, every client reconnects on its next call, one of them starts a new service and the call is retried (all tools are read-only). Recording resumes with `logcat -T` and deduplication; anything the device buffer dropped meanwhile is marked as a gap.
-- **Linger.** After the last client disconnects the service keeps recording for `max(10 min, 2 × device log buffer span)`, at most 1 h. The span is how much history the device's `main` buffer holds (the longest of all devices); before it is measured the linger is 10 min. A new client cancels the countdown. `ANDROID_LOG_MCP_LINGER` overrides it (`30m`; `0` = exit with the last client; `forever`). The service reads it when it starts, so set it in the MCP client's `env`. A freshly started service waits at least 30 s for its first client.
+- **Recording starts on use.** An idle service runs no adb at all, not even `adb track-devices`. A device starts being recorded on the first log tool call that uses it (`logcat_status`, `logcat_search`, `logcat_crashes`, `logcat_app_launches`, also through `call`), on `report` and on `record --for`. A call without `device` uses the single connected device; with several connected it starts none and lists them; more than `ANDROID_LOG_MCP_MAX_DEVICES` recorded devices is an error naming the variable.
+- **Backfill.** A newly started device is first read from its log buffer: the whole buffer when nothing of this boot is stored, else from the last stored line (`logcat -T`) with deduplication. Before starting, the service reads the time of the buffer's last line (`logcat -d -t 1`); the backfill has caught up once that line is stored. Every call waits for that at most 10 s; if it has not caught up, the answer starts with "backfill in progress (N lines, earliest …)" and `logcat_status` returns no cursor and asks to call again. If the device clock went back since the last stored line (e.g. an emulator snapshot), the whole buffer is read without `-T`, already stored lines are skipped, and `logcat_status` says so.
+- **Per-device idle stop (linger).** A device stops being recorded when it has had no log tool call for `max(10 min, 2 × the device's log buffer span)`, at most 1 h (10 min until the span is measured). A call that waits (`wait_ms`) counts as use while it waits. Connecting or disconnecting MCP clients plays no role. `ANDROID_LOG_MCP_LINGER` overrides it (`30m`; `0` = stop after each call; `forever`). The service reads it when it starts, so set it in the MCP client's `env`. When the device is used again, recording resumes with `logcat -T` and deduplication; anything the buffer dropped meanwhile is marked as a gap.
+- **Service lifetime.** The service never exits while clients are connected (idle, it runs no adb). It exits 30 s after there are no clients, no active pin and no recorded device.
+- **Crash recovery.** If the service dies, every client reconnects on its next call, one of them starts a new service and the call is retried (all tools are read-only). With an active pin, a connected client restarts it immediately. Devices started by tool calls are not carried over a crash or a version handoff (the next call starts them again); pinned devices are. Recording resumes with `logcat -T` and deduplication; anything the device buffer dropped meanwhile is marked as a gap.
 - **Versions.** A client replaces the service only if the service is **older**: it asks it to hand off, waits for it to stop and starts its own version. A newer service is used as is. Client and service also carry a protocol version: an older client that the newer service still supports works normally (`logcat_status` says so); an incompatible one fails with an error asking you to upgrade and never replaces the newer service.
-- **Visibility.** The client's stderr names the service it uses (pid, version, protocol, root). `logcat_status` starts with `service: … pid N, version V, protocol P` followed by `root:`, `linger:` and `service log:` lines.
+- **Visibility.** The client's stderr names the service it uses (pid, version, protocol, root, recording). `logcat_status` starts with `service: … pid N, version V, protocol P` followed by `root:`, `linger:`, pin and `service log:` lines; `service status` and `record` show each device as recording or idle, its backfill progress, idle deadline and pin.
 - **Local only.** The socket lives in `<control dir>/run/` (0700) and is 0600 on Linux/macOS; the service also checks that the peer runs as the same user (`SO_PEERCRED` / `LOCAL_PEERCRED`). On Windows the run directory and socket get a protected ACL for the current user and SYSTEM only. No TCP and no network listener. Very long socket paths fall back to `/tmp/alm-<uid>/` (`%TEMP%\alm-<hash>\` on Windows).
 - **Service log:** `<root>/log/service.log` (1 MiB plus one rotated copy) and `log/crash.log` for Go runtime crashes; both count towards the total size cap.
-- **adb:** the service runs `adb start-server` outside its own process group and never kills the adb server; its own `adb` children (track-devices, logcat) end with it.
+- **adb:** the service runs `adb start-server` outside its own process group and never kills the adb server; its own `adb` children (track-devices, logcat) end with it, and with the last recorded device.
+
+### Recording pins: `record` and `record_for`
+
+To keep a device recorded without tool calls (e.g. overnight, or while reproducing a bug by hand), pin it:
+
+```bash
+android-log-mcp record --for 2h              # the single connected device; or --device X (repeatable)
+android-log-mcp record                       # what is recorded: recording/idle, backfill, idle deadline, pin
+android-log-mcp record --stop                # stop now and remove the pin
+```
+
+Agents do the same with `logcat_status(record_for="30m")` (`"0"` stops).
+
+- The deadline is `max(current deadline, now + duration)`: a shorter `--for` never shortens it. Durations need a unit (`30m`, `2h`, `1h30m`); at most `24h`, longer is an error. The usual size and disk limits apply.
+- `record --for` starts the service detached when none runs (never in its own process) and returns without waiting for the backfill. `--stop` stops recording at once.
+- Pins are stored in `<control dir>/run/record.json` (format `"v": 1`, written atomically), so they survive a service crash, a version handoff, `set-root` and a machine restart, and they keep the service running until the deadline (it is started again by the next client or `record`). Deadlines more than 24 h ahead are cut to 24 h with a warning; a file with an unknown format version is ignored, never overwritten, and `record --for` refuses until it is removed.
+- **Crash protection.** If the service crashes 3 times within a minute while a pin is active, the pin is suspended (`suspended: crash-loop`). Independently, a pin allows at most 10 automatic restarts per service version (`suspended: crash-budget`). Both are stored, shown with the last error by `record`, `service status` and `logcat_status`, and cleared by a new `record --for`; a newer version taking over gets a fresh budget.
 
 ## Data root and `set-root`
 
@@ -253,9 +275,9 @@ Set them in the MCP client's `env`; recording settings are read by the service w
 |---|---|
 | `ANDROID_LOG_MCP_ADB` | Path to adb |
 | `ANDROID_LOG_MCP_BINARY` | npm launcher only: use this binary instead of the platform package |
-| `ANDROID_LOG_MCP_LINGER` | How long the service keeps recording after the last client: a duration (`30m`; a bare number is seconds), `0` or `forever`. Default `max(10m, 2 × device log buffer span)`, at most `1h` |
-| `ANDROID_LOG_MCP_CALL_WAIT` | `call` only: how long a service that this call started records before the tool runs (default `5s`) |
-| `ANDROID_LOG_MCP_MAX_DEVICES` | Devices recorded at once (default 4) |
+| `ANDROID_LOG_MCP_LINGER` | How long a device keeps being recorded after its last log tool call: a duration (`30m`; a bare number is seconds), `0` (stop after each call) or `forever`. Default `max(10m, 2 × the device's log buffer span)`, at most `1h` |
+| `ANDROID_LOG_MCP_CALL_WAIT` | Deprecated and ignored (a note on stderr): calls wait for the backfill themselves, up to 10 s |
+| `ANDROID_LOG_MCP_MAX_DEVICES` | Devices recorded at once (default 4); starting one more is an error |
 | `ANDROID_LOG_MCP_MAX_AGE` | Retention, default `1d`: a Go duration (`72h`, `90m`) or days (`1d`, `7d`, `1.5d`). Invalid or non-positive values log a warning and use the default. `logcat_status` shows the effective value |
 | `ANDROID_LOG_MCP_MAX_DEVICE_MB` | Per-device cap in MiB (default 512) |
 | `ANDROID_LOG_MCP_MAX_TOTAL_MB` | Cap for everything under the root in MiB (default 2048; `0` = no cap) |
@@ -294,7 +316,7 @@ npx -y android-log-mcp report --package com.foo --am-start com.foo/.MainActivity
 | `--no-adb` | Do not use adb: no live device info or DropBox |
 | `-o FILE` | Output (default `./android-log-mcp-report-<time>.zip`; the path goes to stdout, a summary to stderr) |
 
-The running service builds the report (it has the data and adb); with no service running, the command builds it itself and does not start one. It only reads the data and, apart from `--am-start`, only runs `getprop`, `date`, `cat /proc/sys/kernel/random/boot_id` and `dumpsys dropbox --print` on the device.
+The background service builds the report (it has the data and adb); with no service running, the command starts it detached. The service starts recording the requested devices (with `--serial`, else the single connected one) and backfills their buffers first, waiting at most 10 s; if that is not enough, the manifest warns "backfill incomplete". `--no-adb` and `--offline DIR` use only what is stored. It only reads the data and, apart from `--am-start`, only runs `getprop`, `date`, `cat /proc/sys/kernel/random/boot_id` and `dumpsys dropbox --print` on the device.
 
 | Path in the zip | Content |
 |---|---|
@@ -345,6 +367,14 @@ Values are replaced by `[REDACTED:<type>#n]`. The same original value gets the s
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
 
+### To 0.5.0 (breaking)
+
+- **Recording starts on use.** A device is no longer recorded just because an MCP client is open: it starts with the first log tool call that uses it (backfilled from the device's log buffer) and stops after the linger time without calls. Lines that dropped out of the device's buffer while it was not recorded are not in the history; use `android-log-mcp record --for DURATION` to keep recording without calls.
+- **The service lifetime no longer depends on the linger.** It stays while clients are connected (running no adb when idle) and exits 30 s after there are no clients, no pin and no recorded device. `ANDROID_LOG_MCP_LINGER` now applies per device, counted from its last log tool call; `0` means stop after each call.
+- **`report` starts the service** when none runs, instead of building the report itself.
+- **`ANDROID_LOG_MCP_CALL_WAIT` is deprecated** and ignored with a note: remove it.
+- A 0.5 client takes over an older service as before; a 0.4 client keeps working with a 0.5 service.
+
 ### To 0.4.0 (breaking)
 
 - **Old data is neither migrated nor read.** Data lives in `<user cache dir>/android-log-mcp/v1/<device-id>/`; logs recorded by 0.3 or earlier are not visible, and 0.3 report zips cannot be loaded with `--offline`. The old `~/.cache/android-log-mcp/<serial>/` directories (e.g. `emulator-5554/`) are ignored, not deleted: remove them, and any manual backups, when you no longer need them.
@@ -360,7 +390,9 @@ Full history: [CHANGELOG.md](CHANGELOG.md).
 
 ## Known limitations
 
-- **Recording stops after the linger time.** The service records while a client is connected and for the linger time after. The next start resumes with `logcat -T <last time>` and deduplicates; if the device's ring buffer was overwritten in between, the lost part is a gap shown in `logcat_status` and in search results.
+- **Recording starts on use and stops after the linger time.** A device is recorded from the first log tool call and until it has gone unused for the linger time (or until a pin's deadline). The next call resumes with `logcat -T <last time>` and deduplicates; if the device's ring buffer was overwritten in between, the lost part is a gap shown in `logcat_status` and in search results. Use `record --for` when you need recording without calls.
+- **Slow backfill on emulators.** A TCG emulator can take tens of seconds to dump a full log buffer, so the first call there often answers "backfill in progress"; call `logcat_status` again.
+- **No supervisor for pins without clients.** A pinned service that crashes while no client is connected stays down until the next client, `call`, `report` or `record` starts it (the pin is kept).
 - **`set-root` does not move history** (see above).
 - **Small device ring buffers.** Emulator buffers default to 2 MiB each (`logcat -g`) and can wrap within minutes when busy; what existed before recording started depends on them. Older crashes can only come from DropBox (`logcat_crashes` says so).
 - **No device-side filtering.** API 29 logcat has no `--uid` and accepts one `--pid`, so all buffers (main, system, crash, events) are recorded and package / pid / uid filtering happens on the host.
@@ -460,9 +492,12 @@ android-log-mcp 是一个 MCP stdio 服务器，让 AI agent（Claude Code / Cod
 
 - **安装与配置（两种方式）**：A. **npx**（macOS / Linux 推荐）：MCP 客户端的 command 设为 `npx`，args 为 `["-y", "android-log-mcp"]`；Windows 上每个会话会经过 `npx.cmd` → `cmd.exe` → `node` 三层额外进程，启动较慢；升级时修改 `@版本` 或用 `@latest` 并重启客户端。B. **直接运行原生二进制**（Windows 推荐）：运行 `npx -y android-log-mcp@latest install`，把客户端的 command 设为它打印的绝对路径（Windows：`%LOCALAPPDATA%\android-log-mcp\exe\android-log-mcp.exe`），args 留空；没有 Node.js 时可从 GitHub Release 下载对应平台的 tgz 并解压出 `package/bin/` 下的二进制；升级时再运行一次 `install` 并重启客户端。Windows 需要 **Windows 10 1803 / Server 2019 及以上**。
 - **工具**：`logcat_status`、`logcat_search`（Android Studio 过滤语法，严格报错）、`logcat_crashes`（Java / native / ANR 按签名分组）、`logcat_app_launches`（冷 / 温 / 热启动时间线）。所有时间都是设备本地时区。
-- **后台服务（0.4 起）**：每个用户只有一个后台服务负责录制所有设备并回答所有工具调用；MCP 客户端启动的进程只是薄客户端，需要时自动启动服务。服务崩溃后客户端自动重连并重启它；新版客户端会替换旧版服务，旧版客户端在协议兼容时直接使用新版服务。最后一个客户端关闭后服务还会继续录制 `max(10 分钟, 2 × 设备日志缓冲区跨度)`，最多 1 小时（`ANDROID_LOG_MCP_LINGER` 可调）。`android-log-mcp service status|stop` 查看或停止。只使用本机 AF_UNIX socket（仅当前用户可访问），没有网络监听。
+- **后台服务（0.4 起）**：每个用户只有一个后台服务负责录制设备并回答所有工具调用；MCP 客户端启动的进程只是薄客户端，需要时自动启动服务。服务崩溃后客户端自动重连并重启它；新版客户端会替换旧版服务，旧版客户端在协议兼容时直接使用新版服务。`android-log-mcp service status|stop` 查看或停止。只使用本机 AF_UNIX socket（仅当前用户可访问），没有网络监听。
+- **按需录制（0.5 起）**：服务空闲时不运行任何 adb；某台设备第一次被日志工具调用（含 `call`、`report`、`record`）时才开始录制，并先从设备缓冲区回填（最多等 10 秒；没追上时回答以 "backfill in progress" 开头，`logcat_status` 不返回游标，请再调用一次）。每台设备在最后一次调用之后 `max(10 分钟, 2 × 该设备日志缓冲区跨度)`（最多 1 小时，`ANDROID_LOG_MCP_LINGER` 可调）停止录制；客户端连接与否不影响录制。有客户端连接时服务不退出；没有客户端、没有保持录制、没有正在录制的设备时 30 秒后退出。连接多台设备且没有指定 `device` 时不启动任何设备。
+- **保持录制**：`android-log-mcp record --for 2h`（不需要工具调用也持续录制，单次最多 24 小时，截止时间只会延后）、`record --stop`（立即停止）、`record`（查看状态）；agent 用 `logcat_status(record_for="30m")`。保存在 `run/record.json`，崩溃、版本切换、`set-root` 和重启后仍然有效；1 分钟内崩溃 3 次或同一版本自动重启超过 10 次会暂停（显示原因和最后的错误），新的 `record --for` 清除暂停。
 - **数据根目录**：默认 `<用户缓存目录>/android-log-mcp`（`android-log-mcp root` 查看）；用 `android-log-mcp set-root <绝对路径> --keep-old|--delete-old` 为所有客户端统一切换，失败会回滚；切换前的历史留在旧目录里，不再被查询。
 - **上限**：每台设备保留 1 天、最多 512 MiB；整个根目录最多 2 GiB；剩余磁盘低于 512 MiB 时暂停录制。
-- **诊断包**：`android-log-mcp report` 生成 zip，默认打码 token、密码、邮箱、手机号、身份证、银行卡、设备 ID、IP、MAC、域名等；打码基于模式，分享前请检查。
+- **诊断包**：`android-log-mcp report` 生成 zip（没有服务时会以 detached 方式启动服务并先回填），默认打码 token、密码、邮箱、手机号、身份证、银行卡、设备 ID、IP、MAC、域名等；打码基于模式，分享前请检查。
+- **升级到 0.5.0（破坏性变更）**：录制改为按需开始、空闲后停止；未录制期间被设备缓冲区覆盖的日志不会出现在历史里，需要时用 `record --for`。`ANDROID_LOG_MCP_LINGER` 改为按设备、从最后一次日志工具调用开始计时；`report` 会启动服务；`ANDROID_LOG_MCP_CALL_WAIT` 已弃用并被忽略。
 - **升级到 0.4.0（破坏性变更）**：旧数据不迁移、不读取（旧 `<serial>/` 目录被忽略，请手动删除）；移除 `ANDROID_LOG_MCP_HOME` 和 `--home`（仍设置时会报错退出）；开发版遗留的 `owners/` 目录会被自动删除。升级到 0.3.0 时默认保留期从 7 天改为 1 天。
 - 变更历史见 [CHANGELOG.md](CHANGELOG.md)。

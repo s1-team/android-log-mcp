@@ -7,9 +7,10 @@
 # `adb shell log -t LeakTest …`, waits until the recorder stored them, builds a
 # report, and verifies: no secret survives anywhere in the zip; every LeakTest
 # line keeps its time/pid/tid/level/tag; the report loads back offline.
-# The background service records SERIAL; `call logcat_status` starts it if
-# none runs (it then stays for its linger time). The report is built by the
-# service.
+# The background service records SERIAL: `call logcat_status` starts the
+# service if none runs and starts recording SERIAL (issue #11: recording
+# starts on use and stops after the device's linger time). The report is
+# built by the service.
 # Read-only for the device apart from the injected log lines.
 set -euo pipefail
 
@@ -23,7 +24,7 @@ trap 'rm -rf "$WORK"' EXIT
 BIN="$WORK/android-log-mcp"
 (cd "$ROOT/server" && go build -o "$BIN" ./cmd/android-log-mcp)
 # make sure the service runs (and records SERIAL), then use its data root
-ANDROID_LOG_MCP_CALL_WAIT=10s "$BIN" call logcat_status >/dev/null 2>"$WORK/call.log" || { cat "$WORK/call.log" >&2; exit 1; }
+"$BIN" call logcat_status "{\"device\":\"$SERIAL\"}" >/dev/null 2>"$WORK/call.log" || { cat "$WORK/call.log" >&2; exit 1; }
 HOME_DIR="$("$BIN" root 2>/dev/null)"
 "$ADB" -s "$SERIAL" get-state >/dev/null
 

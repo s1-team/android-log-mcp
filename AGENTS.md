@@ -59,8 +59,10 @@ Repository artifacts (docs, issues, commit messages, release notes) are **Englis
   - Go: every package whose tests create a `device.Manager`, start a service or call `layout.DefaultDir` has `func TestMain(m *testing.M) { os.Exit(testhome.Run(m)) }` (`internal/testhome` points `XDG_CACHE_HOME`, `HOME`, `LocalAppData` at a temp dir). Multi-process tests in `cmd/android-log-mcp` give every child its own cache dir with `isoEnv` (and a nonexistent `ANDROID_LOG_MCP_ADB`, or the fake adb of `fakeADBEnv`); the spawned service inherits it.
   - Shell / manual runs: redirect the whole per-user cache dir, which moves the control dir, the service and the default root: Linux `XDG_CACHE_HOME=/tmp/x`, macOS `HOME=/tmp/x`, Windows `LocalAppData=C:\tmp\x`. Stop such a test service with the same environment (`… android-log-mcp service stop`).
   - Read-only checks of a dataset: `--offline <dir>` (in-process; never talks to the service, never records, prunes or creates files).
-  - Live checks against the real service on the dev box: `scripts/service-e2e.sh` and `scripts/e2e-report.sh` (they use the real control dir on purpose; `service-e2e.sh` switches the root and back).
+  - Live checks on the dev box: `scripts/service-e2e.sh` and `scripts/e2e-report.sh` use the per-user control dir of their environment (`service-e2e.sh` kills the service and switches the root and back), so run them with `XDG_CACHE_HOME` / `HOME` pointing at a scratch directory unless you mean to test the real service.
+  - Fake adb: `internal/fakeadb` is a scriptable adb (devices, log buffers, `date`, per-line delay, an invocation log) for unit and multi-process tests; use it to assert which adb commands run.
 - **Start every child process as `procattr.Hide(exec.Command…(…))`** (`server/internal/procattr`). On Windows anything else opens a console window for each adb call; `TestEveryChildIsHidden` fails the build otherwise.
+- **An idle service runs no adb.** Recording starts on use (issue #11): any new code path that runs adb in the service must go through a device that a log tool call, `report` or a pin started (`Manager.Want` / `mcpserver` `use`), and must stop with it. Tests in `device/lazy_test.go` and `cmd/android-log-mcp/lazy_test.go` assert that an idle service makes no adb call.
 - **Never kill the adb server** (`adb kill-server`, or killing its process) in code, tests or scripts: other tools and the user depend on it. The service starts it outside its own process group and only its own `adb` children end with it.
 - **Packaging:** run `scripts/build-npm.sh [VERSION] [--pack]`. CI runs the npx smoke tests on every Node version in the matrix.
 
@@ -82,5 +84,6 @@ Repository artifacts (docs, issues, commit messages, release notes) are **Englis
 - 版本规则：1.0 之前，破坏性变更升 minor 版本，并附升级说明；1.0 之后升 major 版本。
 - 语言：仓库产出物英文为主，中文为辅。
 - 安全：开发机上禁止启动 KVM 模拟器，也不要碰 `/dev/kvm`。
-- 测试隔离：后台服务、控制目录（`os.UserCacheDir()/android-log-mcp`：`run/`、socket、`config.json`）和默认数据根目录都是每用户固定的，测试绝不能碰真实用户的这些东西。Go 测试用 `testhome.Run` 的 TestMain，多进程测试用 `isoEnv`；手动运行用 `XDG_CACHE_HOME`（Linux）/ `HOME`（macOS）/ `LocalAppData`（Windows）把整个缓存目录指向临时目录。只读查看数据集用 `--offline <目录>`。
+- 测试隔离：后台服务、控制目录（`os.UserCacheDir()/android-log-mcp`：`run/`、socket、`config.json`）和默认数据根目录都是每用户固定的，测试绝不能碰真实用户的这些东西。Go 测试用 `testhome.Run` 的 TestMain，多进程测试用 `isoEnv`；手动运行用 `XDG_CACHE_HOME`（Linux）/ `HOME`（macOS）/ `LocalAppData`（Windows）把整个缓存目录指向临时目录。只读查看数据集用 `--offline <目录>`。`scripts/service-e2e.sh` / `e2e-report.sh` 也要这样隔离，除非就是要测真实服务。`internal/fakeadb` 是可编程的假 adb，用来断言运行了哪些 adb 命令。
+- 空闲的服务不运行任何 adb：录制按需开始（#11），服务里新增的 adb 调用必须属于已被工具调用、`report` 或 pin 启动的设备，并随它停止。
 - 绝不要杀 adb server。

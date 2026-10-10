@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** recording starts on use ([#11](https://github.com/s1crab/android-log-mcp/issues/11)). An idle background service runs no adb at all. A device starts being recorded on the first log tool call that uses it (`logcat_status`, `logcat_search`, `logcat_crashes`, `logcat_app_launches`, also via `call`), on `report` and on `record --for`, and is first backfilled from its log buffer: calls wait up to 10 s for that and otherwise say "backfill in progress"; `logcat_status` then returns no cursor and asks to be called again. With several devices connected and no `device`, nothing is started and the devices are listed; exceeding `ANDROID_LOG_MCP_MAX_DEVICES` is an error. Upgrade notes: [README › Upgrading › To 0.5.0](README.md#to-050-breaking).
+- **Breaking:** recording of a device stops after its own idle time since its last log tool call (`ANDROID_LOG_MCP_LINGER`, default `max(10m, 2 × the device's log buffer span)`, at most `1h`; `0` = after each call); a call that waits with `wait_ms` counts as use. Clients connecting or disconnecting no longer affect recording. The service no longer exits after the linger: it stays while clients are connected and exits 30 s after there are no clients, no pin and no recorded device.
+- **Breaking:** `report` starts the background service (detached) when none runs, starts recording the requested devices and backfills them (up to 10 s; otherwise the manifest warns "backfill incomplete"), instead of building the report in its own process.
+- `set-root` keeps the started devices, their idle timers and pins. Service protocol 2 (adds `record`); 0.4 clients keep working.
+
+### Added
+
+- `android-log-mcp record [--device X]... --for DURATION`, `record --stop` and `record` (state; `--json`): keep a device recorded without tool calls or clients until a deadline (at most 24 h, never shortened), stop it now, or show each device's recording, backfill, idle deadline and pin. `--for` starts the service detached when none runs. Agents use `logcat_status(record_for="30m")` (`"0"` stops).
+- Pins are stored in `<control dir>/run/record.json` and survive crashes, version handoffs, `set-root` and restarts. A connected client restarts a crashed service at once while a pin is active. A pin is suspended after 3 crashes within a minute (`crash-loop`) or more than 10 automatic restarts per service version (`crash-budget`), shown with the last error and cleared by a new `record --for`.
+- `logcat_status`, `service status`, `root --json` and the client's stderr line show per device whether it is recorded or idle, the backfill progress, the idle deadline and pins.
+
+### Deprecated
+
+- `ANDROID_LOG_MCP_CALL_WAIT` is ignored with a note on stderr: calls wait for the backfill themselves.
+
+### Fixed
+
+- Recording resumes without losing or duplicating lines after the device clock went back (e.g. an emulator snapshot restore): the buffer is read without `-T` and already stored lines are skipped; `logcat_status` reports it.
+
 ## [0.4.1] - 2026-10-10
 
 ### Added

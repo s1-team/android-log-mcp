@@ -13,8 +13,16 @@ default data root (this is the manual live check, not a unit test):
  3. set-root NEWROOT --keep-old, then back with --delete-old, with
     `log -t ALMCHECK` markers around each switch: every marker is recorded
     exactly once across the roots (no gap, no duplicate);
- 4. linger: with ANDROID_LOG_MCP_LINGER=5s the service exits 5 s after the
-    last client; the default is reported by logcat_status.
+ 4. lifetime (issue #11): with ANDROID_LOG_MCP_LINGER=5s the device stops
+    being recorded 5 s after its last log tool call although the client
+    stays connected, and the service stays; once the client left, the
+    service exits 30 s (ExitGrace) later; the default linger is reported;
+ 5. record: `record --for 20s` with no service starts it detached and
+    records without clients or calls; when the pin ends the device stops
+    (linger 1s) and the service exits.
+
+Set HOME / XDG_CACHE_HOME to a scratch directory to keep this away from
+the real service.
 """
 import json, os, re, shutil, signal, subprocess, sys, time, uuid
 
@@ -208,7 +216,7 @@ log("default root after switching back:", c_back)
 check(c_back[m5] == 0, "boundary line of the new root not stored again after switching back")
 check(c_back[m1] == c_back[m2] == c_back[m3] == c_back[m6] == 1 and c_back[m4] == 0, "default root keeps its history; new-root history is not in it (as documented)")
 
-# 4. linger
+# 4. lifetime: per-device linger; the service lives while clients are connected
 a.close()
 b.close()
 code, out, _ = cli("service", "stop")
@@ -217,18 +225,47 @@ s = Session("L", {"ANDROID_LOG_MCP_LINGER": "5s"})
 pl, tl = s.service_pid()
 lingerline = [l for l in tl.splitlines() if l.startswith("linger:")]
 log("linger line:", lingerline)
+check(bool(re.search(r"^    recording", tl, re.M)), "logcat_status started recording")
+t0 = time.time()
+stopped = False
+while time.time() - t0 < 30:
+    code, out, _ = cli("record", "--json")
+    devs = json.loads(out).get("devices") or []
+    if not any(d.get("recording") for d in devs):
+        stopped = True
+        break
+    time.sleep(0.5)
+check(stopped and 4 <= time.time() - t0 <= 12, f"device stopped {time.time() - t0:.1f}s after the last call (linger 5s) with the client connected")
+time.sleep(3)
+check(alive(pl), f"service {pl} stays while the client is connected")
 s.close()
 t0 = time.time()
-gone = wait_gone(pl, 30)
-check(gone and 4 <= time.time() - t0 <= 15, f"service {pl} exited {time.time() - t0:.1f}s after the last client (linger 5s)")
+gone = wait_gone(pl, 60)
+check(gone and 25 <= time.time() - t0 <= 45, f"service {pl} exited {time.time() - t0:.1f}s after the last client (ExitGrace 30s)")
 d = Session("D")
 pd, td = d.service_pid()
 dl = [l for l in td.splitlines() if l.startswith("linger:")]
 log("default linger line:", dl)
-check(bool(dl) and dl[0].startswith("linger: ") and "default: max(10m0s, 2 × device log buffer span" in dl[0], "default linger reported")
+check(bool(dl) and "default: max(10m0s, 2 × the device's log buffer span" in dl[0], "default linger reported")
 d.close()
 code, out, _ = cli("service", "stop")
 log("service stop:", out.strip())
+wait_gone(pd, 30)
+
+# 5. record --for without clients
+code, out, err = cli("record", "--device", serial, "--for", "20s", env={"ANDROID_LOG_MCP_LINGER": "1s"})
+log("record --for 20s:", out.strip(), err.strip())
+code2, out2, _ = cli("service", "status", "--json")
+pr = json.loads(out2).get("pid", 0) if code2 == 0 else 0
+check(code == 0 and "pinned until" in out and pr > 0, f"record --for started service {pr} detached")
+m7 = marker(7)
+time.sleep(10)
+code, out, _ = cli("record")
+check("recording" in out and "pinned until" in out, "recording without clients or calls while pinned")
+gone = wait_gone(pr, 90)
+check(gone, f"service {pr} exited after the pin ended")
+code, out, _ = cli("--offline", default_root, "call", "logcat_search", json.dumps({"tags": ["ALMCHECK"], "from": "1h", "limit": 50}))
+check(m7 in out, "marker logged during the pin was recorded")
 
 print()
 print("RESULT:", "OK" if not failures else "FAILED: " + "; ".join(failures))
