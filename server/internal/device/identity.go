@@ -17,6 +17,9 @@ type Identity struct {
 	Source string // how ID was derived (see ResolveID)
 	Addr   string // adb serial it was probed through
 	BootID string
+	// Collision explains a disambiguated ID (another connected device
+	// already uses the plain ID); empty normally.
+	Collision string
 }
 
 // identity properties read by ProbeIdentity

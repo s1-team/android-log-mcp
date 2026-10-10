@@ -32,7 +32,8 @@ type Device struct {
 
 	addr    string
 	foreign *layout.Owner     // set: another process records this device; never record
-	owner   *layout.OwnerLock // held while this process owns the device
+	owner   *layout.OwnerLock // held while this process owns the device; only then it records
+	idNote  string            // why the ID was disambiguated (collision), if it was
 
 	mu         sync.RWMutex
 	state      string // adb state ("" = not attached)
@@ -202,11 +203,15 @@ type Status struct {
 	// Owner is set when another android-log-mcp process (possibly with a
 	// different ANDROID_LOG_MCP_HOME, or an older version) records the device.
 	Owner *layout.Owner
+	// Owned: this process holds the device's owner lock (and records it).
+	Owned bool
+	// IDNote explains a disambiguated device ID (ID collision).
+	IDNote string
 }
 
 func (d *Device) Status() Status {
 	d.mu.RLock()
-	s := Status{State: d.state, Recording: d.recording, LastErr: d.lastErr, Owner: d.foreign}
+	s := Status{State: d.state, Recording: d.recording, LastErr: d.lastErr, Owner: d.foreign, Owned: d.owner != nil, IDNote: d.idNote}
 	d.mu.RUnlock()
 	s.Writer = d.Store.IsWriter()
 	if s.Writer && s.State == "device" {
@@ -333,9 +338,13 @@ func (d *Device) probe(ctx context.Context) error {
 		d.mu.Unlock()
 	}
 	d.mu.Lock()
+	changed := d.bootID != l[5]
 	d.bootID = l[5]
 	off := d.offset
 	d.mu.Unlock()
+	if changed && l[5] != "" {
+		d.owner.Update(func(o *layout.Owner) { o.BootID = l[5] })
+	}
 	d.Store.UpdateMeta(func(m *store.Meta) {
 		m.Model, m.Release, m.SDK, m.TZ, m.TZOffset, m.ClockOffsetNs = l[0], l[1], l[2], l[3], l[4], int64(off)
 		m.ClockHostNs = time.Now().UnixNano()
@@ -348,9 +357,11 @@ func (d *Device) run(ctx context.Context) {
 	backoff := time.Second
 	for ctx.Err() == nil {
 		d.mu.RLock()
-		foreign := d.foreign != nil
+		mayRecord := d.owner != nil && d.foreign == nil
 		d.mu.RUnlock()
-		if foreign || (!d.Store.IsWriter() && !d.Store.TryPromote()) {
+		// only the holder of the global owner lock records (a follower, a
+		// read-only process or a device over the recording limit never does)
+		if !mayRecord || (!d.Store.IsWriter() && !d.Store.TryPromote()) {
 			// another android-log-mcp process records this device; we follow its files
 			d.mu.Lock()
 			d.recording = false

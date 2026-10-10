@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -84,18 +85,147 @@ func TestOwnershipAcrossHomes(t *testing.T) {
 		t.Fatal("follower started recording")
 	}
 
-	// owner exits: the other process may take over (into its own home)
+	// owner exits: a process with a custom HOME still never records
 	m1.Close()
 	m2.Attach(id)
 	d3 := m2.Get("avd-a")
-	if d3 == nil || !d3.Owned() || d3.Status().Owner != nil {
-		t.Fatal("no takeover after the owner exited")
+	if d3 != nil && (d3.Owned() || d3.Store.IsWriter()) {
+		t.Fatal("custom-HOME process took over recording")
 	}
-	if d3.Store.Dir != layout.DeviceDir(homeB, "avd-a") {
-		t.Fatalf("takeover writes %s", d3.Store.Dir)
+	if m2.Root.OwnerHeld("avd-a") {
+		t.Fatal("custom-HOME process took the owner lock")
 	}
-	if o, held := m2.Root.ReadOwner("avd-a"); !held || o == nil || o.Home != homeB {
-		t.Fatalf("owner lock after takeover: %+v %v", o, held)
+	if _, err := os.Stat(layout.DeviceDir(homeB, "avd-a")); err == nil {
+		t.Fatal("custom HOME got a data directory")
+	}
+}
+
+// Strict HOME: a device nobody records is still not recorded by a process
+// with ANDROID_LOG_MCP_HOME set; it creates nothing in the root or HOME.
+func TestCustomHomeNeverRecords(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "root") // not created: read-only must not create it
+	home := t.TempDir()
+	m := NewManager(home, store.Config{IdleRelease: -1})
+	m.Root = layout.Root{Dir: root}
+	m.ctx = context.Background()
+	t.Cleanup(m.Close)
+	if !m.HomeReadOnly() || !strings.Contains(m.ReadOnlyReason(), "never records") {
+		t.Fatalf("reason %q", m.ReadOnlyReason())
+	}
+	m.Attach(Identity{ID: "avd-free", Source: "avd_name", Addr: "emulator-5554", BootID: "b1"})
+	if d := m.Get("avd-free"); d != nil && (d.Owned() || d.Store.IsWriter()) {
+		t.Fatal("unowned device recorded under a custom HOME")
+	}
+	m.MaintainOnce(true)
+	for _, p := range []string{root, layout.DeviceDir(home, "avd-free")} {
+		if _, err := os.Stat(p); err == nil {
+			t.Fatalf("read-only process created %s", p)
+		}
+	}
+	// existing HOME data (e.g. an unzipped report) is shown read-only and the
+	// recorder loop never promotes it, even when the device is online
+	st, _ := store.OpenDir(layout.DeviceDir(home, "avd-old"), "avd-old", store.Config{IdleRelease: -1}, true)
+	st.Append(recs(3, time.Now().UnixNano(), "b"))
+	st.Close()
+	m.Attach(Identity{ID: "avd-old", Source: "avd_name", Addr: "emulator-5556", BootID: "b2"})
+	d := m.Get("avd-old")
+	if d == nil || d.Owned() || d.Store.LastSeq() != 3 {
+		t.Fatalf("HOME data not shown read-only: %+v", d)
+	}
+	d.adb = &ADB{Path: "/nonexistent"}
+	ctx, cancel := context.WithCancel(context.Background())
+	go d.run(ctx)
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	if d.Store.IsWriter() {
+		t.Fatal("read-only device promoted to writer")
+	}
+}
+
+// Same ID on two connected devices with different boots (e.g. one AVD
+// launched twice with -read-only): never one directory.
+func TestIDCollisionGetsOwnDirectory(t *testing.T) {
+	root := t.TempDir()
+	m := testManager(t, root, root)
+	m.states = map[string]string{"emulator-5554": "device", "emulator-5556": "device"}
+	first := m.Attach(Identity{ID: "avd-x", Source: "avd_name", Addr: "emulator-5554", BootID: "boot-A"})
+	second := m.Attach(Identity{ID: "avd-x", Source: "avd_name", Addr: "emulator-5556", BootID: "boot-B"})
+	if first != "avd-x" || second != "avd-x~emulator-5556" {
+		t.Fatalf("ids %q %q", first, second)
+	}
+	d1, d2 := m.Get("avd-x"), m.Get(second)
+	if d1 == nil || d2 == nil || d1 == d2 || d1.Store.Dir == d2.Store.Dir || !d1.Owned() || !d2.Owned() {
+		t.Fatal("colliding devices share a directory or are not both recorded")
+	}
+	if n := d2.Status().IDNote; !strings.Contains(n, "already used by another connected device (adb emulator-5554") {
+		t.Fatalf("note %q", n)
+	}
+	if d1.Status().IDNote != "" {
+		t.Fatal("first device got a note")
+	}
+	// re-attaching either keeps its directory
+	if again := m.Attach(Identity{ID: "avd-x", Source: "avd_name", Addr: "emulator-5554", BootID: "boot-A"}); again != "avd-x" {
+		t.Fatalf("first re-attach -> %q", again)
+	}
+}
+
+// The same device over USB and Wi-Fi at once (same boot) is one device.
+func TestSameDeviceTwoTransportsIsNotACollision(t *testing.T) {
+	root := t.TempDir()
+	m := testManager(t, root, root)
+	m.states = map[string]string{"R58M123ABCD": "device", "192.168.1.20:5555": "device"}
+	a := m.Attach(Identity{ID: "R58M123ABCD", Source: "ro.serialno", Addr: "R58M123ABCD", BootID: "boot-1"})
+	b := m.Attach(Identity{ID: "R58M123ABCD", Source: "ro.serialno", Addr: "192.168.1.20:5555", BootID: "boot-1"})
+	if a != b || len(m.Devices()) != 1 {
+		t.Fatalf("ids %q %q, %d devices", a, b, len(m.Devices()))
+	}
+}
+
+// A reboot (new boot id) or a reconnect on another port after the old
+// address went away is the same device, not a collision.
+func TestRebootOrReconnectIsNotACollision(t *testing.T) {
+	root := t.TempDir()
+	m := testManager(t, root, root)
+	m.states = map[string]string{"emulator-5554": "device"}
+	m.Attach(Identity{ID: "avd-x", Source: "avd_name", Addr: "emulator-5554", BootID: "boot-A"})
+	if id := m.Attach(Identity{ID: "avd-x", Source: "avd_name", Addr: "emulator-5554", BootID: "boot-A2"}); id != "avd-x" {
+		t.Fatalf("reboot -> %q", id)
+	}
+	m.states = map[string]string{"emulator-5560": "device"} // 5554 gone
+	if id := m.Attach(Identity{ID: "avd-x", Source: "avd_name", Addr: "emulator-5560", BootID: "boot-B"}); id != "avd-x" {
+		t.Fatalf("reconnect -> %q", id)
+	}
+	if len(m.Devices()) != 1 {
+		t.Fatalf("%d devices", len(m.Devices()))
+	}
+}
+
+// Across processes: the owner lock carries the boot id, so a second process
+// seeing another instance of the same AVD files it separately instead of
+// following the first instance's data.
+func TestIDCollisionAcrossProcesses(t *testing.T) {
+	root := t.TempDir()
+	m1 := testManager(t, root, root)
+	m1.states = map[string]string{"emulator-5554": "device"}
+	m1.Attach(Identity{ID: "avd-x", Source: "avd_name", Addr: "emulator-5554", BootID: "boot-A"})
+	if o, _ := m1.Root.ReadOwner("avd-x"); o == nil || o.BootID != "boot-A" {
+		t.Fatalf("owner info %+v", o)
+	}
+	m2 := testManager(t, root, root)
+	m2.states = map[string]string{"emulator-5554": "device", "emulator-5556": "device"}
+	if id := m2.Attach(Identity{ID: "avd-x", Source: "avd_name", Addr: "emulator-5556", BootID: "boot-B"}); id != "avd-x~emulator-5556" {
+		t.Fatalf("second instance -> %q", id)
+	}
+	d := m2.Get("avd-x~emulator-5556")
+	if d == nil || !d.Owned() || d.Store.Dir != layout.DeviceDir(root, "avd-x~emulator-5556") {
+		t.Fatal("second instance not recorded in its own directory")
+	}
+	// the first instance, seen from m2, is followed (same boot): no collision
+	if id := m2.Attach(Identity{ID: "avd-x", Source: "avd_name", Addr: "emulator-5554", BootID: "boot-A"}); id != "avd-x" {
+		t.Fatalf("first instance from m2 -> %q", id)
+	}
+	if f := m2.Get("avd-x"); f == nil || f.Owned() || f.Status().Owner == nil {
+		t.Fatal("first instance not followed in m2")
 	}
 }
 

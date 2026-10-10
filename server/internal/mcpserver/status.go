@@ -137,8 +137,8 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 		devs = []*device.Device{d}
 	}
 	fmt.Fprintf(&b, "store: %s (data in %s/<device-id>)\n", t.M.Base, filepath.Base(store.DataDir(t.M.Base)))
-	if !t.M.NoADB && filepath.Clean(t.M.Base) != filepath.Clean(t.M.Root.Dir) {
-		fmt.Fprintf(&b, "owner locks: %s (ANDROID_LOG_MCP_HOME is set: devices recorded by another process are only read)\n", t.M.Root.Owners())
+	if t.M.HomeReadOnly() {
+		fmt.Fprintf(&b, "mode: %s\n", t.M.ReadOnlyReason())
 	}
 	fmt.Fprintf(&b, "devices (%d):\n", len(devs))
 	known := map[string]bool{}
@@ -171,10 +171,14 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 			rec = fmt.Sprintf("NOT recorded by this process: an older android-log-mcp (pid %d, pre-0.4 flat layout) records it into %s; this process only reads that data. Quit/upgrade the old one and this process takes over (data is migrated).", st.Owner.PID, st.Owner.DataDir)
 		case st.Owner != nil:
 			rec = "NOT recorded by this process: owned by another android-log-mcp process (" + st.Owner.String() + "); this process only reads that data"
+		case t.M.HomeReadOnly():
+			rec = "NOT recorded: this process is read-only (ANDROID_LOG_MCP_HOME/--home is set) and never records; showing data from " + d.Store.Dir
 		case st.Paused != "":
 			rec = st.Paused
 		case st.Recording:
 			rec = "recording (this process)"
+		case st.State == "device" && !st.Owned && !t.M.NoADB:
+			rec = fmt.Sprintf("NOT recorded: recording limit of %d devices reached (ANDROID_LOG_MCP_MAX_DEVICES)", t.M.MaxDevices)
 		case st.State == "device" && !st.Writer:
 			rec = "recorded by another android-log-mcp process"
 			if st.WriterPID != "" {
@@ -191,6 +195,9 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 			rec += "; last error: " + st.LastErr
 		}
 		fmt.Fprintf(&b, "    %s\n", rec)
+		if st.IDNote != "" {
+			fmt.Fprintf(&b, "    note: %s\n", st.IDNote)
+		}
 		line := ""
 		if st.State == "device" {
 			line = "device time now: " + d.Now().Format("2006-01-02 15:04:05")
@@ -239,6 +246,8 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 			fmt.Fprintf(&b, "  %s  %s  (not recorded: ", s, stt)
 			if stt == "unauthorized" {
 				b.WriteString("accept the \"Allow USB debugging\" prompt on the phone)\n")
+			} else if stt == "device" && t.M.HomeReadOnly() {
+				fmt.Fprintf(&b, "this process is read-only because ANDROID_LOG_MCP_HOME/--home is set; nobody records it — run android-log-mcp without it)\n")
 			} else if stt == "device" && t.M.AddrOf(s) == "" {
 				b.WriteString("identifying the device…)\n")
 			} else if stt == "device" {

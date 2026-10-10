@@ -276,22 +276,3 @@ func TestSweepRunStaleSockets(t *testing.T) {
 		t.Errorf("removed %d entries, want 4", n)
 	}
 }
-
-// ANDROID_LOG_MCP_LEGACY=keep: legacy data survives age and cap.
-func TestSweepKeepLegacy(t *testing.T) {
-	base := t.TempDir()
-	old := time.Now().Add(-72 * time.Hour)
-	devDir(t, filepath.Join(base, "emulator-5554"), 2, 1000, old)
-	devDir(t, filepath.Join(base, "legacy", "v1-backup", "e"), 2, 1000, old)
-	write(t, filepath.Join(base, "legacy", "v1-backup", "notes.txt"), 5, old)
-	devDir(t, filepath.Join(base, "v1", "avd-x"), 2, 1000, old)
-	Sweep(SweepOptions{Base: base, MaxAge: time.Hour, MaxTotal: 1, KeepLegacy: true})
-	for _, p := range []string{"emulator-5554/seg-00000000000000000001.jsonl", "legacy/v1-backup/e/seg-00000000000000000001.jsonl", "legacy/v1-backup/notes.txt"} {
-		if !exists(filepath.Join(base, p)) {
-			t.Errorf("%s removed despite KeepLegacy", p)
-		}
-	}
-	if exists(filepath.Join(base, "v1", "avd-x")) {
-		t.Error("current-format data not expired")
-	}
-}

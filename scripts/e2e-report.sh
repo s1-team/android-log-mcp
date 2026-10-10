@@ -16,7 +16,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SERIAL="${1:-${ANDROID_SERIAL:-emulator-5556}}"
 EVID="${2:-}"
 ADB="${ANDROID_LOG_MCP_ADB:-$(command -v adb || echo "$HOME/android-sdk/platform-tools/adb")}"
-HOME_DIR="${ANDROID_LOG_MCP_HOME:-${XDG_CACHE_HOME:-$HOME/.cache}/android-log-mcp}"
+# The per-user root the recorder writes to (Linux). A process with
+# ANDROID_LOG_MCP_HOME set is read-only and never records, so to isolate this
+# test point the root elsewhere with XDG_CACHE_HOME=/tmp/x instead.
+HOME_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/android-log-mcp"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"; [ -n "${REC_PID:-}" ] && kill "$REC_PID" 2>/dev/null || true' EXIT
 
@@ -69,7 +72,7 @@ KEEP
 # make sure something records the device
 if ! find "$HOME_DIR" -maxdepth 3 -name meta.json -newermt '-60 seconds' 2>/dev/null | grep -q .; then
   echo "no active recorder seen; starting one" >&2
-  (sleep infinity | ANDROID_LOG_MCP_HOME="$HOME_DIR" "$BIN" >/dev/null 2>"$WORK/rec.log") &
+  (sleep infinity | env -u ANDROID_LOG_MCP_HOME "$BIN" >/dev/null 2>"$WORK/rec.log") &
   REC_PID=$!
   sleep 15
 fi

@@ -70,6 +70,7 @@ type Owner struct {
 	DataDir string    `json:"data_dir"`       // where the device's logs are written
 	Addr    string    `json:"addr,omitempty"` // adb serial used to reach it
 	Home    string    `json:"home,omitempty"` // ANDROID_LOG_MCP_HOME of the owner, if set
+	BootID  string    `json:"boot_id,omitempty"`
 	Since   time.Time `json:"since"`
 	// Legacy: a pre-v1 version recording a flat <base>/<serial> directory
 	// (no owner lock; detected through its writer.lock).

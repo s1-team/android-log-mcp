@@ -35,6 +35,9 @@ func TestStatusNamesForeignOwner(t *testing.T) {
 		t.Fatal(out)
 	}
 	want := fmt.Sprintf("owned by another android-log-mcp process (pid %d, version 9.9.9, data %s)", os.Getpid(), layout.DeviceDir(root, "avd-a"))
+	if !strings.Contains(out, "mode: read-only: ANDROID_LOG_MCP_HOME/--home is set") {
+		t.Fatalf("status does not say the HOME process is read-only:\n%s", out)
+	}
 	if !strings.Contains(out, "NOT recorded by this process") || !strings.Contains(out, want) {
 		t.Fatalf("status does not name the owner:\n%s", out)
 	}

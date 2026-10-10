@@ -27,10 +27,7 @@ type SweepOptions struct {
 	// Owned are the device directories this process records (pruned by
 	// their own store, never deleted from under it).
 	Owned map[string]*store.Store
-	// KeepLegacy (ANDROID_LOG_MCP_LEGACY=keep) never deletes pre-v1 flat
-	// directories or legacy/ (they still count towards the total).
-	KeepLegacy bool
-	Now        time.Time
+	Now   time.Time
 }
 
 // SweepResult summarizes what Sweep removed.
@@ -64,7 +61,6 @@ type dataDir struct {
 	path    string
 	current bool // v<DataFormat>/<id>: keep its newest segment under the cap
 	id      string
-	legacy  bool // flat pre-v1 directory or inside legacy/
 }
 
 func isDeviceDir(p string) bool {
@@ -96,14 +92,14 @@ func deviceDirs(base string) []dataDir {
 		case e.Name() == "legacy":
 			filepath.WalkDir(p, func(q string, d os.DirEntry, err error) error {
 				if err == nil && d.IsDir() && q != p && isDeviceDir(q) {
-					out = append(out, dataDir{path: q, legacy: true})
+					out = append(out, dataDir{path: q})
 				}
 				return nil
 			})
 		case e.Name() == "owners" || e.Name() == "run" || e.Name() == "tmp":
 		default:
 			if isDeviceDir(p) {
-				out = append(out, dataDir{path: p, legacy: true})
+				out = append(out, dataDir{path: p})
 			}
 		}
 	}
@@ -169,9 +165,6 @@ func Sweep(o SweepOptions) SweepResult {
 		res.addAll(removeOlder(root.Tmp(), o.Now.Add(-o.TmpAge)))
 	}
 	busy := func(dd dataDir) bool {
-		if o.KeepLegacy && dd.legacy {
-			return true
-		}
 		if o.Owned[dd.path] != nil {
 			return true
 		}
@@ -191,9 +184,7 @@ func Sweep(o SweepOptions) SweepResult {
 			res.expireDir(dd, cut)
 		}
 		// loose files in legacy/ (outside device dirs) expire too
-		if !o.KeepLegacy {
-			res.addAll(removeOlder(filepath.Join(o.Base, "legacy"), cut))
-		}
+		res.addAll(removeOlder(filepath.Join(o.Base, "legacy"), cut))
 	}
 	// total cap
 	res.TotalBefore = TotalBytes(o.Base)
@@ -220,11 +211,7 @@ func Sweep(o SweepOptions) SweepResult {
 				}
 			}
 		}
-		loose := []string{tmpBase}
-		if !o.KeepLegacy {
-			loose = append(loose, filepath.Join(o.Base, "legacy"))
-		}
-		for _, d := range loose {
+		for _, d := range []string{filepath.Join(o.Base, "legacy"), tmpBase} {
 			filepath.WalkDir(d, func(p string, e os.DirEntry, err error) error {
 				if err != nil {
 					return nil

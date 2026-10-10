@@ -52,6 +52,12 @@ Repository artifacts (docs, issues, commit messages, release notes) are **Englis
   - `scripts/e2e-report.sh` for the end-to-end redaction check on a device;
   - `scripts/compat-probe.sh` / `android-log-mcp compat` for the device compatibility probe;
   - the evidence and procedures in [validation/README.md](validation/README.md).
+- **Recording in tests:** `ANDROID_LOG_MCP_HOME` / `--home` makes a process read-only; it never records. To record into an isolated place, point the per-user root at a temp dir through the platform's user-cache-dir variable:
+  - Linux: `XDG_CACHE_HOME=/tmp/x` (root `/tmp/x/android-log-mcp`);
+  - macOS: `HOME=/tmp/x` (root `/tmp/x/Library/Caches/android-log-mcp`);
+  - Windows: `LocalAppData=C:\tmp\x`.
+
+  In Go tests, set `Manager.Root` and `Manager.Base` to the same temp dir (see `internal/device/ownership_test.go`). Use `ANDROID_LOG_MCP_HOME` only for read-only checks (offline, report, replay).
 - **Packaging:** run `scripts/build-npm.sh [VERSION] [--pack]`. CI runs the npx smoke tests on every Node version in the matrix.
 
 ---
@@ -72,3 +78,4 @@ Repository artifacts (docs, issues, commit messages, release notes) are **Englis
 - 版本规则：1.0 之前，破坏性变更升 minor 版本，并附升级说明；1.0 之后升 major 版本。
 - 语言：仓库产出物英文为主，中文为辅。
 - 安全：开发机上禁止启动 KVM 模拟器，也不要碰 `/dev/kvm`。
+- 测试录制：设置了 `ANDROID_LOG_MCP_HOME` 的进程只读、不录制；需要隔离录制时，用 `XDG_CACHE_HOME`（Linux）/ `HOME`（macOS）/ `LocalAppData`（Windows）把每用户根目录指向临时目录。

@@ -563,13 +563,15 @@ Goal (GOALS "Bounded", "Observe, never interfere"): one per-user root that owns 
   <serial>/                 pre-0.4 flat directories (migrated on connect, else read-only until they expire)
 ```
 
-`ANDROID_LOG_MCP_HOME` only changes where data is written (`<HOME>/v1/<id>`); the owner lock is always taken in the real root, so a HOME process never records a device another process owns. `--offline` never sweeps, moves or migrates anything (browsing an unzipped report keeps working with its flat `store/<id>/` layout).
+`ANDROID_LOG_MCP_HOME` (a directory other than the root) makes the process strictly read-only (issue #6): it never takes an owner lock, never records any device (not even an unowned one: `Device.run` records only while holding the owner lock), and never sweeps, migrates, adopts or creates anything. It still identifies connected devices, follows the owner's data read-only, shows data already in HOME, and states the mode on stderr and in `logcat_status`. `--offline` never sweeps, moves or migrates anything either (browsing an unzipped report keeps working with its flat `store/<id>/` layout). Tests that need recording point the root itself at a temp dir (see AGENTS.md).
 
 ### 10.2 Device ID
 
 `device.ResolveID(addr, props, avdName)` is a pure function (unit-tested): emulator → `avd-<name>` (`ro.boot.qemu.avd_name`, else the console's `adb emu avd name`); physical → `ro.serialno` unless empty/placeholder; fallback `fp-<sha256(manufacturer|model|android_id)[:12]>`, or with no android_id `fp-<sha256(manufacturer|model|fingerprint|addr)[:12]>`. The probe is one read-only `adb shell` (getprop ×8, `settings get secure android_id`, boot_id). The adb serial is the connection address only: `meta.json` keeps it as `addr`, earlier names as `aliases`. The manager is keyed by ID; `Manager.Get` accepts the ID, a live adb serial or an alias, and cursors carrying an alias stay valid (`Device.Matches`).
 
 Known limitation: an API ≤ 29 emulator attached via `adb connect` has no AVD name and gets an `fp-` ID.
+
+**Collisions (issue #6).** Two devices online at the same time may resolve to one ID (the same AVD launched twice with `-read-only`; duplicated serials). They are told apart by boot id: same ID, different adb serial, both online, different boot id ⇒ a different device. The check uses this process's devices and the owner lock (which records `boot_id`, kept current after reboots), so it also works across processes. The later device gets `<id>~<sanitized adb serial>`; `logcat_status` shows a `note:` explaining it. Same boot id (USB + Wi-Fi adb) is one device; a new boot on the same serial, or on a new serial after the old one went offline, is the same device (reboot / reconnect). Trade-off: the suffixed ID depends on the adb serial, so it is only stable while that instance keeps its address; once the first instance is gone, the next instance of the AVD files under the plain ID again (history is per AVD, not per emulator process). Instance-specific IDs (boot id, emulator pid) were rejected because they split history on every reboot.
 
 ### 10.3 Attach / ownership
 
@@ -579,7 +581,7 @@ On a new online adb serial the manager probes the identity asynchronously (retri
 3. acquired → migrate a matching flat directory, open `<base>/v1/<id>` as writer, record.
 The maintenance tick re-attaches followers whose owner went away (takeover). Devices only on disk are opened read-only.
 
-Migration renames a flat directory into `v1/<id>` (same files, same sequence numbers; `meta.serial` becomes the ID, the old serial an alias) only if its writer lock is free, `v1/<id>` has no data yet, and it is clearly the same device: `meta.serial == ro.serialno` for a physical device, or the device's current boot_id appears in `last_boot_id`/`sessions` (boot ids are random per boot; adb serials and emulator ports are reused, so the serial alone is not enough). `ANDROID_LOG_MCP_LEGACY=keep` disables migration, sibling adoption and deletion of legacy data.
+Migration renames a flat directory into `v1/<id>` (same files, same sequence numbers; `meta.serial` becomes the ID, the old serial an alias) only if its writer lock is free, `v1/<id>` has no data yet, and it is clearly the same device: `meta.serial == ro.serialno` for a physical device, or the device's current boot_id appears in `last_boot_id`/`sessions` (boot ids are random per boot; adb serials and emulator ports are reused, so the serial alone is not enough). There is no opt-out: legacy data stays under the total cap and `MAX_AGE` (raise `MAX_AGE` to keep it longer).
 
 ### 10.4 Sweep (`layout.Sweep`, at startup and every minute)
 

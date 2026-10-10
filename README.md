@@ -212,11 +212,12 @@ legacy/<name>/            older backups adopted from sibling directories; they e
 - **Device ID instead of adb serial.** Data is filed under a stable ID: `ro.serialno` for physical devices (the same over USB and Wi-Fi adb), `avd-<name>` for emulators (the AVD name, not the console port), else `fp-<hash>` (see "Device ID" below). `logcat_status` shows `<id> (adb <serial>)`; `device=` accepts the ID, the current adb serial, or the old serial; cursors from 0.3 keep working. `android-log-mcp compat` prints the ID.
 - **What migrates:** when a device connects, its old flat directory `<root>/<adb serial>/` is moved to `v1/<device-id>/` unchanged (all logs, crashes, cursors' sequence numbers) if it is clearly the same device: a physical device whose old directory is named after its `ro.serialno`, or any device whose current boot was recorded there. The move is skipped while an older version still records that directory; this version then only reads it and says so in `logcat_status`, and takes over (and migrates) once the old process exits.
 - **What gets deleted:** old directories that do not match (for example an emulator that was rebooted before the upgrade) stay readable as legacy data and are **deleted once older than the retention window** (`ANDROID_LOG_MCP_MAX_AGE`, default 1 day). Sibling directories named `android-log-mcp.*` (for example a manual `android-log-mcp.v1-backup`) are **moved into `legacy/`** and expire the same way. Everything under the root, including legacy data, `tmp/` and `run/`, counts towards the 2 GiB total cap.
-- **One recorder per device per user.** `ANDROID_LOG_MCP_HOME` / `--home` is now for tests and offline use: a process with its own HOME still never records a device that another process owns; it reads the owner's data and `logcat_status` names the owner (pid, version, data dir). Recording into a HOME happens only for devices nobody else owns.
-- **How to opt out:** set `ANDROID_LOG_MCP_LEGACY=keep` before the first start of 0.4. Then old flat directories and `android-log-mcp.*` siblings are left where they are, never migrated or deleted (still readable; the device starts a new `v1/` directory). Alternatively copy the old directory elsewhere first. Use `ANDROID_LOG_MCP_MAX_AGE=7d` to keep legacy data longer.
+- **One recorder per device per user; `ANDROID_LOG_MCP_HOME` is read-only.** Only processes using the per-user root record. A process with `ANDROID_LOG_MCP_HOME` / `--home` set (to anything other than the root) **never records any device**, not even one nobody owns. It only reads, for tests, offline browsing, replay and reports. It says so on stderr at startup and in `logcat_status` (`mode: read-only …`), and for a device recorded elsewhere it names the owner (pid, version, data dir). If you used `ANDROID_LOG_MCP_HOME` to record into a custom directory, remove it from your MCP client config: data now always goes to the per-user root.
+- **One device, one directory.** If two devices connected at the same time resolve to the same ID (for example the same AVD launched twice with `-read-only`, or two phones with the same serial), the first keeps the ID and the other is filed as `<id>~<adb serial>`; `logcat_status` explains why in a `note:` line. See "Device ID" below.
+- **Keeping old data longer:** there is no opt-out from the cleanup. Everything under the root, including `legacy/`, stays under the total cap and `ANDROID_LOG_MCP_MAX_AGE`. To keep old data longer, raise `ANDROID_LOG_MCP_MAX_AGE` (for example `7d`) before the first start of 0.4, or copy the directories you want to keep outside the root.
 - **Known limitation:** API ≤ 29 emulators reached over `adb connect` (not `emulator-NNNN`) cannot report their AVD name and get an `fp-` ID, i.e. a different directory than when attached as `emulator-NNNN`.
 
-简要说明（中文）：0.4 起数据目录改为 `v1/<设备ID>/`，设备 ID 取 `ro.serialno`（真机，USB 和无线一致）或 `avd-<AVD名>`（模拟器），旧的 `<adb serial>/` 目录在确认是同一台设备时自动迁移，其余旧目录和 `android-log-mcp.*` 兄弟目录（移到 `legacy/`）超过保留期后删除。同一用户下每台设备只由一个进程录制（`owners/<设备ID>.lock`），设置了 `ANDROID_LOG_MCP_HOME` 的进程也不会录制别人已经在录的设备。不想迁移或删除旧数据：首次启动前设置 `ANDROID_LOG_MCP_LEGACY=keep`。
+简要说明（中文）：0.4 起数据目录改为 `v1/<设备ID>/`，设备 ID 取 `ro.serialno`（真机，USB 和无线一致）或 `avd-<AVD名>`（模拟器），旧的 `<adb serial>/` 目录在确认是同一台设备时自动迁移，其余旧目录和 `android-log-mcp.*` 兄弟目录（移到 `legacy/`）超过保留期后删除。同一用户下每台设备只由一个进程录制（`owners/<设备ID>.lock`）。设置了 `ANDROID_LOG_MCP_HOME` 的进程是只读的，从不录制任何设备（测试、离线、回放、报告用），启动时和 `logcat_status` 都会说明。两台同时连接的设备 ID 相同（例如同一个 AVD 用 `-read-only` 启动两次）时，后连上的用 `<id>~<adb serial>` 单独存放。根目录下所有内容（含 `legacy/`）都受总量上限和保留期约束；想多保留旧数据，就在首次启动 0.4 前调大 `ANDROID_LOG_MCP_MAX_AGE`。
 
 ## 升级到 0.3.0
 
@@ -232,8 +233,7 @@ legacy/<name>/            older backups adopted from sibling directories; they e
 
 | 变量 | 含义 |
 |---|---|
-| `ANDROID_LOG_MCP_HOME` | Data directory for tests / offline use (also `--home`). Default: the per-user root `<user cache dir>/android-log-mcp` (Linux: `~/.cache/android-log-mcp`). Ownership (`owners/`) always stays in the per-user root, so a process with its own HOME never records a device another process owns. 数据目录（测试或离线用），默认是每用户根目录 |
-| `ANDROID_LOG_MCP_LEGACY` | `migrate` (default) or `keep`: with `keep`, data of versions before 0.4 (flat `<serial>/` dirs, `android-log-mcp.*` siblings) is never migrated, moved or deleted. 设为 `keep` 时不迁移、不删除旧版本数据 |
+| `ANDROID_LOG_MCP_HOME` | **Read-only** data directory for tests, offline browsing, replay and reports (also `--home`). When it is set (and is not the per-user root `<user cache dir>/android-log-mcp`, Linux `~/.cache/android-log-mcp`), the process never records any device and never prunes or deletes anything. 只读数据目录：设置后该进程从不录制任何设备 |
 | `ANDROID_LOG_MCP_ADB` | adb 的路径 |
 | `ANDROID_LOG_MCP_BINARY` | （仅 npm 启动器使用）不用平台包，改用这个路径下的二进制 |
 | `ANDROID_LOG_MCP_MAX_DEVICES` | 最多同时录制几台设备，默认 4 |
@@ -261,6 +261,7 @@ legacy/<name>/            older backups adopted from sibling directories; they e
 1. Emulator (`ro.kernel.qemu=1`, `ro.boot.qemu=1` or serial `emulator-N`): `avd-<name>` from `ro.boot.qemu.avd_name` (API 30+) or `adb emu avd name` (older images). `ro.serialno` is identical on many AVDs and console ports are reused, so neither is used.
 2. Physical device: `ro.serialno` (or `ro.boot.serialno`), unless empty, `unknown` or a placeholder such as `0123456789ABCDEF` / all one character.
 3. Otherwise `fp-` + the first 12 hex digits of sha256(manufacturer|model|android_id); without a readable android_id, sha256(manufacturer|model|fingerprint|adb serial), which then changes with the transport.
+4. Collision: if another device that is connected right now already uses the ID with a different boot id (same AVD started twice with `-read-only`, duplicated serials), this one is filed as `<id>~<adb serial>` (e.g. `avd-api29~emulator-5556`) and `logcat_status` says why. Two connections with the same boot id (USB + Wi-Fi adb) are one device. Trade-off: the suffixed directory follows the adb serial, so that instance's history continues only while it keeps the address; when the first instance is gone, the next instance of that AVD uses the plain ID again (one history per AVD, which is what the ID stands for). Anything instance-specific (boot id, emulator pid) would split the history on every reboot instead.
 
 **Startup sweep and periodic maintenance** (every minute; not in `--offline`): unowned device directories of every format and legacy data lose segments older than `ANDROID_LOG_MCP_MAX_AGE` (including their newest one) and are removed once nothing in them is newer; then the total cap removes the oldest segments across everything (each current-format device keeps its newest segment). Directories written by a live process (its owner lock or `writer.lock` is held) are left to that process. Only known file names are deleted from device directories.
 
@@ -290,9 +291,9 @@ legacy/<name>/            older backups adopted from sibling directories; they e
 - 只读进程（另一个进程在录制）启动时不预读日志，第一次查询时才加载，空闲后再释放。
 - `logcat_status` 的 `memory:` 一行显示当前的缓存占用。
 
-**Several clients at once:** each device is recorded by exactly one process per user, decided by `owners/<device-id>.lock` in the per-user root (independent of `ANDROID_LOG_MCP_HOME`). Other processes read the owner's files, and `logcat_status` names the owner (pid, version, data directory). When the owner exits, another process takes over within about 10 seconds.
+**Several clients at once:** each device is recorded by exactly one process per user, decided by `owners/<device-id>.lock` in the per-user root. Other processes read the owner's files, and `logcat_status` names the owner (pid, version, data directory). When the owner exits, another process using the per-user root takes over within about 10 seconds (a process with `ANDROID_LOG_MCP_HOME` set never does).
 
-**多个客户端同时运行**：同一用户下每台设备只有一个进程负责录制（由每用户根目录下的 `owners/<设备ID>.lock` 决定，与 `ANDROID_LOG_MCP_HOME` 无关），其他进程只读跟随，`logcat_status` 会写明录制者的 pid、版本和数据目录。录制进程退出后，其他进程约 10 秒内接管。
+**多个客户端同时运行**：同一用户下每台设备只有一个进程负责录制（由每用户根目录下的 `owners/<设备ID>.lock` 决定，与 `ANDROID_LOG_MCP_HOME` 无关），其他进程只读跟随，`logcat_status` 会写明录制者的 pid、版本和数据目录。录制进程退出后，其他使用每用户根目录的进程约 10 秒内接管（设置了 `ANDROID_LOG_MCP_HOME` 的进程不会接管）。
 
 ## 已知限制
 
