@@ -421,6 +421,11 @@ func (d *Device) recordOnce(ctx context.Context) error {
 			dedup[recHash(r)] = true
 			return true
 		})
+		if rd := meta.ResumeDedup; rd != nil && rd.TimeNs == dedupNs {
+			for _, h := range rd.Hashes { // stored in the previous root (set-root)
+				dedup[h] = true
+			}
+		}
 	} else {
 		// new boot (or first contact): import the device's whole ring buffer
 		now := time.Now().UnixNano()

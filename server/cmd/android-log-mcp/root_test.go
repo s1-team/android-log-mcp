@@ -39,7 +39,7 @@ func TestRemovedHomeIsAnError(t *testing.T) {
 		{nil, []string{"--home=/tmp/x", "report"}},
 	} {
 		_, errOut, code := cli(t, c.env, c.args...)
-		if code != 2 || !strings.Contains(errOut, "removed") || !strings.Contains(errOut, "fixed") || !strings.Contains(errOut, "issues/3") {
+		if code != 2 || !strings.Contains(errOut, "removed") || !strings.Contains(errOut, "set-root <dir>") {
 			t.Fatalf("%v %v: code %d stderr %q", c.env, c.args, code, errOut)
 		}
 	}
@@ -55,8 +55,10 @@ func TestRootCommand(t *testing.T) {
 	if code != 0 || json.Unmarshal([]byte(out), &r) != nil || r.Root != layout.DefaultDir() || r.Control != layout.DefaultDir() || r.Socket == "" {
 		t.Fatalf("root --json: %d %q", code, out)
 	}
-	// set-root is not part of 0.4.0 (#10)
-	if _, _, code := cli(t, nil, "set-root", t.TempDir(), "--keep-old"); code != 2 {
-		t.Fatalf("set-root accepted: exit %d", code)
+	// set-root needs exactly one of --keep-old / --delete-old (no prompts)
+	for _, a := range [][]string{{"set-root", t.TempDir()}, {"set-root", t.TempDir(), "--keep-old", "--delete-old"}, {"set-root", "--keep-old"}} {
+		if _, errOut, code := cli(t, nil, a...); code != 2 || !strings.Contains(errOut, "usage: android-log-mcp set-root") {
+			t.Fatalf("%v: exit %d\n%s", a, code, errOut)
+		}
 	}
 }

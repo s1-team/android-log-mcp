@@ -40,6 +40,30 @@ type Meta struct {
 	Addr string `json:"addr,omitempty"`
 	// IDSource says how Serial (the device ID) was derived.
 	IDSource string `json:"id_source,omitempty"`
+	// SeqFloor: the device's seqs continue above this value although no
+	// segment here holds it (the recording moved here from another data
+	// root, `set-root`; issue #9). Cursors stay monotonic across the move.
+	SeqFloor uint64 `json:"seq_floor,omitempty"`
+	// Holes are seq ranges that are not in this directory (recorded in
+	// another root before the recording moved back here).
+	Holes []SeqRange `json:"holes,omitempty"`
+	// ResumeDedup holds the hashes of the lines stored (in the previous
+	// root) at LastTimeNs: logcat -T <that time> repeats them after a
+	// set-root move, and this directory does not have them to compare
+	// against. Ignored once LastTimeNs moves on.
+	ResumeDedup *ResumeDedup `json:"resume_dedup,omitempty"`
+}
+
+// ResumeDedup: see Meta.ResumeDedup.
+type ResumeDedup struct {
+	TimeNs int64    `json:"time_ns"`
+	Hashes []uint64 `json:"hashes"`
+}
+
+// SeqRange is an inclusive range of seqs.
+type SeqRange struct {
+	First uint64 `json:"first"`
+	Last  uint64 `json:"last"`
 }
 
 // BootShort makes the short boot id stored in each record.

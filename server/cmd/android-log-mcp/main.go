@@ -41,7 +41,9 @@ usage:
       env ANDROID_LOG_MCP_CALL_WAIT=5s: how long to let a service this call started record first
   android-log-mcp report [flags]               pack logs + diagnostics into a redacted zip
                                                (android-log-mcp report -h for flags)
-  android-log-mcp root [--json]                print the data root (fixed: <user cache dir>/android-log-mcp)
+  android-log-mcp root [--json]                print the data root (default: <user cache dir>/android-log-mcp)
+  android-log-mcp set-root DIR (--keep-old|--delete-old)
+                                               move the data root for every client (android-log-mcp set-root -h)
   android-log-mcp service [status|stop]        the background service (see android-log-mcp service -h)
   android-log-mcp --offline R/store ...         browse a dataset read-only, e.g. an unzipped report (no adb, no writes)
   android-log-mcp compat [--serial S] [--json]  probe a device for the features this tool needs (read-only)
@@ -71,8 +73,8 @@ usage:
 	}
 	if flag.NArg() > 0 {
 		switch flag.Arg(0) {
-		case "call", "report", "compat", "root", "service":
-		default: // e.g. set-root: not part of 0.4.0 (#10)
+		case "call", "report", "compat", "root", "service", "set-root":
+		default:
 			fmt.Fprintf(os.Stderr, "android-log-mcp: unknown command %q\n\n", flag.Arg(0))
 			flag.Usage()
 			os.Exit(2)
@@ -90,6 +92,15 @@ usage:
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	if flag.NArg() > 0 && flag.Arg(0) == "set-root" {
+		if *offline != "" {
+			fmt.Fprintln(os.Stderr, "android-log-mcp: --offline cannot be combined with set-root")
+			os.Exit(2)
+		}
+		code := runSetRoot(ctx, flag.Args()[1:])
+		cancel()
+		os.Exit(code)
+	}
 	if flag.NArg() > 0 && flag.Arg(0) == "report" {
 		// through the service, or in-process if none runs; never starts one
 		code := runReport(ctx, *offline, flag.Args()[1:])

@@ -258,6 +258,7 @@ func (s *Store) loadMetaLocked() {
 			s.meta.Serial = serial
 		}
 		s.metaMod = st.ModTime()
+		s.lastSeq = max(s.lastSeq, m.SeqFloor)
 	}
 }
 
@@ -268,6 +269,7 @@ func (s *Store) Meta() Meta {
 	m := s.meta
 	m.Sessions = append([]Session(nil), m.Sessions...)
 	m.Gaps = append([]Gap(nil), m.Gaps...)
+	m.Holes = append([]SeqRange(nil), m.Holes...)
 	return m
 }
 
@@ -611,7 +613,7 @@ func (s *Store) Append(recs []*model.Record) error {
 			return err
 		}
 		if n := len(s.mem); n > 0 && s.mem[n-1].Seq+1 != r.Seq {
-			s.mem, s.memBytes = nil, 0 // seq jump: the window must stay contiguous
+			s.mem, s.memBytes = nil, 0 // seq jump (set-root move): the window must stay contiguous
 		}
 		s.mem = append(s.mem, r)
 		s.memBytes += RecordBytes(r)
@@ -652,7 +654,7 @@ func (s *Store) rotateLocked(first uint64) error {
 		}
 	}
 	// Reuse the last segment if it is not full (e.g. after restart) and the
-	// seqs continue it (after a seq jump a new segment keeps names = first seq).
+	// seqs continue it (not after a set-root move, which leaves a seq jump).
 	if n := len(s.segs); n > 0 && s.segs[n-1].size < s.cfg.SegmentBytes && s.cur == nil && s.curSize == 0 && continuesSeg(s.segs[n-1], first) {
 		f, err := os.OpenFile(s.segs[n-1].path, os.O_WRONLY|os.O_APPEND, 0o644)
 		if err == nil {
@@ -938,9 +940,8 @@ func (s *Store) Scan(after, before uint64, desc bool, fn func(*model.Record) boo
 		memFirst = mem[0].Seq
 	}
 	inMem := func(lo, hi uint64, desc bool) bool { // [lo,hi)
-		// seqs above the window's last one are not stored (the last seq can
-		// lie above the window, e.g. an empty newest segment after a seq
-		// jump: lastSeq = its first-1); never index past the window
+		// seqs above the window's last one exist nowhere here (e.g. a
+		// set-root move back left meta.seq_floor above the stored data)
 		hi = min(hi, memFirst+uint64(len(mem)))
 		if len(mem) == 0 || hi <= memFirst || lo >= hi {
 			return true
@@ -1064,10 +1065,17 @@ func (s *Store) Stats() Stats {
 	} else if len(s.mem) > 0 {
 		first = s.mem[0].Seq
 	}
+	holes := s.meta.Holes
 	s.mu.RUnlock()
 	st.FirstSeq = first
 	if first > 0 && st.LastSeq >= first {
 		st.Records = st.LastSeq - first + 1
+		for _, h := range holes { // seqs recorded in another root (set-root)
+			lo, hi := max(h.First, first), min(h.Last, st.LastSeq)
+			if hi >= lo && st.Records > hi-lo {
+				st.Records -= hi - lo + 1
+			}
+		}
 		st.OldestNs = s.oldestNs()
 	}
 	st.CacheBytes = s.HistoryCacheBytes()

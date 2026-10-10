@@ -14,7 +14,8 @@ import (
 // With ALM_RUN_MAIN set, the test binary runs main() instead (CLI and
 // multi-process tests; the parent isolated the environment it passes on).
 // Test-only knobs (never read by the real binary): ALM_TEST_VERSION,
-// ALM_TEST_PROTO, ALM_TEST_MINPROTO, ALM_TEST_NO_SPAWN.
+// ALM_TEST_PROTO, ALM_TEST_MINPROTO, ALM_TEST_NO_SPAWN,
+// ALM_TEST_SETROOT_FAIL.
 func TestMain(m *testing.M) {
 	if isFakeADB() {
 		os.Exit(fakeADB(os.Args[1:]))
@@ -29,6 +30,7 @@ func TestMain(m *testing.M) {
 		if v, err := strconv.Atoi(os.Getenv("ALM_TEST_MINPROTO")); err == nil {
 			service.MinProto = v
 		}
+		service.TestFailSetRoot = os.Getenv("ALM_TEST_SETROOT_FAIL")
 		if os.Getenv("ALM_TEST_NO_SPAWN") != "" {
 			service.NoSpawn = true
 		}

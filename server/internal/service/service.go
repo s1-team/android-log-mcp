@@ -38,6 +38,9 @@ type Options struct {
 	// Drain bounds how long in-flight calls may finish at shutdown
 	// (default 5 s).
 	Drain time.Duration
+	// OnRootChange is called when set-root moves the data root (e.g. to
+	// move the crash log).
+	OnRootChange func(root string)
 }
 
 // Service is a running service.
@@ -151,12 +154,18 @@ func Start(opt Options) (*Service, error) {
 	s.exe, _ = os.Executable()
 	root := opt.Root
 	if root == "" {
-		root = opt.Control.Dir
+		r, err := ConfiguredRoot(opt.Control)
+		if err != nil {
+			store.ReleaseLock(lock)
+			return nil, err
+		}
+		root = r
 	}
 	if opt.Log != nil && opt.Log.Path() == "" {
 		opt.Log.SetRoot(root)
 	}
 	s.startManager(root)
+	go retryCleanup(opt.Control, root)
 	l, err := ipc.Listen(opt.Control.Socket())
 	if err != nil {
 		s.stopManager()

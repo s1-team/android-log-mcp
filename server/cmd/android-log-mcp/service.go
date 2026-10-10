@@ -77,7 +77,16 @@ func runService(detached bool) int {
 	} else {
 		log.SetOutput(io.MultiWriter(os.Stderr, lf))
 	}
-	s, err := service.Start(service.Options{Control: ctrl, Version: mcpserver.Version, Root: root, Cfg: store.ConfigFromEnv(), Log: lf})
+	opt := service.Options{Control: ctrl, Version: mcpserver.Version, Root: root, Cfg: store.ConfigFromEnv(), Log: lf}
+	if detached {
+		opt.OnRootChange = func(root string) { // set-root: the crash log moves along
+			if cf, err := service.CrashFile(root); err == nil {
+				debug.SetCrashOutput(cf, debug.CrashOptions{})
+				cf.Close()
+			}
+		}
+	}
+	s, err := service.Start(opt)
 	if errors.Is(err, service.ErrRunning) {
 		msg := "a service is already running"
 		if st := ctrl.ReadState(); st != nil {
