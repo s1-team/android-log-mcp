@@ -88,15 +88,11 @@ usage:
 		}
 		os.Exit(runServiceCmd(flag.Args()[1:]))
 	}
-	base := *offline
-	if base == "" {
-		base = layout.DefaultDir() // fixed since 0.4.0 (#10)
-	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	if flag.NArg() > 0 && flag.Arg(0) == "report" {
-		// reads the data directory only; must not start a recorder
-		code := runReport(ctx, base, flag.Args()[1:])
+		// through the service, or in-process if none runs; never starts one
+		code := runReport(ctx, *offline, flag.Args()[1:])
 		cancel()
 		os.Exit(code)
 	}
@@ -109,7 +105,7 @@ usage:
 		os.Exit(runClient(ctx, flag.Args()))
 	}
 	// --offline: browse a dataset read-only, in this process (no service)
-	m := device.NewManager(base, store.ConfigFromEnv())
+	m := device.NewManager(*offline, store.ConfigFromEnv())
 	m.NoADB = true
 	m.Version = mcpserver.Version
 	m.Start(ctx)

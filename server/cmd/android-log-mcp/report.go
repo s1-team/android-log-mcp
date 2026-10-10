@@ -5,14 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/s1crab/android-log-mcp/server/internal/device"
 	"github.com/s1crab/android-log-mcp/server/internal/mcpserver"
-	"github.com/s1crab/android-log-mcp/server/internal/report"
+	"github.com/s1crab/android-log-mcp/server/internal/service"
 )
 
 type multiFlag []string
@@ -43,13 +43,16 @@ func parseSize(s string) (int64, error) {
 const reportUsage = `usage: android-log-mcp report [flags]
 
 Packs recorded logs and diagnostics into a zip for the maintainer, with
-sensitive values redacted (on by default). Reads the data directory only;
-does not change the device (except --am-start, which launches the app).
+sensitive values redacted (on by default). The running background service
+builds it (it has the data and adb); when none runs, this command builds it
+itself and does not start one. Only reads the data; does not change the
+device (except --am-start, which launches the app). With --offline DIR it
+packs that dataset instead (no adb).
 
 flags:
 `
 
-func runReport(ctx context.Context, home string, args []string) int {
+func runReport(ctx context.Context, offlineDir string, args []string) int {
 	fs := flag.NewFlagSet("report", flag.ContinueOnError)
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, reportUsage)
@@ -79,8 +82,7 @@ func runReport(ctx context.Context, home string, args []string) int {
 		fs.Usage()
 		return 2
 	}
-	opt := report.Options{Base: home, Serials: serials, From: *from, To: *to, Package: *pkg, AmStart: *amStart, Out: *out,
-		Version: mcpserver.Version, Args: append([]string{"report"}, args...)}
+	a := service.ReportArgs{Serials: serials, From: *from, To: *to, Package: *pkg, AmStart: *amStart, Out: *out, NoADB: *offline}
 	if *from == "" {
 		d, err := time.ParseDuration(*since)
 		if err != nil {
@@ -91,57 +93,61 @@ func runReport(ctx context.Context, home string, args []string) int {
 				return 2
 			}
 		}
-		opt.Since = d
+		a.Since = d
 	}
 	var err error
-	if opt.MaxBytes, err = parseSize(*maxSize); err != nil {
+	if a.MaxBytes, err = parseSize(*maxSize); err != nil {
 		fmt.Fprintln(os.Stderr, "report:", err)
 		return 2
 	}
-	opt.Note = *note
-	if strings.HasPrefix(opt.Note, "@") {
-		b, err := os.ReadFile(opt.Note[1:])
+	a.Note = *note
+	if strings.HasPrefix(a.Note, "@") {
+		b, err := os.ReadFile(a.Note[1:])
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "report: --note:", err)
 			return 2
 		}
-		opt.Note = string(b)
+		a.Note = string(b)
 	}
-	opt.Redact.Disabled, opt.Redact.KeepPrivateIP, opt.Redact.Extra = *noRedact, *keepPrivate, extra
-	opt.Redact.KeepDomains = keepDom
-	opt.Logf = func(f string, a ...any) { fmt.Fprintf(os.Stderr, "report: "+f+"\n", a...) }
+	a.Redact.Disabled, a.Redact.KeepPrivateIP, a.Redact.Extra = *noRedact, *keepPrivate, extra
+	a.Redact.KeepDomains = keepDom
 	// mask --note / --redact-extra / --keep-domain values in the manifest's command line
-	opt.Args = maskArgs(opt.Args)
-	if !*offline {
-		if p, err := device.FindADB(); err == nil {
-			adb := &device.ADB{Path: p}
-			if devs, err := adb.Output(ctx, 10*time.Second, "devices"); err == nil {
-				opt.Online = map[string]bool{}
-				for _, d := range device.ParseDevices(devs) {
-					if d.State == "device" {
-						opt.Online[d.Serial] = true
-					}
-				}
-				opt.Shell = func(ctx context.Context, serial, cmd string) (string, error) {
-					return adb.Shell(ctx, serial, 60*time.Second, cmd)
-				}
-			}
-		} else {
-			opt.Logf("adb not found (%v): live device info and DropBox are skipped", err)
-		}
+	a.Args = maskArgs(append([]string{"report"}, args...))
+	if a.Out == "" {
+		a.Out = "android-log-mcp-report-" + time.Now().Format("20060102-150405") + ".zip"
 	}
-	if *amStart != "" && opt.Shell == nil {
-		fmt.Fprintln(os.Stderr, "report: --am-start needs adb (and not --no-adb)")
+	// the service writes the zip: give it an absolute path
+	if a.Out, err = filepath.Abs(a.Out); err != nil {
+		fmt.Fprintln(os.Stderr, "report:", err)
 		return 2
 	}
-	if opt.Out == "" {
-		opt.Out = "android-log-mcp-report-" + time.Now().Format("20060102-150405") + ".zip"
+	var rep *service.ReportReply
+	if offlineDir != "" {
+		// --offline DIR report: that dataset, in this process, without adb
+		a.NoADB = true
+		if a.AmStart != "" {
+			fmt.Fprintln(os.Stderr, "report: --am-start cannot be combined with --offline")
+			return 2
+		}
+		rep, err = service.BuildReport(ctx, offlineDir, mcpserver.Version, a, nil)
+	} else {
+		rep, err = service.Report(ctx, service.DefaultControl(), mcpserver.Version, a)
 	}
-	man, err := report.Build(ctx, opt)
+	if rep != nil {
+		for _, l := range rep.Log {
+			fmt.Fprintln(os.Stderr, "report:", l)
+		}
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "report:", err)
 		return 1
 	}
+	if rep.PID != os.Getpid() {
+		fmt.Fprintf(os.Stderr, "report: built by the android-log-mcp service (pid %d, version %s) from %s\n", rep.PID, rep.Version, rep.Root)
+	} else {
+		fmt.Fprintf(os.Stderr, "report: no service running; built in this process from %s\n", rep.Root)
+	}
+	man := rep.Manifest
 	for _, d := range man.Devices {
 		fmt.Fprintf(os.Stderr, "report: %s: %d records (%s … %s), %d crashes/ANRs, device info: %s\n", d.Serial, d.Records, d.FirstRecord, d.LastRecord, d.Crashes, d.DeviceInfo)
 	}
@@ -152,7 +158,7 @@ func runReport(ctx context.Context, home string, args []string) int {
 		fmt.Fprintln(os.Stderr, "report: warning:", w)
 	}
 	fmt.Fprintln(os.Stderr, "report: review the zip before sharing it: redaction is pattern based")
-	fmt.Println(opt.Out)
+	fmt.Println(a.Out)
 	return 0
 }
 
