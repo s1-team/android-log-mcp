@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/s1crab/android-log-mcp/server/internal/analysis"
-	"github.com/s1crab/android-log-mcp/server/internal/layout"
 	"github.com/s1crab/android-log-mcp/server/internal/logcat"
 	"github.com/s1crab/android-log-mcp/server/internal/model"
 	"github.com/s1crab/android-log-mcp/server/internal/procs"
@@ -31,10 +30,9 @@ type Device struct {
 	Store  *store.Store
 	adb    *ADB
 
-	addr    string
-	foreign *layout.Owner     // set: another process records this device; never record
-	owner   *layout.OwnerLock // held while this process owns the device; only then it records
-	idNote  string            // why the ID was disambiguated (collision), if it was
+	addr   string
+	owned  bool   // this process (the service) records the device
+	idNote string // why the ID was disambiguated (collision), if it was
 
 	mu         sync.RWMutex
 	state      string // adb state ("" = not attached)
@@ -203,10 +201,8 @@ type Status struct {
 	LastErr   string
 	WriterPID string
 	Paused    string // non-empty: this process would record but disk space is low
-	// Owner is set when another android-log-mcp process (possibly with a
-	// different data root) records the device.
-	Owner *layout.Owner
-	// Owned: this process holds the device's owner lock (and records it).
+	// Owned: this process (the service) records the device; false for
+	// devices only on disk and devices over the recording limit.
 	Owned bool
 	// IDNote explains a disambiguated device ID (ID collision).
 	IDNote string
@@ -214,7 +210,7 @@ type Status struct {
 
 func (d *Device) Status() Status {
 	d.mu.RLock()
-	s := Status{State: d.state, Recording: d.recording, LastErr: d.lastErr, Owner: d.foreign, Owned: d.owner != nil, IDNote: d.idNote}
+	s := Status{State: d.state, Recording: d.recording, LastErr: d.lastErr, Owned: d.owned, IDNote: d.idNote}
 	d.mu.RUnlock()
 	s.Writer = d.Store.IsWriter()
 	if s.Writer && s.State == "device" {
@@ -243,14 +239,13 @@ func (d *Device) setAddr(addr string) {
 	if changed && d.Store.IsWriter() {
 		d.Store.UpdateMeta(func(m *store.Meta) { m.Addr = addr })
 	}
-	d.owner.Update(func(o *layout.Owner) { o.Addr = addr })
 }
 
-// Owned reports whether this process holds the device's global owner lock.
+// Owned reports whether this process records the device.
 func (d *Device) Owned() bool {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	return d.owner != nil
+	return d.owned
 }
 
 // Matches reports whether name refers to this device: its ID or its adb
@@ -333,13 +328,9 @@ func (d *Device) probe(ctx context.Context) error {
 		d.mu.Unlock()
 	}
 	d.mu.Lock()
-	changed := d.bootID != l[5]
 	d.bootID = l[5]
 	off := d.offset
 	d.mu.Unlock()
-	if changed && l[5] != "" {
-		d.owner.Update(func(o *layout.Owner) { o.BootID = l[5] })
-	}
 	d.Store.UpdateMeta(func(m *store.Meta) {
 		m.Model, m.Release, m.SDK, m.TZ, m.TZOffset, m.ClockOffsetNs = l[0], l[1], l[2], l[3], l[4], int64(off)
 		m.ClockHostNs = time.Now().UnixNano()
@@ -352,12 +343,12 @@ func (d *Device) run(ctx context.Context) {
 	backoff := time.Second
 	for ctx.Err() == nil {
 		d.mu.RLock()
-		mayRecord := d.owner != nil && d.foreign == nil
+		mayRecord := d.owned
 		d.mu.RUnlock()
-		// only the holder of the global owner lock records (a follower, a
-		// read-only process or a device over the recording limit never does)
+		// only devices this service attached are recorded (never one over
+		// the recording limit); writer.lock still guards against another
+		// process writing the directory (e.g. an older version)
 		if !mayRecord || (!d.Store.IsWriter() && !d.Store.TryPromote()) {
-			// another android-log-mcp process records this device; we follow its files
 			d.mu.Lock()
 			d.recording = false
 			d.mu.Unlock()

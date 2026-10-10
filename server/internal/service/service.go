@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/s1crab/android-log-mcp/server/internal/device"
@@ -60,7 +60,6 @@ type Service struct {
 	lingerGen int
 	idleSince time.Time
 	idleFor   time.Duration
-	inflight  atomic.Int64
 	stopOnce  sync.Once
 	stopping  chan struct{}
 	done      chan struct{}
@@ -183,6 +182,9 @@ func (s *Service) startManager(root string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	m := device.NewManager(root, s.opt.Cfg)
 	m.Version = s.opt.Version
+	if s.exe != "" {
+		m.KeepBin = filepath.Dir(s.exe) // never sweep the running binary
+	}
 	m.Start(ctx)
 	t := &mcpserver.Tools{M: m}
 	t.Service = func() string { return s.Info().Text() }
@@ -251,8 +253,6 @@ func (s *Service) onConn(c *ipc.Conn, open bool) {
 }
 
 func (s *Service) handle(ctx context.Context, c *ipc.Conn, op string, body json.RawMessage) (any, error) {
-	s.inflight.Add(1)
-	defer s.inflight.Add(-1)
 	switch op {
 	case "hello":
 		var h Hello
@@ -328,7 +328,7 @@ func (s *Service) Stop(reason string) {
 	log.Printf("service stopping: %s", reason)
 	s.srv.CloseListener()
 	deadline := time.Now().Add(s.opt.Drain)
-	for s.inflight.Load() > 0 && time.Now().Before(deadline) {
+	for s.srv.InFlight() > 0 && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	s.srv.Close()

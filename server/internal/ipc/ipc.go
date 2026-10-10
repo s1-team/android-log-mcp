@@ -23,6 +23,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -236,7 +237,12 @@ type Server struct {
 	nextID uint64
 	wg     sync.WaitGroup
 	closed bool
+	busy   atomic.Int64
 }
+
+// InFlight is the number of requests whose handler is running or whose
+// reply has not been written yet.
+func (s *Server) InFlight() int64 { return s.busy.Load() }
 
 // Serve accepts on l until Close.
 func (s *Server) Serve(l net.Listener) error {
@@ -324,8 +330,10 @@ func (s *Server) serveConn(c *Conn) {
 		c.cancel[r.ID] = cancel
 		c.mu.Unlock()
 		reqs.Add(1)
+		s.busy.Add(1)
 		go func(r Request) {
 			defer reqs.Done()
+			defer s.busy.Add(-1)
 			defer func() {
 				c.mu.Lock()
 				delete(c.cancel, r.ID)

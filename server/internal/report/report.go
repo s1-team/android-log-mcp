@@ -25,7 +25,6 @@ import (
 
 	"github.com/s1crab/android-log-mcp/server/internal/analysis"
 	"github.com/s1crab/android-log-mcp/server/internal/device"
-	"github.com/s1crab/android-log-mcp/server/internal/layout"
 	"github.com/s1crab/android-log-mcp/server/internal/model"
 	"github.com/s1crab/android-log-mcp/server/internal/procs"
 	"github.com/s1crab/android-log-mcp/server/internal/redact"
@@ -51,22 +50,18 @@ type ShellFunc func(ctx context.Context, serial, cmd string) (string, error)
 
 // Options configures Build.
 type Options struct {
-	Base string // data root (layout.DefaultDir, or the --offline dataset)
-	// OwnersDir is the per-user owners dir (layout.DefaultOwnersDir); a
-	// device recorded by a live process with another root is read from that
-	// owner's data dir. Empty: only Base is read.
-	OwnersDir string
-	Serials   []string      // devices to include (default: every device with data)
-	Since     time.Duration // window = device now - Since … now (default 2h); ignored when From is set
-	From, To  string        // window bounds in timeparse syntax (device-local)
-	Package   string        // keep only this app's lines (plus system lines that name it)
-	MaxBytes  int64         // cap on uncompressed log data (default 50 MiB); oldest records dropped first
-	Note      string        // problem description / repro steps
-	AmStart   string        // pkg/Activity: run `am start -W -n` and record its output
-	Redact    redact.Options
-	Out       string // zip path
-	Version   string
-	Args      []string // command line, for the manifest
+	Base     string        // data root (the service's root, or the --offline dataset)
+	Serials  []string      // devices to include (default: every device with data)
+	Since    time.Duration // window = device now - Since … now (default 2h); ignored when From is set
+	From, To string        // window bounds in timeparse syntax (device-local)
+	Package  string        // keep only this app's lines (plus system lines that name it)
+	MaxBytes int64         // cap on uncompressed log data (default 50 MiB); oldest records dropped first
+	Note     string        // problem description / repro steps
+	AmStart  string        // pkg/Activity: run `am start -W -n` and record its output
+	Redact   redact.Options
+	Out      string // zip path
+	Version  string
+	Args     []string // command line, for the manifest
 
 	// Shell talks to live devices; nil = offline (no device info, DropBox or am start).
 	Shell ShellFunc
@@ -349,17 +344,6 @@ var reComponent = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)+
 
 func selectDevices(o Options) ([]*devWork, error) {
 	dirs := store.ListDeviceDirs(o.Base)
-	if o.OwnersDir != "" {
-		// one device, one directory: the live owner's data wins over a copy
-		// under this root (listed last so it overrides)
-		for _, ow := range (layout.Root{Dir: o.Base, OwnersDir: o.OwnersDir}).LiveOwners() {
-			if ow.DataDir != "" && filepath.Dir(filepath.Dir(filepath.Clean(ow.DataDir))) != filepath.Clean(o.Base) {
-				if _, err := os.Stat(filepath.Join(ow.DataDir, "meta.json")); err == nil {
-					dirs = append(dirs, ow.DataDir)
-				}
-			}
-		}
-	}
 	bySerial := map[string]string{}
 	alias := map[string]string{} // adb serial -> device ID
 	var serials []string

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/s1crab/android-log-mcp/server/internal/device"
-	"github.com/s1crab/android-log-mcp/server/internal/layout"
 	"github.com/s1crab/android-log-mcp/server/internal/mcpserver"
 	"github.com/s1crab/android-log-mcp/server/internal/report"
 )
@@ -82,7 +81,6 @@ func runReport(ctx context.Context, home string, args []string) int {
 	}
 	opt := report.Options{Base: home, Serials: serials, From: *from, To: *to, Package: *pkg, AmStart: *amStart, Out: *out,
 		Version: mcpserver.Version, Args: append([]string{"report"}, args...)}
-	opt.OwnersDir = layout.DefaultOwnersDir()
 	if *from == "" {
 		d, err := time.ParseDuration(*since)
 		if err != nil {

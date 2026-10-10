@@ -16,9 +16,9 @@ import (
 type SweepOptions struct {
 	// Base is the data root (the default dir; a test's temp root).
 	Base string
-	// Root names the owners dir (fixed per user) and run/, tmp/; nil =
-	// Root{Dir: Base}, i.e. owners/ under Base.
-	Root *Root
+	// KeepBin is the bin/ directory of the running service binary: never
+	// removed. Besides it, the newest other bin/ entry is kept.
+	KeepBin string
 	// MaxTotal caps all managed files under Base (0 = no cap).
 	MaxTotal int64
 	// MaxAge is the retention window; 0 = no age expiry.
@@ -37,7 +37,8 @@ type SweepResult struct {
 	Files        int      // files removed
 	RemovedDirs  []string // device directories removed entirely
 	StaleRun     int      // run/ entries removed (dead pids, stale sockets)
-	StaleOwners  int      // abandoned owner lock files removed
+	StaleOwners  int      // leftover owners/*.lock of 0.4 development builds removed
+	OldBins      int      // bin/ versions removed
 	TotalBefore  int64
 	TotalAfter   int64
 	CapTriggered bool
@@ -95,7 +96,7 @@ func deviceDirs(base string) []dataDir {
 }
 
 // TotalBytes is the size of all files Sweep manages under base (device
-// directories of every format, tmp/, run/, owners/ if it is there).
+// directories of every format, tmp/, run/, bin/, log/, owners/ if there).
 func TotalBytes(base string) int64 {
 	var total int64
 	add := func(dir string, recursive bool) {
@@ -118,19 +119,20 @@ func TotalBytes(base string) int64 {
 	for _, dd := range deviceDirs(base) {
 		add(dd.path, false)
 	}
-	for _, d := range []string{"tmp", "run", "owners"} {
+	for _, d := range []string{"tmp", "run", "owners", "bin", "log"} {
 		add(filepath.Join(base, d), true)
 	}
 	return total
 }
 
 // Sweep applies retention to everything the tool manages under the root:
-// stale run/ entries and owner locks, tmp/ files, the MaxAge window for
+// stale run/ entries, tmp/ files, old bin/ versions, the MaxAge window for
 // device directories this process does not record (every format version,
 // removing a directory once all of it has expired), and finally the total
-// size cap (oldest segments first across all devices). Directories recorded
-// by a live process (its writer.lock or owner lock is held) are left to that
-// process. Unknown directories (e.g. from versions before 0.4) are ignored.
+// size cap (oldest segments first across all devices; bin/ and log/ count
+// but are bounded by their own rules). Directories written by another live
+// process (writer.lock held) are left to it. Unknown directories (e.g.
+// from versions before 0.4) are ignored.
 func Sweep(o SweepOptions) SweepResult {
 	if o.Now.IsZero() {
 		o.Now = time.Now()
@@ -138,23 +140,14 @@ func Sweep(o SweepOptions) SweepResult {
 	if o.TmpAge <= 0 {
 		o.TmpAge = time.Hour
 	}
-	root := o.Root
-	if root == nil {
-		root = &Root{Dir: o.Base}
-	}
 	var res SweepResult
-	res.StaleRun = SweepRun(root.Run(), o.MaxAge, o.Now)
-	res.StaleOwners = sweepOwners(*root)
+	res.StaleRun = SweepRun(filepath.Join(o.Base, "run"), o.MaxAge, o.Now)
+	res.StaleOwners = sweepOldOwners(filepath.Join(o.Base, "owners"))
+	res.OldBins = SweepBin(filepath.Join(o.Base, "bin"), o.KeepBin)
 	tmpBase := filepath.Join(o.Base, "tmp")
 	res.addAll(removeOlder(tmpBase, o.Now.Add(-o.TmpAge)))
-	if o.Base != root.Dir {
-		res.addAll(removeOlder(root.Tmp(), o.Now.Add(-o.TmpAge)))
-	}
 	busy := func(dd dataDir) bool {
 		if o.Owned[dd.path] != nil {
-			return true
-		}
-		if dd.current && root.OwnerHeld(dd.id) {
 			return true
 		}
 		return store.WriterLockHeld(dd.path)
@@ -391,22 +384,83 @@ func pruneEmpty(dir string, self bool) {
 	}
 }
 
-// sweepOwners removes owner lock files nobody holds (left by a crash).
-func sweepOwners(r Root) int {
-	ents, _ := os.ReadDir(r.Owners())
+// sweepOldOwners removes the owners/ directory of 0.4 development builds
+// (per-device owner locks, replaced by the single service): lock files
+// nobody holds, then the directory if it is empty.
+func sweepOldOwners(dir string) int {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
 	n := 0
 	for _, e := range ents {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".lock") {
 			continue
 		}
-		p := filepath.Join(r.Owners(), e.Name())
+		p := filepath.Join(dir, e.Name())
 		f, ok := store.TryLock(p)
 		if !ok {
-			continue
+			continue // a development build still runs
 		}
-		os.Remove(p) // under the lock; AcquireOwner re-checks the inode
+		os.Remove(p)
 		store.ReleaseLock(f)
 		n++
+	}
+	os.Remove(dir) // only if empty
+	return n
+}
+
+// binFile: the only names ever deleted from a bin/<version>/ directory.
+func binFile(name string) bool {
+	return name == "android-log-mcp" || name == "android-log-mcp.exe" || strings.HasPrefix(name, ".install-")
+}
+
+// SweepBin keeps the running service's bin/ directory (keep) plus the most
+// recently installed other one and removes the rest (only known file
+// names; a binary still in use elsewhere, which Windows refuses to delete,
+// is left for a later sweep). Returns how many directories it removed.
+func SweepBin(binDir, keep string) int {
+	ents, err := os.ReadDir(binDir)
+	if err != nil {
+		return 0
+	}
+	type ver struct {
+		path string
+		mod  time.Time
+	}
+	var vs []ver
+	for _, e := range ents {
+		p := filepath.Join(binDir, e.Name())
+		if !e.IsDir() || (keep != "" && filepath.Clean(p) == filepath.Clean(keep)) {
+			continue
+		}
+		fi, err := e.Info()
+		if err != nil {
+			continue
+		}
+		mod := fi.ModTime() // the binary's mtime = when it was last installed / started
+		for _, n := range []string{"android-log-mcp", "android-log-mcp.exe"} {
+			if bi, err := os.Stat(filepath.Join(p, n)); err == nil {
+				mod = bi.ModTime()
+			}
+		}
+		vs = append(vs, ver{p, mod})
+	}
+	sort.Slice(vs, func(i, j int) bool { return vs[i].mod.After(vs[j].mod) })
+	n := 0
+	for i, v := range vs {
+		if i == 0 {
+			continue // the newest other version (e.g. just installed by a client)
+		}
+		files, _ := os.ReadDir(v.path)
+		for _, f := range files {
+			if binFile(f.Name()) {
+				os.Remove(filepath.Join(v.path, f.Name()))
+			}
+		}
+		if os.Remove(v.path) == nil {
+			n++
+		}
 	}
 	return n
 }

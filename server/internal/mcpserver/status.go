@@ -144,8 +144,6 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 	fmt.Fprintf(&b, "store: %s (data in %s/<device-id>)\n", t.M.Base, filepath.Base(store.DataDir(t.M.Base)))
 	if t.M.NoADB {
 		b.WriteString("mode: offline (read-only dataset; nothing is recorded, pruned or created)\n")
-	} else if o := t.M.Root.Owners(); filepath.Dir(filepath.Clean(o)) != filepath.Clean(t.M.Base) {
-		fmt.Fprintf(&b, "owner locks: %s (shared by every process of this user)\n", o)
 	}
 	fmt.Fprintf(&b, "devices (%d):\n", len(devs))
 	known := map[string]bool{}
@@ -174,19 +172,18 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 		stats := d.Store.Stats()
 		var rec string
 		switch {
-		case st.Owner != nil:
-			rec = "NOT recorded by this process: owned by another android-log-mcp process (" + st.Owner.String() + "); this process only reads that data"
 		case st.Paused != "":
 			rec = st.Paused
 		case st.Recording:
-			rec = "recording (this process)"
+			rec = "recording"
 		case st.State == "device" && !st.Owned && !t.M.NoADB:
 			rec = fmt.Sprintf("NOT recorded: recording limit of %d devices reached (ANDROID_LOG_MCP_MAX_DEVICES)", t.M.MaxDevices)
 		case st.State == "device" && !st.Writer:
-			rec = "recorded by another android-log-mcp process"
+			rec = "NOT recorded: another process writes this directory (writer.lock"
 			if st.WriterPID != "" {
-				rec += " (pid " + st.WriterPID + ")"
+				rec += ", pid " + st.WriterPID
 			}
+			rec += "), e.g. an older android-log-mcp; stop it"
 		case st.State == "device":
 			rec = "starting recorder"
 		default:

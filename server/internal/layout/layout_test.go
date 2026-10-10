@@ -2,7 +2,6 @@ package layout
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -40,39 +39,6 @@ func devDir(t *testing.T, dir string, n, size int, mod time.Time) {
 	for i := 0; i < n; i++ {
 		write(t, filepath.Join(dir, fmt.Sprintf("seg-%020d.jsonl", 1+i*100)), size, mod.Add(time.Duration(i)*time.Second))
 	}
-}
-
-func TestOwnerLockExclusive(t *testing.T) {
-	r := Root{Dir: t.TempDir()}
-	l, _, err := r.AcquireOwner("avd-a", Owner{PID: 11, Version: "0.4.0", DataDir: "/x/v1/avd-a", Addr: "emulator-5554"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, o, err := r.AcquireOwner("avd-a", Owner{PID: 22}); !errors.Is(err, ErrOwned) || o == nil || o.PID != 11 || o.DataDir != "/x/v1/avd-a" {
-		t.Fatalf("second acquire: err %v owner %+v", err, o)
-	}
-	if o, held := r.ReadOwner("avd-a"); !held || o == nil || o.Version != "0.4.0" {
-		t.Fatalf("ReadOwner: %+v %v", o, held)
-	}
-	l.Update(func(o *Owner) { o.Addr = "127.0.0.1:5555" })
-	if o, _ := r.ReadOwner("avd-a"); o == nil || o.Addr != "127.0.0.1:5555" {
-		t.Fatalf("after Update: %+v", o)
-	}
-	// another device is independent
-	l2, _, err := r.AcquireOwner("R58M", Owner{PID: 33})
-	if err != nil {
-		t.Fatal(err)
-	}
-	l2.Release()
-	l.Release()
-	if r.OwnerHeld("avd-a") {
-		t.Fatal("still held after Release")
-	}
-	l3, _, err := r.AcquireOwner("avd-a", Owner{PID: 44})
-	if err != nil {
-		t.Fatalf("re-acquire: %v", err)
-	}
-	l3.Release()
 }
 
 // Old layouts (pre-0.4 flat <serial>/ dirs, legacy/, android-log-mcp.*
@@ -173,42 +139,72 @@ func TestSweepTotalCapAcrossVersions(t *testing.T) {
 	}
 }
 
-func TestSweepSkipsLiveWriterAndOwner(t *testing.T) {
+func TestSweepSkipsLiveWriter(t *testing.T) {
 	base := t.TempDir()
 	old := time.Now().Add(-72 * time.Hour)
-	devDir(t, filepath.Join(base, "v0", "dev"), 2, 100, old)   // an old version records it
-	devDir(t, filepath.Join(base, "v1", "avd-b"), 2, 100, old) // owned by another process
+	devDir(t, filepath.Join(base, "v0", "dev"), 2, 100, old) // an old version records it
 	f, ok := store.TryLock(filepath.Join(base, "v0", "dev", "writer.lock"))
 	if !ok {
 		t.Fatal("lock")
 	}
 	defer store.ReleaseLock(f)
-	r := Root{Dir: base, OwnersDir: filepath.Join(t.TempDir(), "owners")}
-	l, _, err := r.AcquireOwner("avd-b", Owner{PID: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer l.Release()
-	Sweep(SweepOptions{Base: base, Root: &r, MaxAge: time.Hour, MaxTotal: 1})
-	for _, p := range []string{"v0/dev/seg-00000000000000000001.jsonl", "v1/avd-b/seg-00000000000000000001.jsonl"} {
-		if !exists(filepath.Join(base, p)) {
-			t.Errorf("%s removed although recorded by a live process", p)
-		}
+	Sweep(SweepOptions{Base: base, MaxAge: time.Hour, MaxTotal: 1})
+	if !exists(filepath.Join(base, "v0/dev/seg-00000000000000000001.jsonl")) {
+		t.Error("removed although written by a live process")
 	}
 }
 
-func TestSweepOwnersRemovesAbandonedLocks(t *testing.T) {
-	r := Root{Dir: t.TempDir()}
-	l, _, err := r.AcquireOwner("live", Owner{PID: 1})
-	if err != nil {
-		t.Fatal(err)
+// owners/ of 0.4 development builds (per-device owner locks) is cleaned up:
+// unheld lock files, then the directory.
+func TestSweepRemovesOldOwnersDir(t *testing.T) {
+	base := t.TempDir()
+	owners := filepath.Join(base, "owners")
+	write(t, filepath.Join(owners, "crashed.lock"), 20, time.Now().Add(-2*time.Minute))
+	live, ok := store.TryLock(filepath.Join(owners, "live.lock"))
+	if !ok {
+		t.Fatal("lock")
 	}
-	defer l.Release()
-	// (older than a minute: without flock a fresh lock file counts as held)
-	write(t, filepath.Join(r.Owners(), "crashed.lock"), 20, time.Now().Add(-2*time.Minute))
-	res := Sweep(SweepOptions{Base: r.Dir, Root: &r})
-	if res.StaleOwners != 1 || exists(filepath.Join(r.Owners(), "crashed.lock")) || !r.OwnerHeld("live") {
-		t.Fatalf("stale owners %d; live held %v", res.StaleOwners, r.OwnerHeld("live"))
+	res := Sweep(SweepOptions{Base: base})
+	if res.StaleOwners != 1 || exists(filepath.Join(owners, "crashed.lock")) || !exists(filepath.Join(owners, "live.lock")) {
+		t.Fatalf("stale owners %d", res.StaleOwners)
+	}
+	store.ReleaseLock(live)
+	Sweep(SweepOptions{Base: base})
+	if exists(owners) {
+		t.Fatal("empty owners/ not removed")
+	}
+}
+
+// bin/ keeps the running service's version plus the newest other one;
+// bin/ and log/ count towards the total.
+func TestSweepBinKeepsRunningAndNewest(t *testing.T) {
+	base := t.TempDir()
+	bin := filepath.Join(base, "bin")
+	now := time.Now()
+	mk := func(name string, age time.Duration) string {
+		d := filepath.Join(bin, name)
+		write(t, filepath.Join(d, "android-log-mcp"), 1000, now.Add(-age))
+		os.Chtimes(d, now.Add(-age), now.Add(-age))
+		return d
+	}
+	running := mk("0.4.0-aaa", 5*time.Hour) // oldest, but running
+	mk("0.4.1-bbb", 3*time.Hour)
+	newest := mk("0.4.2-ccc", time.Hour)
+	mk("0.3.9-ddd", 4*time.Hour)
+	os.WriteFile(filepath.Join(bin, "0.3.9-ddd", "unknown.txt"), []byte("x"), 0o644) // never deleted
+	write(t, filepath.Join(base, "log", "service.log"), 500, now)
+	res := Sweep(SweepOptions{Base: base, KeepBin: running})
+	if !exists(running) || !exists(newest) || exists(filepath.Join(bin, "0.4.1-bbb")) {
+		t.Fatalf("bin after sweep: running %v newest %v", exists(running), exists(newest))
+	}
+	if exists(filepath.Join(bin, "0.3.9-ddd", "android-log-mcp")) || !exists(filepath.Join(bin, "0.3.9-ddd", "unknown.txt")) {
+		t.Fatal("unknown file deleted or known binary kept")
+	}
+	if res.OldBins != 1 { // 0.3.9-ddd still has the unknown file
+		t.Fatalf("removed %d bin dirs", res.OldBins)
+	}
+	if got := TotalBytes(base); got != 1000+1000+1+500 {
+		t.Fatalf("TotalBytes %d (bin/ and log/ must count)", got)
 	}
 }
 

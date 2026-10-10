@@ -6,12 +6,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/s1crab/android-log-mcp/server/internal/layout"
+	"github.com/s1crab/android-log-mcp/server/internal/service"
 )
 
-// runRoot prints the data root (read-only). It is fixed to
-// <user cache dir>/android-log-mcp; a configurable root (set-root) is
-// planned for the background service (#3, #10).
+// runRoot prints the data root (read-only): the root the service records
+// into (config.json, written by set-root; default <user cache dir>/android-log-mcp).
 func runRoot(args []string) int {
 	fs := flag.NewFlagSet("root", flag.ContinueOnError)
 	asJSON := fs.Bool("json", false, "machine-readable output")
@@ -19,9 +18,18 @@ func runRoot(args []string) int {
 		fmt.Fprintln(os.Stderr, "usage: android-log-mcp root [--json]")
 		return 2
 	}
-	root := layout.DefaultDir()
+	ctrl := service.DefaultControl()
+	root, err := service.ConfiguredRoot(ctrl)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "android-log-mcp root:", err)
+		return 1
+	}
 	if *asJSON {
-		b, _ := json.MarshalIndent(map[string]string{"root": root, "owners": layout.DefaultOwnersDir()}, "", "  ")
+		out := map[string]any{"root": root, "default_root": ctrl.Dir, "control": ctrl.Dir, "config": ctrl.ConfigPath(), "socket": ctrl.Socket()}
+		if st := ctrl.ReadState(); st != nil && service.Running(ctrl) {
+			out["service"] = map[string]any{"pid": st.PID, "version": st.Version, "proto": st.Proto, "root": st.Root}
+		}
+		b, _ := json.MarshalIndent(out, "", "  ")
 		fmt.Println(string(b))
 		return 0
 	}

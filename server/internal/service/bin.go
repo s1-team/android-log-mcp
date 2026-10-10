@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"time"
 )
 
 // BinDir is where service binaries are installed under the data root:
@@ -52,8 +53,8 @@ func InstallBinary(root, version string) (string, error) {
 	dir := filepath.Join(BinDir(root), name)
 	dst := filepath.Join(dir, exeName())
 	if fi, err := os.Stat(dst); err == nil && fi.Size() == size {
-		now := fi.ModTime()
-		os.Chtimes(dir, now, now) // keep the dir's mtime = install time
+		now := time.Now()
+		os.Chtimes(dst, now, now) // mtime = last started: the sweep keeps the newest
 		return dst, nil
 	}
 	if filepath.Clean(src) == filepath.Clean(dst) {

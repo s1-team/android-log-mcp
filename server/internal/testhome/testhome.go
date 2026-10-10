@@ -1,9 +1,10 @@
-// Package testhome isolates tests from the real user's data root and,
-// above all, from the fixed per-user owners directory
-// (os.UserCacheDir()/android-log-mcp/owners), which every root shares.
+// Package testhome isolates tests from the real user's data root and, above
+// all, from the real background service and its control directory
+// (os.UserCacheDir()/android-log-mcp: run/service.lock, the socket,
+// config.json).
 //
-// Use it from TestMain in any package whose tests create a device.Manager
-// or call layout.DefaultDir / DefaultOwnersDir:
+// Use it from TestMain in any package whose tests create a device.Manager,
+// start a service or call layout.DefaultDir:
 //
 //	func TestMain(m *testing.M) { os.Exit(testhome.Run(m)) }
 package testhome

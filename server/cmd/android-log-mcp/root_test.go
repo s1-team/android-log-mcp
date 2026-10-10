@@ -51,8 +51,8 @@ func TestRootCommand(t *testing.T) {
 		t.Fatalf("root: %d %q", code, out)
 	}
 	out, _, code = cli(t, nil, "root", "--json")
-	var r struct{ Root, Owners string }
-	if code != 0 || json.Unmarshal([]byte(out), &r) != nil || r.Root != layout.DefaultDir() || r.Owners != layout.DefaultOwnersDir() {
+	var r struct{ Root, Control, Config, Socket string }
+	if code != 0 || json.Unmarshal([]byte(out), &r) != nil || r.Root != layout.DefaultDir() || r.Control != layout.DefaultDir() || r.Socket == "" {
 		t.Fatalf("root --json: %d %q", code, out)
 	}
 	// set-root is not part of 0.4.0 (#10)
