@@ -41,6 +41,20 @@ type Manager struct {
 	// removed by the sweep).
 	KeepBin string
 
+	// Lazy (issue #11): no adb until a device is wanted (Want); only
+	// wanted devices are recorded, each until it is idle (CheckIdle).
+	// Without Lazy every online device is recorded (tests, older mode).
+	Lazy bool
+	// Linger is a device's idle time after its last call (<0: never
+	// idle); nil = never idle.
+	Linger func(d *Device) time.Duration
+	// PinnedUntil returns a device's pin deadline (zero: no pin).
+	PinnedUntil func(id string) time.Time
+	// OnActivity is called after devices start or stop.
+	OnActivity func()
+	// IdleTick is how often idle devices are checked (default 1 s).
+	IdleTick time.Duration
+
 	adb       *ADB
 	adbErr    error
 	ctx       context.Context
@@ -52,14 +66,26 @@ type Manager struct {
 	attachMu  sync.Mutex // serializes attach / migration / sweep
 	watchErr  error
 	closed    bool // Close was called: never attach again
-	ready     chan struct{}
-	once      sync.Once
+	sess      *trackSession
+	wanted    map[string]*want    // Lazy: devices to record, by ID
+	idents    map[string]Identity // resolved online devices, by ID
+	wantMu    sync.Mutex          // serializes Want / Unwant / tracking start and stop
 }
+
+// trackSession is one period of adb device tracking.
+type trackSession struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+	ready  chan struct{}
+	once   sync.Once
+}
+
+func (t *trackSession) markReady() { t.once.Do(func() { close(t.ready) }) }
 
 func NewManager(base string, cfg store.Config) *Manager {
 	m := &Manager{Base: base, Root: layout.Root{Dir: base}, Cfg: cfg, MaxDevices: 4,
 		devices: map[string]*Device{}, states: map[string]string{}, addrs: map[string]string{}, resolving: map[string]bool{},
-		ready: make(chan struct{}), MaxTotalBytes: DefaultMaxTotalBytes, Disk: &store.DiskGuard{MinFree: DefaultMinFreeBytes}}
+		wanted: map[string]*want{}, idents: map[string]Identity{}, MaxTotalBytes: DefaultMaxTotalBytes, Disk: &store.DiskGuard{MinFree: DefaultMinFreeBytes}}
 	if v, err := strconv.Atoi(os.Getenv("ANDROID_LOG_MCP_MAX_DEVICES")); err == nil && v > 0 {
 		m.MaxDevices = v
 	}
@@ -204,13 +230,11 @@ func (m *Manager) Start(ctx context.Context) {
 	}
 	if m.NoADB {
 		m.adbErr = fmt.Errorf("adb disabled")
-		m.once.Do(func() { close(m.ready) })
 		return
 	}
-	p, err := FindADB()
+	p, err := FindADB() // a file lookup: runs no adb
 	if err != nil {
 		m.adbErr = err
-		m.once.Do(func() { close(m.ready) })
 		return
 	}
 	m.adb = &ADB{Path: p}
@@ -219,21 +243,57 @@ func (m *Manager) Start(ctx context.Context) {
 		d.adb = m.adb
 	}
 	m.mu.Unlock()
+	if m.Lazy {
+		go m.idleLoop(ctx)
+		return
+	}
+	m.startTracking()
+}
+
+// startTracking starts adb device tracking (idempotent): the adb server
+// is started outside our process group first (it is shared with other
+// tools and must outlive us), then `adb track-devices`.
+func (m *Manager) startTracking() *trackSession {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.sess != nil {
+		return m.sess
+	}
+	ctx, cancel := context.WithCancel(m.ctx)
+	ts := &trackSession{ctx: ctx, cancel: cancel, ready: make(chan struct{})}
+	m.sess = ts
+	if m.adb == nil {
+		ts.markReady()
+		return ts
+	}
 	go func() {
-		// start the adb server outside our process group first (it is
-		// shared with other tools and must outlive us), then watch
-		sctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		sctx, scancel := context.WithTimeout(ctx, 20*time.Second)
 		if err := m.adb.StartServer(sctx); err != nil && ctx.Err() == nil {
 			log.Printf("adb start-server: %v", err)
 		}
-		cancel()
-		m.adb.Watch(ctx, m.onDevices)
+		scancel()
+		m.adb.Watch(ctx, func(l []DevState, err error) { m.onDevices(ts, l, err) })
 	}()
-	go func() { // don't block the first tool call forever
-		sleep(ctx, 5*time.Second)
-		m.once.Do(func() { close(m.ready) })
-	}()
+	return ts // callers wait for ready with their own bound (WaitReady)
 }
+
+// session is the current tracking session (nil: not tracking).
+func (m *Manager) session() *trackSession {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.sess
+}
+
+// runCtx is the context recorders run in: the tracking session's.
+func (m *Manager) runCtx() context.Context {
+	if ts := m.session(); ts != nil {
+		return ts.ctx
+	}
+	return m.ctx
+}
+
+// Tracking reports whether adb device tracking runs.
+func (m *Manager) Tracking() bool { return m.session() != nil }
 
 // loadDirs opens every recorded device directory under Base read-only:
 // previously recorded devices are queryable even when offline (a device
@@ -255,16 +315,31 @@ func (m *Manager) loadDirs() {
 	}
 }
 
-// WaitReady waits (bounded) for the first device list.
+// WaitReady waits (bounded) for the first device list of the current
+// tracking session (returns at once when not tracking).
 func (m *Manager) WaitReady(timeout time.Duration) {
+	ts := m.session()
+	if ts == nil {
+		return
+	}
 	select {
-	case <-m.ready:
+	case <-ts.ready:
 	case <-time.After(timeout):
 	}
 }
 
-func (m *Manager) onDevices(list []DevState, err error) {
+func (m *Manager) markReady() {
+	if ts := m.session(); ts != nil {
+		ts.markReady()
+	}
+}
+
+func (m *Manager) onDevices(ts *trackSession, list []DevState, err error) {
 	m.mu.Lock()
+	if m.sess != ts {
+		m.mu.Unlock()
+		return // a stopped session
+	}
 	m.watchErr = err
 	if err != nil {
 		m.mu.Unlock()
@@ -283,7 +358,7 @@ func (m *Manager) onDevices(list []DevState, err error) {
 	m.mu.Unlock()
 	m.applyStates()
 	if pending == 0 {
-		m.once.Do(func() { close(m.ready) })
+		ts.markReady()
 	}
 }
 
@@ -308,7 +383,8 @@ func (m *Manager) startResolvesLocked() int {
 }
 
 func (m *Manager) resolve(addr string) {
-	id, err := ProbeIdentity(m.ctx, m.adb, addr)
+	ctx := m.runCtx()
+	id, err := ProbeIdentity(ctx, m.adb, addr)
 	if err != nil {
 		m.mu.Lock()
 		delete(m.resolving, addr)
@@ -319,6 +395,10 @@ func (m *Manager) resolve(addr string) {
 	final := m.attach(id)
 	m.mu.Lock()
 	delete(m.resolving, addr)
+	if ctx.Err() != nil {
+		m.mu.Unlock()
+		return // tracking stopped meanwhile
+	}
 	if m.states[addr] != "" && final != "" {
 		m.addrs[addr] = final
 	}
@@ -326,7 +406,7 @@ func (m *Manager) resolve(addr string) {
 	m.mu.Unlock()
 	m.applyStates()
 	if pending == 0 {
-		m.once.Do(func() { close(m.ready) })
+		m.markReady()
 	}
 }
 
@@ -363,11 +443,12 @@ func (m *Manager) applyStates() {
 		ups = append(ups, u)
 	}
 	m.mu.Unlock()
+	ctx := m.runCtx()
 	for _, u := range ups {
 		if u.addr != "" {
 			u.d.setAddr(u.addr)
 		}
-		u.d.setState(m.ctx, u.state)
+		u.d.setState(ctx, u.state)
 	}
 }
 
@@ -381,7 +462,10 @@ func (m *Manager) recheck() {
 		if m.states[a] != "device" || m.resolving[a] {
 			continue
 		}
-		if m.devices[id] == nil {
+		if _, w := m.wanted[id]; m.Lazy && !w {
+			continue // known, not recorded until a call targets it
+		}
+		if d := m.devices[id]; d == nil || (m.Lazy && !d.Owned()) {
 			retry = append(retry, a)
 		}
 	}
@@ -441,7 +525,12 @@ func (m *Manager) attach(id Identity) string {
 	}
 	m.mu.Lock()
 	cur := m.devices[id.ID]
+	m.idents[id.ID] = id
+	_, wanted := m.wanted[id.ID]
 	m.mu.Unlock()
+	if m.Lazy && !wanted {
+		return id.ID // known, but not recorded until a call targets it
+	}
 	if cur != nil && cur.Owned() {
 		cur.setAddr(id.Addr)
 		return id.ID

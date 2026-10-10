@@ -17,7 +17,7 @@ func crashPkgMatch(c *analysis.Crash, pkg string) bool {
 	return pkg == "" || c.Package == pkg || pkgOfName(c.Process) == pkg
 }
 
-func (t *Tools) crashes(ctx context.Context, a crashArgs) (string, error) {
+func (t *Tools) crashes(ctx context.Context, a crashArgs) (out string, err error) {
 	if a.Limit == 0 {
 		a.Limit = 10
 	}
@@ -31,10 +31,16 @@ func (t *Tools) crashes(ctx context.Context, a crashArgs) (string, error) {
 		}
 		kinds[k] = true
 	}
-	d, err := t.resolveDevice(a.Device)
+	d, done, note, err := t.useAndWait(ctx, a.Device)
+	defer done()
 	if err != nil {
 		return "", err
 	}
+	defer func() {
+		if note != "" && err == nil {
+			out = "note: " + note + "\n" + out
+		}
+	}()
 	d.Store.Refresh()
 	loc := d.Loc()
 	now := d.Now()

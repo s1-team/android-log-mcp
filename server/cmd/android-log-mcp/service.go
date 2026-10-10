@@ -77,6 +77,9 @@ func runService(detached bool) int {
 	} else {
 		log.SetOutput(io.MultiWriter(os.Stderr, lf))
 	}
+	if v, err := time.ParseDuration(os.Getenv("ALM_TEST_EXIT_GRACE")); err == nil && v > 0 {
+		service.ExitGrace = v // tests only: exit sooner when unused
+	}
 	opt := service.Options{Control: ctrl, Version: mcpserver.Version, Root: root, Cfg: store.ConfigFromEnv(), Log: lf}
 	if detached {
 		opt.OnRootChange = func(root string) { // set-root: the crash log moves along

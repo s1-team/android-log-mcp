@@ -30,29 +30,22 @@ func seedStore(t *testing.T, root string) {
 	st.Close()
 }
 
-// report goes through the running service; with none running it is built
-// in-process and does not start a service.
-func TestReportViaServiceOrLocal(t *testing.T) {
+// report goes through the service; with none running it starts one
+// detached (issue #11 §9), never building it in this process.
+func TestReportStartsService(t *testing.T) {
 	env := isoEnv(t)
 	seedStore(t, controlDirOf(env))
 	out1 := filepath.Join(t.TempDir(), "r1.zip")
 	_, errOut, code := cliEnv(t, env, "report", "--no-adb", "-o", out1)
-	if code != 0 || !strings.Contains(errOut, "no service running; built in this process") || !strings.Contains(errOut, "emu-1: 1 records") {
-		t.Fatalf("local report: %d\n%s", code, errOut)
+	if code != 0 || !strings.Contains(errOut, "built by the android-log-mcp service (pid ") || !strings.Contains(errOut, "emu-1: 1 records") {
+		t.Fatalf("report without a service: %d\n%s", code, errOut)
 	}
 	if _, err := os.Stat(out1); err != nil {
 		t.Fatal(err)
 	}
-	if pid := statePID(t, env); pid != 0 {
-		t.Fatalf("report started a service (pid %d)", pid)
-	}
-	// start a service, then report through it
-	if _, e, c := cliEnv(t, env, "call", "logcat_status"); c != 0 {
-		t.Fatalf("call: %d %s", c, e)
-	}
 	pid := statePID(t, env)
-	if pid == 0 {
-		t.Fatal("no service after call")
+	if pid == 0 || pid == os.Getpid() {
+		t.Fatalf("report did not start a detached service (pid %d)", pid)
 	}
 	out2 := filepath.Join(t.TempDir(), "r2.zip")
 	_, errOut, code = cliEnv(t, env, "report", "--no-adb", "-o", out2)

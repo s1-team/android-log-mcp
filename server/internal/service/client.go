@@ -29,6 +29,14 @@ type ClientOptions struct {
 	StartTimeout time.Duration
 	// Cfg is the store config an in-process service uses.
 	Cfg store.Config
+	// NoEmbedded: never run the service in this process; a failed
+	// detached start is an error (record --for, report: the user asked
+	// for recording that must outlive this command).
+	NoEmbedded bool
+	// RestartPinned: when the connection drops because the service
+	// crashed and an unsuspended recording pin is active, start a new
+	// service at once instead of on the next call (issue #11 §8).
+	RestartPinned bool
 }
 
 // ErrIncompatible: the running service is newer and no longer speaks this
@@ -57,6 +65,7 @@ type Client struct {
 	started  bool // this client started the service it last connected to
 	spawned  int  // pid of the last service this client started detached
 	lastNote string
+	closed   bool
 }
 
 // NewClient returns a client; nothing is connected yet.
@@ -140,7 +149,14 @@ func (c *Client) ensure(ctx context.Context) (*Conn, error) {
 			if ok {
 				c.conn = conn
 				c.started = (c.embedded != nil && conn.Hello.PID == os.Getpid()) || (c.spawned != 0 && conn.Hello.PID == c.spawned)
-				log.Printf("using the android-log-mcp service pid %d (version %s, protocol %d, root %s)", conn.Hello.PID, conn.Hello.Version, conn.Hello.Proto, conn.Hello.Root)
+				rec := ""
+				if conn.Hello.Recording != "" {
+					rec = ", recording: " + conn.Hello.Recording
+				}
+				log.Printf("using the android-log-mcp service pid %d (version %s, protocol %d, root %s%s)", conn.Hello.PID, conn.Hello.Version, conn.Hello.Proto, conn.Hello.Root, rec)
+				if c.opt.RestartPinned {
+					go c.watch(conn)
+				}
 				return conn, nil
 			}
 			continue // replaced an older service: start ours
@@ -241,6 +257,8 @@ func (c *Client) start(ctx context.Context) error {
 	switch {
 	case NoSpawn:
 		reason = "detached start disabled"
+	case len(c.spawns) >= 3 && c.opt.NoEmbedded:
+		return fmt.Errorf("the background service stopped %d times within a minute; see %s", len(c.spawns), c.logHint())
 	case len(c.spawns) >= 3:
 		reason = fmt.Sprintf("the background service stopped %d times within a minute", len(c.spawns))
 	default:
@@ -251,9 +269,46 @@ func (c *Client) start(ctx context.Context) error {
 			return nil
 		}
 		reason = "detached start failed: " + err.Error()
+		if c.opt.NoEmbedded {
+			return fmt.Errorf("could not start the android-log-mcp service detached: %v; run `android-log-mcp service` in a terminal and retry", err)
+		}
+	}
+	if c.opt.NoEmbedded {
+		return fmt.Errorf("could not start the android-log-mcp service detached (%s); run `android-log-mcp service` in a terminal and retry", reason)
 	}
 	log.Printf("%s; running the service in this process (pid %d) instead", reason, os.Getpid())
 	return c.startEmbedded(reason)
+}
+
+func (c *Client) logHint() string {
+	if root, err := ConfiguredRoot(c.opt.Control); err == nil {
+		return LogDir(root)
+	}
+	return "the service log"
+}
+
+// watch restarts a crashed service at once when an unsuspended recording
+// pin is active (a clean stop or a handoff removes service.json; a crash
+// leaves it behind).
+func (c *Client) watch(conn *Conn) {
+	<-conn.Done()
+	c.mu.Lock()
+	closed, cur := c.closed, c.conn
+	c.mu.Unlock()
+	if closed || cur != conn {
+		return
+	}
+	time.Sleep(200 * time.Millisecond) // let a clean stop finish removing service.json
+	st := c.opt.Control.ReadState()
+	if st == nil || Running(c.opt.Control) || !HasActivePin(c.opt.Control, time.Now()) {
+		return
+	}
+	log.Printf("the service (pid %d) ended without shutting down while a recording pin is active: restarting it", st.PID)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if _, err := c.ensure(ctx); err != nil {
+		log.Printf("restarting the service: %v", err)
+	}
 }
 
 func reachable(ctrl Control) bool {
@@ -378,6 +433,7 @@ func (c *Client) Close() {
 	c.mu.Lock()
 	conn, emb := c.conn, c.embedded
 	c.conn, c.embedded = nil, nil
+	c.closed = true
 	c.mu.Unlock()
 	if conn != nil {
 		conn.Close()

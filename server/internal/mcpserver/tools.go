@@ -5,8 +5,9 @@ type toolDef struct {
 }
 
 type statusArgs struct {
-	Device  string `json:"device"`
-	Package string `json:"package"`
+	Device    string `json:"device"`
+	Package   string `json:"package"`
+	RecordFor string `json:"record_for"`
 }
 
 type searchArgs struct {
@@ -48,11 +49,15 @@ func toolDefs() []toolDef {
 		{
 			name:  "logcat_status",
 			title: "Logcat recorder status",
-			desc: "Check adb/device/recording state and (optionally) whether an app is running. Call this first if unsure which device is connected, or to get a `cursor` marking \"now\" before the user reproduces a bug (then pass it as `after` to logcat_search).\n" +
-				"Logs from all connected devices are recorded automatically in the background (persisted across sessions); there is nothing to start or stop.\n" +
+			desc: "Starts recording the device, or extends it with record_for (max 24h; \"0\" stops). " +
+				"Then reports adb/device/recording state and a `cursor` marking \"now\" (pass it as `after` to logcat_search to see only what happens next, e.g. while the user reproduces a bug); call it first if unsure which device is connected.\n" +
+				"Recording starts on use: the first log tool call for a device backfills what is still in its log buffer, waiting up to 10 s. If the response says backfill in progress, call logcat_status again before using a cursor (no cursor is returned until the backfill has caught up).\n" +
+				"Each device stops recording after a while without log tool calls (shown in the response); record_for keeps it recording until a deadline regardless of calls.\n" +
+				"With several connected devices and no `device`, nothing is started: pass device=<id>.\n" +
 				"With `package`, also reports install state and live/recently-dead processes (pid, process name, start/end time), including multi-process names like com.foo:remote.",
 			schema: `{"type":"object","properties":{
-"device":{"type":"string","description":"adb serial. Omit when only one device is connected."},
+"device":{"type":"string","description":"adb serial or device ID. Omit when only one device is connected."},
+"record_for":{"type":"string","description":"Keep recording this device for this long, independent of calls: a duration with a unit like 30m, 2h or 1h30m (max 24h; the deadline never shortens). \"0\" stops recording the device now and removes the pin."},
 "package":{"type":"string","description":"Exact application id, e.g. com.example.app. Optional."}
 },"additionalProperties":false}`,
 		},
@@ -67,6 +72,7 @@ func toolDefs() []toolDef {
 				"Invalid filters return an error with the position and a fix; nothing is guessed. The response echoes how the filter was interpreted — check it.\n" +
 				"The `package` param is an EXACT application id covering all its processes (filter's package: is a substring match).\n" +
 				"Paging: response gives `before`/`after` cursors. To wait for new lines (e.g. while the user reproduces), pass `after` plus `wait_ms` (≤25000).\n" +
+				"The first call for a device starts recording it and backfills its log buffer (waits up to 10 s); a \"backfill in progress\" note means results may be incomplete: call again.\n" +
 				"Use view=\"summary\" first for broad or unknown time ranges (counts by level/tag/package, top repeated messages).",
 			schema: `{"type":"object","properties":{
 "device":{"type":"string","description":"adb serial. Omit when only one device has logs."},

@@ -13,17 +13,23 @@ import (
 
 func launchRelevant(r *model.Record) bool { return analysis.LaunchTag(r) }
 
-func (t *Tools) launches(ctx context.Context, a launchArgs) (string, error) {
+func (t *Tools) launches(ctx context.Context, a launchArgs) (out string, err error) {
 	if a.Limit == 0 {
 		a.Limit = 5
 	}
 	if a.Limit < 1 || a.Limit > 20 {
 		return "", errf("limit must be 1..20 (got %d)", a.Limit)
 	}
-	d, err := t.resolveDevice(a.Device)
+	d, done, note, err := t.useAndWait(ctx, a.Device)
+	defer done()
 	if err != nil {
 		return "", err
 	}
+	defer func() {
+		if note != "" && err == nil {
+			out = "note: " + note + "\n" + out
+		}
+	}()
 	d.Store.Refresh()
 	loc := d.Loc()
 	now := d.Now()

@@ -43,11 +43,13 @@ func parseSize(s string) (int64, error) {
 const reportUsage = `usage: android-log-mcp report [flags]
 
 Packs recorded logs and diagnostics into a zip for the maintainer, with
-sensitive values redacted (on by default). The running background service
-builds it (it has the data and adb); when none runs, this command builds it
-itself and does not start one. Only reads the data; does not change the
-device (except --am-start, which launches the app). With --offline DIR it
-packs that dataset instead (no adb).
+sensitive values redacted (on by default). The background service builds
+it (it has the data and adb); when none runs, this command starts it
+detached. The service starts recording the requested devices and backfills
+their log buffers first (up to 10 s; otherwise the manifest says "backfill
+incomplete"). Only reads the data; does not change the device (except
+--am-start, which launches the app). With --offline DIR it packs that
+dataset instead (no adb, no service).
 
 flags:
 `
@@ -145,7 +147,7 @@ func runReport(ctx context.Context, offlineDir string, args []string) int {
 	if rep.PID != os.Getpid() {
 		fmt.Fprintf(os.Stderr, "report: built by the android-log-mcp service (pid %d, version %s) from %s\n", rep.PID, rep.Version, rep.Root)
 	} else {
-		fmt.Fprintf(os.Stderr, "report: no service running; built in this process from %s\n", rep.Root)
+		fmt.Fprintf(os.Stderr, "report: built in this process from %s (--offline)\n", rep.Root)
 	}
 	man := rep.Manifest
 	for _, d := range man.Devices {

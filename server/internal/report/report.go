@@ -72,6 +72,8 @@ type Options struct {
 	// CatchUp is how long to wait for the recorder to ingest the am start logs (default 8s).
 	CatchUp time.Duration
 	Logf    func(format string, a ...any)
+	// Warnings are added to the manifest (e.g. "backfill incomplete").
+	Warnings []string
 }
 
 // Manifest is manifest.json.
@@ -294,6 +296,7 @@ func Build(ctx context.Context, o Options) (*Manifest, error) {
 		man.Limits.Note = fmt.Sprintf("size cap %d bytes reached: the %d oldest records in the window were left out (see each device's first_record and the \"report size cap\" gap in its meta.json)", o.MaxBytes, dropped)
 		man.Warnings = append(man.Warnings, man.Limits.Note)
 	}
+	man.Warnings = append(man.Warnings, o.Warnings...)
 	if o.Note != "" {
 		zf.add("note.txt", []byte(red.Text(strings.TrimRight(o.Note, "\n")+"\n")))
 	}

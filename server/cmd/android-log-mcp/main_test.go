@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/s1crab/android-log-mcp/server/internal/fakeadb"
 	"github.com/s1crab/android-log-mcp/server/internal/mcpserver"
 	"github.com/s1crab/android-log-mcp/server/internal/service"
 	"github.com/s1crab/android-log-mcp/server/internal/testhome"
@@ -17,6 +18,9 @@ import (
 // ALM_TEST_PROTO, ALM_TEST_MINPROTO, ALM_TEST_NO_SPAWN,
 // ALM_TEST_SETROOT_FAIL.
 func TestMain(m *testing.M) {
+	if fakeadb.Is() { // lazy_test.go
+		os.Exit(fakeadb.Main(os.Args[1:]))
+	}
 	if isFakeADB() {
 		os.Exit(fakeADB(os.Args[1:]))
 	}

@@ -274,7 +274,7 @@ func (q *query) scan(limit int, desc bool) *scanResult {
 	return res
 }
 
-func (t *Tools) search(ctx context.Context, a searchArgs) (string, error) {
+func (t *Tools) search(ctx context.Context, a searchArgs) (out string, err error) {
 	if a.Limit == 0 {
 		a.Limit = defaultLimit
 	}
@@ -296,10 +296,16 @@ func (t *Tools) search(ctx context.Context, a searchArgs) (string, error) {
 	if a.WaitMs > 0 && a.After == "" {
 		return "", errf("wait_ms needs an after cursor: call logcat_status to get `cursor`, then logcat_search(after=<cursor>, wait_ms=%d)", a.WaitMs)
 	}
-	d, err := t.resolveDevice(a.Device)
+	d, done, note, err := t.useAndWait(ctx, a.Device)
+	defer done()
 	if err != nil {
 		return "", err
 	}
+	defer func() {
+		if note != "" && err == nil {
+			out = "note: " + note + "\n" + out
+		}
+	}()
 	d.Store.Refresh()
 	q, err := t.buildQuery(d, commonArgs{filter: a.Filter, pkg: a.Package, minLevel: a.MinLevel, from: a.From, to: a.To, before: a.Before, after: a.After, tags: a.Tags})
 	if err != nil {

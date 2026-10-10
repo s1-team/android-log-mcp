@@ -109,18 +109,20 @@ func TestADBServerSurvivesService(t *testing.T) {
 	}
 }
 
-// The service stops on its own once the linger time after its last client
-// has passed, and not while a client is connected; the default linger is
-// the planned 10 min (2 × buffer span, ≤ 1 h).
-func TestServiceLinger(t *testing.T) {
+// The service stays while a client is connected (idle: no adb) and exits
+// ExitGrace (shortened here) after the last client left with no pin and no
+// recorded device; the per-device linger default is the planned 10 min
+// (2 × buffer span, ≤ 1 h).
+func TestServiceExitsAfterLastClient(t *testing.T) {
 	env := isoEnv(t)
 	out, _, code := cliEnv(t, env, "call", "logcat_status")
-	if code != 0 || !strings.Contains(out, "linger: 10m0s (default: max(10m0s, 2 × device log buffer span") || !strings.Contains(out, "at most 1h0m0s") {
-		t.Fatalf("default linger:\n%s", out)
+	if code != 0 || !strings.Contains(out, "linger: per device, after its last log tool call: 10m0s (default: max(10m0s, 2 × the device's log buffer span") ||
+		!strings.Contains(out, "at most 1h0m0s") || !strings.Contains(out, "recording: idle (starts on the first log tool call)") {
+		t.Fatalf("status:\n%s", out)
 	}
 	cliEnv(t, env, "service", "stop")
 
-	env = isoEnv(t, "ANDROID_LOG_MCP_LINGER=1s")
+	env = isoEnv(t, "ALM_TEST_EXIT_GRACE=1s", "ANDROID_LOG_MCP_LINGER=0")
 	s := startMCP(t, env)
 	pid, _ := servicePID(t, s.status(t))
 	time.Sleep(2500 * time.Millisecond)
@@ -130,7 +132,7 @@ func TestServiceLinger(t *testing.T) {
 	s.cs.Close()
 	waitGone(t, pid)
 	log, _ := os.ReadFile(filepath.Join(controlDirOf(env), "log", "service.log"))
-	if !strings.Contains(string(log), "no client for 1s (linger") {
+	if !strings.Contains(string(log), "no client, no pin and no recorded device for 1s") {
 		t.Fatalf("service log:\n%s", log)
 	}
 }

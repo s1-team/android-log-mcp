@@ -36,6 +36,8 @@ type Pipeline struct {
 	NeedDropbox  func(tag string) // a crash wants DropBox evidence
 	BeforeAppend func(first *model.Record)
 
+	accepted uint64
+
 	queue   []pending
 	crashMu sync.Mutex
 }
@@ -80,7 +82,14 @@ func (p *Pipeline) Accept(r *model.Record, arrived time.Time) {
 	r.Boot = p.Boot
 	p.Procs.Observe(r)
 	p.queue = append(p.queue, pending{r, arrived})
+	p.accepted++
 }
+
+// Accepted / Appended count the records accepted and appended to the
+// store so far (catch-up: the line at T_end is stored once Appended
+// reaches the Accepted count at the time it was accepted).
+func (p *Pipeline) Accepted() uint64 { return p.accepted }
+func (p *Pipeline) Appended() uint64 { return p.accepted - uint64(len(p.queue)) }
 
 // Pending reports queued records.
 func (p *Pipeline) Pending() int { return len(p.queue) }

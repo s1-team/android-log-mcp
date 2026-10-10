@@ -471,6 +471,10 @@ type RunState struct {
 	Socket string `json:"socket,omitempty"`
 }
 
+// KeepRun are run/ files that are not process endpoints and are never
+// swept (record.json: the recording pins, issue #11).
+var KeepRun = map[string]bool{"record.json": true}
+
 // SweepRun removes stale runtime entries from run/: state files whose
 // process is gone or whose socket no longer accepts connections, sockets
 // nothing listens on, and any other file older than maxAge.
@@ -483,7 +487,7 @@ func SweepRun(dir string, maxAge time.Duration, now time.Time) int {
 	live := map[string]bool{}
 	for _, e := range ents {
 		p := filepath.Join(dir, e.Name())
-		if !strings.HasSuffix(e.Name(), ".json") {
+		if !strings.HasSuffix(e.Name(), ".json") || KeepRun[e.Name()] {
 			continue
 		}
 		b, err := os.ReadFile(p)

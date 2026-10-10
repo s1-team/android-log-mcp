@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/s1crab/android-log-mcp/server/internal/fakeadb"
 	"github.com/s1crab/android-log-mcp/server/internal/testhome"
 )
 
@@ -12,6 +13,9 @@ func TestMain(m *testing.M) {
 	if os.Getenv("ALM_TEST_SLEEP") != "" { // a running copy for TestInstallFileReplacesRunningCopy
 		time.Sleep(60 * time.Second)
 		os.Exit(0)
+	}
+	if fakeadb.Is() { // this test binary, copied as adb (pins_test.go)
+		os.Exit(fakeadb.Main(os.Args[1:]))
 	}
 	if code, ok := consoleProbe(); ok { // helper child of the Windows console test
 		os.Exit(code)

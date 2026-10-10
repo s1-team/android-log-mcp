@@ -6,14 +6,16 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/s1crab/android-log-mcp/server/internal/device"
 )
 
-// Linger bounds (issue #3): after its last client disconnects the service
-// keeps recording for max(LingerMin, 2 × the devices' log buffer span),
-// at most LingerMax, so a client that comes back soon finds no gap, and a
-// gap after a longer absence is no longer than what the buffer would have
-// dropped anyway. ANDROID_LOG_MCP_LINGER overrides it: a duration ("30m",
-// "0" = stop with the last client) or "forever".
+// Per-device linger (issue #11 §6): a started device keeps recording for
+// max(LingerMin, 2 × its log buffer span), at most LingerMax, after its own
+// last log-tool call, so the next call's backfill covers the time it was
+// not recorded. ANDROID_LOG_MCP_LINGER overrides it: a duration ("30m",
+// "0" = stop right after each call) or "forever" (the service lifetime).
+// Clients connecting or disconnecting play no role in recording.
 const (
 	LingerMin = 10 * time.Minute
 	LingerMax = time.Hour
@@ -38,7 +40,7 @@ func lingerFor(span time.Duration, env string) (time.Duration, string) {
 	}
 	d := max(LingerMin, 2*span)
 	d = min(d, LingerMax)
-	how := fmt.Sprintf("default: max(%s, 2 × device log buffer span", LingerMin)
+	how := fmt.Sprintf("default: max(%s, 2 × the device's log buffer span", LingerMin)
 	if span > 0 {
 		how += " " + span.Round(time.Second).String()
 	} else {
@@ -47,82 +49,108 @@ func lingerFor(span time.Duration, env string) (time.Duration, string) {
 	return d, fmt.Sprintf("%s (%s), at most %s)", d, how, LingerMax)
 }
 
-// StartGrace is the shortest time a service waits for its first client,
-// whatever the linger (ANDROID_LOG_MCP_LINGER=0 must not stop a service
-// before the client that started it connects).
-var StartGrace = 30 * time.Second
-
-func (s *Service) linger() (time.Duration, string) {
+func deviceLinger(d *device.Device) time.Duration {
 	var span time.Duration
-	if m := s.Manager(); m != nil {
-		span = m.ReplaySpan()
+	if d != nil {
+		span = d.ReplaySpan()
 	}
-	return lingerFor(span, os.Getenv(LingerEnv))
+	l, _ := lingerFor(span, os.Getenv(LingerEnv))
+	return l
 }
 
-// clientsChanged starts the linger countdown when the last client is gone
-// and cancels it when one connects. An in-process service lives as long as
-// its MCP client process instead.
-func (s *Service) clientsChanged(n int) {
+// ExitGrace: the service exits this long after there are no clients, no
+// active pin and no recorded device (also right after it started, so the
+// client that started it has time to connect).
+var ExitGrace = 30 * time.Second
+
+// exitTick is how often the exit condition is checked.
+var exitTick = time.Second
+
+// lifeLoop stops the service once it has had no clients, no active pin
+// and no recorded device for ExitGrace. An in-process service lives as
+// long as its MCP client process instead.
+func (s *Service) lifeLoop() {
 	if s.opt.Embedded != "" {
 		return
 	}
-	d, how := s.linger() // takes s.mu itself
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.lingerT != nil {
-		s.lingerT.Stop()
-		s.lingerT = nil
-		s.idleSince = time.Time{}
-	}
-	if n > 0 {
-		return
-	}
-	if d < 0 {
-		return
-	}
-	if !s.everConnected && d < StartGrace {
-		// just started (e.g. by a client that is about to connect): never
-		// stop before the first client had a chance to connect
-		d, how = StartGrace, fmt.Sprintf("%s before the first client connects", StartGrace)
-	}
-	s.idleSince, s.idleFor = time.Now(), d
-	gen := s.lingerGen + 1
-	s.lingerGen = gen
-	s.lingerT = time.AfterFunc(d, func() {
-		s.mu.Lock()
-		still := s.lingerGen == gen && s.clients == 0
-		s.mu.Unlock()
-		if still {
-			go s.Stop(fmt.Sprintf("no client for %s (linger %s)", d, how))
+	t := time.NewTicker(s.exitTick)
+	defer t.Stop()
+	for {
+		select {
+		case <-s.stopping:
+			return
+		case <-t.C:
 		}
-	})
+		if reason, ok := s.checkExit(time.Now()); ok {
+			go s.Stop(reason)
+			return
+		}
+	}
 }
 
-func (s *Service) stopLinger() {
+// checkExit updates the idle-since time; it returns the stop reason once
+// the service has been unused for ExitGrace.
+func (s *Service) checkExit(now time.Time) (string, bool) {
+	busy := s.busyReason(now)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.lingerT != nil {
-		s.lingerT.Stop()
-		s.lingerT = nil
+	if busy != "" {
+		s.idleSince = time.Time{}
+		return "", false
 	}
-	s.lingerGen++
+	if s.idleSince.IsZero() {
+		s.idleSince = now
+	}
+	if now.Sub(s.idleSince) >= s.exitGrace {
+		return fmt.Sprintf("no client, no pin and no recorded device for %s", s.exitGrace), true
+	}
+	return "", false
 }
 
-func (s *Service) lingerText() string {
-	if s.opt.Embedded != "" {
-		return "none (an in-process service stops with its MCP client; the other clients then start a new one)"
-	}
-	d, how := s.linger()
+// busyReason is why the service stays ("" = nothing keeps it).
+func (s *Service) busyReason(now time.Time) string {
 	s.mu.Lock()
-	idle, idleFor := s.idleSince, s.idleFor
+	n := s.clients
+	m := s.m
 	s.mu.Unlock()
-	txt := how + " after the last client disconnects"
-	if d < 0 {
-		txt = how
+	switch {
+	case n > 0:
+		return fmt.Sprintf("%d client(s) connected", n)
+	case s.anyActivePin(now):
+		return "a recording pin is active"
+	case m != nil && !m.Idle():
+		return "a device is recorded"
 	}
+	return ""
+}
+
+// lifeText describes the exit rule and the current state.
+func (s *Service) lifeText() string {
+	if s.opt.Embedded != "" {
+		return "stops with its MCP client (in-process); the other clients then start a new one"
+	}
+	now := time.Now()
+	txt := fmt.Sprintf("exits %s after there are no clients, no active pin and no recorded device", s.exitGrace)
+	if b := s.busyReason(now); b != "" {
+		return txt + "; staying: " + b
+	}
+	s.mu.Lock()
+	idle := s.idleSince
+	s.mu.Unlock()
 	if !idle.IsZero() {
-		txt += fmt.Sprintf("; no clients: stopping in %s", (idleFor - time.Since(idle)).Round(time.Second))
+		txt += fmt.Sprintf("; exiting in %s", max(0, s.exitGrace-now.Sub(idle)).Round(time.Second))
 	}
 	return txt
+}
+
+// lingerText describes the per-device idle time.
+func lingerText() string {
+	d, how := lingerFor(0, os.Getenv(LingerEnv))
+	if d < 0 {
+		return "per device: " + how + " (devices never stop by themselves)"
+	}
+	if d == 0 {
+		return "per device: " + how + ": a device stops right after each call (backfill only)"
+	}
+	return "per device, after its last log tool call: " + how
 }

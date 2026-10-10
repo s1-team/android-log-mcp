@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -54,10 +55,21 @@ type Device struct {
 	disk       *store.DiskGuard
 	runWG      sync.WaitGroup // the recorder goroutine (run)
 	spanNs     atomic.Int64   // replay span of the device's main log buffer (measureSpan)
+
+	catch           catchState   // backfill / catch-up of the current recording session
+	devNowNs        int64        // device clock read by the last probe (0 = unknown)
+	devNowCoarse    bool         // devNowNs has whole-second precision only
+	rollback        string       // last clock rollback (RollbackNote)
+	rollbackSkipped atomic.Int64 // lines dropped as already stored after it
 }
 
 // errDiskPaused ends a recording session because free disk space is low.
 var errDiskPaused = errors.New("recording paused: low free disk space")
+
+// IdleGapReason is the gap recorded when recording resumes with -T after
+// it was not running (idle, stopped, crashed); it is dropped again when the
+// device buffer still held the last stored line (nothing lost).
+const IdleGapReason = "recording was idle (no log tool call or pin) or not running; resumed with logcat -T, so only lines the device buffer dropped meanwhile are lost"
 
 // PauseGapReason is the gap recorded while recording is paused for disk space.
 const PauseGapReason = "recording paused: free disk space was low (ANDROID_LOG_MCP_MIN_FREE_MB); resumed with logcat -T, so only lines the device buffer dropped meanwhile are lost"
@@ -273,8 +285,10 @@ func (d *Device) setState(ctx context.Context, state string) {
 		d.lastSeen = time.Now()
 	}
 	running := d.cancel != nil
+	owned := d.owned
 	d.mu.Unlock()
-	if state == "device" && !running {
+	if state == "device" && !running && owned {
+		d.catchBegin() // a call right after attach waits for this session's catch-up
 		cctx, cancel := context.WithCancel(ctx)
 		d.mu.Lock()
 		d.cancel = cancel
@@ -282,6 +296,7 @@ func (d *Device) setState(ctx context.Context, state string) {
 		d.mu.Unlock()
 		go func() {
 			defer d.runWG.Done()
+			defer d.catchDone() // nothing is backfilling any more
 			d.run(cctx)
 		}()
 	} else if state != "device" && running {
@@ -300,11 +315,12 @@ func (d *Device) stop() {
 	if c != nil {
 		c()
 	}
+	d.catchDone()
 }
 
 // probe reads device properties, boot id and clock offset (read-only).
 func (d *Device) probe(ctx context.Context) error {
-	cmd := "getprop ro.product.model; getprop ro.build.version.release; getprop ro.build.version.sdk; getprop persist.sys.timezone; date +%z; cat /proc/sys/kernel/random/boot_id; date +%s"
+	cmd := "getprop ro.product.model; getprop ro.build.version.release; getprop ro.build.version.sdk; getprop persist.sys.timezone; date +%z; cat /proc/sys/kernel/random/boot_id; date +%s.%N"
 	t0 := time.Now()
 	out, err := d.adb.Shell(ctx, d.Addr(), 15*time.Second, cmd)
 	t1 := time.Now()
@@ -319,12 +335,21 @@ func (d *Device) probe(ctx context.Context) error {
 		l[i] = strings.TrimSpace(l[i])
 	}
 	d.applyTZ(l[3], l[4])
-	if sec, err := strconv.ParseInt(l[6], 10, 64); err == nil {
+	if now, coarse, ok := parseDate(l[6]); ok {
 		mid := t0.Add(t1.Sub(t0) / 2)
-		// date +%s truncates: add 0.5 s to center the estimate.
-		off := time.Unix(sec, 5e8).Sub(mid)
+		est := now
+		if coarse {
+			// date +%s truncates: add 0.5 s to center the estimate.
+			est = now.Add(500 * time.Millisecond)
+		}
+		off := est.Sub(mid)
 		d.mu.Lock()
 		d.offset, d.offsetAt = off, mid
+		d.devNowNs, d.devNowCoarse = now.UnixNano(), coarse
+		d.mu.Unlock()
+	} else {
+		d.mu.Lock()
+		d.devNowNs = 0
 		d.mu.Unlock()
 	}
 	d.mu.Lock()
@@ -402,14 +427,33 @@ func (d *Device) recordOnce(ctx context.Context) error {
 	d.mu.RLock()
 	bootID := d.bootID
 	loc := d.loc
+	devNow, coarse := d.devNowNs, d.devNowCoarse
 	d.mu.RUnlock()
 	boot := store.BootShort(bootID)
 	meta := d.Store.Meta()
+	d.catchBegin()
 
 	resume := ""
 	var dedupNs int64
 	dedup := map[uint64]bool{}
-	if meta.LastBootID == bootID && meta.LastTimeNs > 0 {
+	var rbSet map[uint64]bool // clock rollback: stored lines of this boot still in the buffer
+	sameBoot := meta.LastBootID == bootID && meta.LastTimeNs > 0
+	if sameBoot && devNow != 0 {
+		limit := devNow
+		if coarse {
+			limit += int64(time.Second)
+		}
+		if meta.LastTimeNs > limit {
+			// -T <last stored time> would name a future time and print
+			// nothing until then: read the whole buffer instead and drop
+			// what is already stored (issue #11 §4)
+			d.noteRollback(meta.LastTimeNs, devNow, loc)
+			rbSet = rollbackSet(d.Store, d.measureStart(ctx))
+		}
+	}
+	if rbSet != nil {
+		// same boot session: nothing to set up
+	} else if sameBoot {
 		resume = logcat.FormatResumeTime(meta.LastTimeNs)
 		dedupNs = meta.LastTimeNs
 		// hashes of stored records at the boundary timestamp
@@ -444,6 +488,28 @@ func (d *Device) recordOnce(ctx context.Context) error {
 		CloseOtherBoots(d.Store, boot)
 	}
 	go d.measureSpan(ctx)
+	// T_end: the newest buffered line now; caught up once a streamed line
+	// at or after it has been stored or deduplicated
+	tEnd, terr := d.measureEnd(ctx)
+	if terr != nil && ctx.Err() == nil {
+		tEnd, terr = d.measureEnd(ctx)
+	}
+	switch {
+	case ctx.Err() != nil:
+		return ctx.Err()
+	case terr != nil:
+		log.Printf("%s: measuring the end of the device buffer failed (%v); catch-up is not verified", d.Serial, terr)
+		d.catchSetEnd(0, "could not measure the end of the device buffer: "+terr.Error())
+		d.catchDone()
+	case tEnd == 0:
+		d.catchDone() // empty buffer
+	case resume != "" && tEnd <= dedupNs:
+		d.catchSetEnd(tEnd, "")
+		d.catchDone() // nothing newer than what is stored
+	default:
+		d.catchSetEnd(tEnd, "")
+	}
+	var endAt uint64 // pipeline position of the first line at/after T_end
 	pipe := NewPipeline(d.Store, boot, loc)
 	pipe.NeedDropbox = d.requestDropbox
 	pipe.OnUnknownPID = func() { d.maybeSeedPS(ctx) }
@@ -456,6 +522,9 @@ func (d *Device) recordOnce(ctx context.Context) error {
 		go func() { // dropbox history (crashes from before recording)
 			sleep(ctx, 3*time.Second)
 			for _, t := range []string{"data_app_crash", "data_app_native_crash", "SYSTEM_TOMBSTONE", "data_app_anr"} {
+				if ctx.Err() != nil {
+					return // stopped meanwhile
+				}
 				d.fetchDropbox(ctx, t)
 			}
 		}()
@@ -486,7 +555,7 @@ func (d *Device) recordOnce(ctx context.Context) error {
 				open = open || g.ToNs <= 0
 			}
 			if !open && m.LastSeenHostNs != 0 && time.Since(time.Unix(0, m.LastSeenHostNs)) > 5*time.Second {
-				m.Gaps = append(m.Gaps, store.Gap{FromNs: m.LastTimeNs, ToNs: -1, Reason: "recorder was not running; resumed with logcat -T (anything the device buffer dropped meanwhile is lost)"})
+				m.Gaps = append(m.Gaps, store.Gap{FromNs: m.LastTimeNs, ToNs: -1, Reason: IdleGapReason})
 			}
 		})
 	}
@@ -499,6 +568,20 @@ func (d *Device) recordOnce(ctx context.Context) error {
 			lines <- sc.Text()
 		}
 		close(lines)
+	}()
+	waited := false
+	defer func() {
+		if waited {
+			return
+		}
+		// stopped (idle, disconnect, disk): kill logcat and reap it, so no
+		// zombie is left behind; let the reader goroutine finish
+		cancel()
+		go func() {
+			for range lines {
+			}
+		}()
+		cmd.Wait()
 	}()
 
 	asm := &logcat.Assembler{Loc: loc, Year: time.Now().Year()}
@@ -535,17 +618,41 @@ func (d *Device) recordOnce(ctx context.Context) error {
 		if r == nil {
 			return
 		}
+		atEnd := tEnd != 0 && r.TimeNs >= tEnd
+		if rbSet != nil {
+			// after a clock rollback times are not monotonic: the line at
+			// T_end is the one with that time (T_end has ms precision)
+			atEnd = tEnd != 0 && r.TimeNs/1e6 == tEnd/1e6
+		}
 		if dedupNs != 0 && r.TimeNs <= dedupNs {
 			overlap = true
 			if r.TimeNs < dedupNs || dedup[recHash(r)] {
+				if atEnd {
+					d.catchDone()
+				}
 				return
 			}
 		}
+		if rbSet != nil && rbSet[recHash(r)] {
+			overlap = true
+			d.rollbackSkipped.Add(1)
+			if atEnd {
+				d.catchDone()
+			}
+			return
+		}
 		pipe.Accept(r, time.Now())
+		if atEnd && endAt == 0 {
+			endAt = pipe.Accepted()
+		}
 	}
 	drain := func(all bool) {
 		if err := pipe.Drain(all, time.Now()); err != nil {
 			d.setErr(err)
+		}
+		if endAt != 0 && pipe.Appended() >= endAt {
+			endAt = 0
+			d.catchDone() // the line at T_end is stored
 		}
 	}
 	for {
@@ -556,6 +663,7 @@ func (d *Device) recordOnce(ctx context.Context) error {
 				drain(true)
 				d.Store.Flush()
 				werr := cmd.Wait()
+				waited = true
 				if ctx.Err() != nil {
 					return nil
 				}
@@ -700,6 +808,9 @@ func (d *Device) requestDropbox(tag string) {
 // fetchDropbox runs `dumpsys dropbox --print <tag>` and merges entries.
 func (d *Device) fetchDropbox(ctx context.Context, tag string) {
 	out, err := d.adb.Shell(ctx, d.Addr(), 30*time.Second, "dumpsys dropbox --print "+tag)
+	if ctx.Err() != nil {
+		return // stopped: no status to report
+	}
 	status := "ok"
 	if err != nil {
 		status = err.Error()
@@ -724,4 +835,20 @@ func (d *Device) DropboxStatus(tag string) string {
 		return "not fetched yet"
 	}
 	return string(b)
+}
+
+// parseDate parses `date +%s.%N` (or `date +%s`, or toybox printing a
+// literal N): the time and whether it has only whole-second precision.
+func parseDate(s string) (time.Time, bool, bool) {
+	s = strings.TrimSpace(s)
+	secS, frac, hasFrac := strings.Cut(s, ".")
+	sec, err := strconv.ParseInt(secS, 10, 64)
+	if err != nil || sec < 1e8 {
+		return time.Time{}, false, false
+	}
+	if hasFrac && frac != "" && strings.Trim(frac, "0123456789") == "" {
+		ns, _ := strconv.ParseInt((frac + "000000000")[:9], 10, 64)
+		return time.Unix(sec, ns), false, true
+	}
+	return time.Unix(sec, 0), true, true
 }

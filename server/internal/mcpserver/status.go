@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -29,7 +30,9 @@ func deviceDesc(d *device.Device) string {
 
 // resolveDevice picks the device for a query.
 func (t *Tools) resolveDevice(serial string) (*device.Device, error) {
-	t.M.WaitReady(3 * time.Second)
+	if !t.M.Lazy { // lazy: target already waited (Track)
+		t.M.WaitReady(3 * time.Second)
+	}
 	devs := t.M.Devices()
 	live := t.M.LiveStates()
 	if serial != "" {
@@ -111,7 +114,77 @@ func (t *Tools) noDeviceHint() string {
 }
 
 func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
-	t.M.WaitReady(3 * time.Second)
+	// record_for is validated before anything starts
+	var pinFor time.Duration
+	if a.RecordFor != "" {
+		if t.Pins == nil || !t.M.Lazy {
+			return "", errf("record_for is not available here (no background service, e.g. --offline)")
+		}
+		d, err := ParsePin(a.RecordFor)
+		if err != nil {
+			return "", errf("%v", err)
+		}
+		pinFor = d
+	}
+	// the device this call is about: started (a log-tool call), unless
+	// several are online and none is named (then none starts)
+	var (
+		target   *device.Device
+		prog     device.Progress
+		several  *errSeveral
+		useErr   error
+		pinNote  string
+		stopped  string
+		targetID string
+	)
+	if a.RecordFor == "0" {
+		id, sd, err := t.target(a.Device)
+		switch {
+		case err != nil:
+			return "", err
+		case id == "" && sd != nil:
+			id = sd.Serial
+		}
+		if err := t.Pins.Stop(id); err != nil {
+			return "", errf("%v", err)
+		}
+		t.M.Unwant(id, "stopped by logcat_status(record_for=\"0\")")
+		stopped = id
+	} else {
+		start := time.Now()
+		d, done, err := t.use(a.Device)
+		defer done()
+		switch {
+		case errors.As(err, &several):
+			if a.RecordFor != "" || a.Package != "" {
+				return "", err
+			}
+		case err != nil:
+			useErr = err
+			if a.RecordFor != "" || a.Package != "" {
+				return "", err
+			}
+		default:
+			target = d
+			if t.M.Lazy && t.M.Wanted(d.Serial) {
+				targetID = d.Serial
+			}
+		}
+		if pinFor > 0 {
+			if targetID == "" {
+				return "", errf("device %s is not connected: record_for needs a connected device", d.Serial)
+			}
+			until, err := t.Pins.Set(targetID, pinFor, "logcat_status(record_for)")
+			if err != nil {
+				return "", errf("%v", err)
+			}
+			pinNote = fmt.Sprintf("pinned: %s records until %s (device time; in %s), whatever the calls; logcat_status(record_for=\"0\") stops it", targetID,
+				until.Add(time.Duration(target.Store.Meta().ClockOffsetNs)).In(target.Loc()).Format("2006-01-02 15:04:05"), time.Until(until).Round(time.Second))
+		}
+		if target != nil {
+			prog = target.WaitCaughtUp(ctx, waitLeft(start))
+		}
+	}
 	var b strings.Builder
 	if t.Service != nil {
 		b.WriteString(t.Service())
@@ -120,7 +193,7 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 		b.WriteString("adb: not used (--offline)\n")
 	} else if err := t.M.ADBError(); err != nil {
 		b.WriteString("adb: NOT FOUND — " + err.Error() + "\n")
-	} else if adb := t.M.ADB(); adb != nil {
+	} else if adb := t.M.ADB(); adb != nil && (!t.M.Lazy || t.M.Tracking()) {
 		v, err := adb.Version(ctx)
 		if err != nil {
 			fmt.Fprintf(&b, "adb: error — %v\n", err)
@@ -130,12 +203,26 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 		if werr := t.M.WatchError(); werr != nil {
 			fmt.Fprintf(&b, "adb server: %v\n", werr)
 		}
+	} else if adb != nil {
+		fmt.Fprintf(&b, "adb: %s (not running any adb: no device is recorded)\n", adb.Path)
+	}
+	if stopped != "" {
+		fmt.Fprintf(&b, "stopped: %s is no longer recorded and its pin is removed; the next log tool call for it starts it again (with backfill)\n", stopped)
+	}
+	if pinNote != "" {
+		b.WriteString(pinNote + "\n")
 	}
 	devs := t.M.Devices()
 	live := t.M.LiveStates()
 	if a.Device != "" {
-		d := t.M.Get(a.Device)
+		d := target
 		if d == nil {
+			d = t.M.Get(a.Device)
+		}
+		if d == nil {
+			if useErr != nil {
+				return "", useErr
+			}
 			_, err := t.resolveDevice(a.Device)
 			return "", err
 		}
@@ -170,31 +257,17 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 		}
 		fmt.Fprintf(&b, "  %s%s  %s  %s%s  tz %s\n", d.Serial, via, state, orQ(m.Model), rel, tzLabel(loc, d.TZName(), time.Now()))
 		stats := d.Store.Stats()
-		var rec string
-		switch {
-		case st.Paused != "":
-			rec = st.Paused
-		case st.Recording:
-			rec = "recording"
-		case st.State == "device" && !st.Owned && !t.M.NoADB:
-			rec = fmt.Sprintf("NOT recorded: recording limit of %d devices reached (ANDROID_LOG_MCP_MAX_DEVICES)", t.M.MaxDevices)
-		case st.State == "device" && !st.Writer:
-			rec = "NOT recorded: another process writes this directory (writer.lock"
-			if st.WriterPID != "" {
-				rec += ", pid " + st.WriterPID
+		fmt.Fprintf(&b, "    %s\n", t.recText(d, st))
+		if t.Pins != nil {
+			if p := t.Pins.Describe(d.Serial, loc); p != "" {
+				fmt.Fprintf(&b, "    %s\n", p)
 			}
-			rec += "), e.g. an older android-log-mcp; stop it"
-		case st.State == "device":
-			rec = "starting recorder"
-		default:
-			rec = "not recording (device not connected)"
 		}
-		if st.LastErr != "" {
-			rec += "; last error: " + st.LastErr
-		}
-		fmt.Fprintf(&b, "    %s\n", rec)
 		if st.IDNote != "" {
 			fmt.Fprintf(&b, "    note: %s\n", st.IDNote)
+		}
+		if rb := d.RollbackNote(); rb != "" {
+			fmt.Fprintf(&b, "    note: %s\n", rb)
 		}
 		line := ""
 		if st.State == "device" {
@@ -209,7 +282,7 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 			line += "   "
 		}
 		if m.RecordingSince != 0 { // host time → device clock
-			line += "recording since " + time.Unix(0, m.RecordingSince+m.ClockOffsetNs).In(loc).Format("2006-01-02 15:04:05") + "   "
+			line += "first recorded " + time.Unix(0, m.RecordingSince+m.ClockOffsetNs).In(loc).Format("2006-01-02 15:04:05") + "   "
 		}
 		if stats.OldestNs != 0 {
 			line += "history from " + dateTime(stats.OldestNs, loc) + " to " + dateTime(stats.NewestNs, loc)
@@ -228,7 +301,7 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 			win = "not loaded (loads on the next query)"
 		}
 		fmt.Fprintf(&b, "    memory: recent window %s; history cache ~%.1f MB\n", win, float64(stats.CacheBytes)/1e6)
-		if note := lagNote(d, st, m, stats); note != "" {
+		if note := lagNote(d, st, m, stats); note != "" && st.Recording {
 			fmt.Fprintf(&b, "    note: %s\n", note)
 		}
 		if hostLoc := time.Local; st.State == "device" {
@@ -246,6 +319,8 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 				b.WriteString("accept the \"Allow USB debugging\" prompt on the phone)\n")
 			} else if stt == "device" && t.M.AddrOf(s) == "" {
 				b.WriteString("identifying the device…)\n")
+			} else if stt == "device" && t.M.Lazy {
+				fmt.Fprintf(&b, "connected, not recorded — pass device=%s to start)\n", t.M.AddrOf(s))
 			} else if stt == "device" {
 				fmt.Fprintf(&b, "recording limit of %d devices reached; set ANDROID_LOG_MCP_MAX_DEVICES)\n", t.M.MaxDevices)
 			} else {
@@ -256,25 +331,90 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 	if len(devs) == 0 && len(live) == 0 {
 		b.WriteString("  (none) — " + t.noDeviceHint() + "\n")
 	}
-	// cursor + package for the resolved device
-	d, err := t.resolveDevice(a.Device)
-	if err != nil {
-		if a.Package != "" {
-			return "", err
-		}
+	if several != nil {
+		fmt.Fprintf(&b, "%s No device was started and no cursor is returned.\n", several.Error())
+	}
+	if useErr != nil && several == nil {
+		fmt.Fprintf(&b, "note: %v. No cursor is returned.\n", strings.TrimSuffix(useErr.Error(), "."))
+	}
+	if target == nil {
 		return b.String(), nil
 	}
-	m := d.Store.Meta()
-	boot := "0"
-	if len(m.Sessions) > 0 {
-		boot = m.Sessions[len(m.Sessions)-1].Boot
+	// cursor + package for the resolved device
+	d := target
+	if prog.Pending {
+		fmt.Fprintf(&b, "%s: %s; call logcat_status again (no cursor until the backfill has caught up)\n", d.Serial, prog.BackfillText(d.Loc()))
+	} else {
+		m := d.Store.Meta()
+		boot := "0"
+		if len(m.Sessions) > 0 {
+			boot = m.Sessions[len(m.Sessions)-1].Boot
+		}
+		cur := store.Cursor{Serial: d.Serial, Boot: boot, Seq: d.Store.LastSeq()}
+		fmt.Fprintf(&b, "cursor (now, %s): %s\n", d.Serial, cur)
+		if prog.Note != "" {
+			fmt.Fprintf(&b, "note: %s\n", prog.Note)
+		}
 	}
-	cur := store.Cursor{Serial: d.Serial, Boot: boot, Seq: d.Store.LastSeq()}
-	fmt.Fprintf(&b, "cursor (now, %s): %s\n", d.Serial, cur)
 	if a.Package != "" {
 		b.WriteString(t.packageStatus(d, a.Package))
 	}
 	return b.String(), nil
+}
+
+// recText is a device's recording state line.
+func (t *Tools) recText(d *device.Device, st device.Status) string {
+	var rec string
+	lazy := t.M.Lazy && !t.M.NoADB
+	switch {
+	case st.Paused != "":
+		rec = st.Paused
+	case st.Recording && lazy:
+		rec = "recording"
+		if p := d.CatchUp(); p.Pending {
+			rec += "; " + p.BackfillText(d.Loc())
+		} else {
+			rec += "; caught up"
+		}
+		switch idle := t.M.IdleIn(d.Serial, time.Now()); {
+		case idle < 0:
+			rec += "; no idle stop (ANDROID_LOG_MCP_LINGER)"
+		case t.M.LastCall(d.Serial).IsZero():
+			rec += "; kept by its pin"
+		default:
+			rec += fmt.Sprintf("; stops %s after the last log tool call unless called again or pinned", idle.Round(time.Second))
+		}
+	case st.Recording:
+		rec = "recording"
+	case lazy && st.State == "device" && t.M.Wanted(d.Serial) && !st.Writer && st.Owned:
+		rec = "NOT recorded: another process writes this directory (writer.lock"
+		if st.WriterPID != "" {
+			rec += ", pid " + st.WriterPID
+		}
+		rec += "), e.g. an older android-log-mcp; stop it"
+	case lazy && st.State == "device" && t.M.Wanted(d.Serial):
+		rec = "starting recorder"
+	case lazy && st.State == "device":
+		rec = "connected, not recorded — pass device=" + d.Serial + " to start"
+	case lazy && t.M.Wanted(d.Serial):
+		rec = "not recording (device not connected; recording resumes when it reconnects)"
+	case st.State == "device" && !st.Owned && !t.M.NoADB:
+		rec = fmt.Sprintf("NOT recorded: recording limit of %d devices reached (ANDROID_LOG_MCP_MAX_DEVICES)", t.M.MaxDevices)
+	case st.State == "device" && !st.Writer:
+		rec = "NOT recorded: another process writes this directory (writer.lock"
+		if st.WriterPID != "" {
+			rec += ", pid " + st.WriterPID
+		}
+		rec += "), e.g. an older android-log-mcp; stop it"
+	case st.State == "device":
+		rec = "starting recorder"
+	default:
+		rec = "not recording (device not connected)"
+	}
+	if st.LastErr != "" {
+		rec += "; last error: " + st.LastErr
+	}
+	return rec
 }
 
 // lagNote explains a stale newest line: a hung writer, logcat still

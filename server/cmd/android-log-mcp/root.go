@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 
+	"github.com/s1crab/android-log-mcp/server/internal/mcpserver"
 	"github.com/s1crab/android-log-mcp/server/internal/service"
 )
 
@@ -30,7 +32,24 @@ func runRoot(args []string) int {
 			out["exe"] = ctrl.StableExe() // android-log-mcp install
 		}
 		if st := ctrl.ReadState(); st != nil && service.Running(ctrl) {
-			out["service"] = map[string]any{"pid": st.PID, "version": st.Version, "proto": st.Proto, "root": st.Root}
+			svc := map[string]any{"pid": st.PID, "version": st.Version, "proto": st.Proto, "root": st.Root}
+			// what it records (issue #11); asking starts nothing
+			if c, err := service.Dial(context.Background(), ctrl, mcpserver.Version, "cli"); err == nil {
+				var info service.Info
+				if c.Do(context.Background(), "status", nil, &info) == nil && info.Recording != "" {
+					svc["recording"] = info.Recording
+					if len(info.Devices) > 0 {
+						svc["devices"] = info.Devices
+					}
+					if len(info.Pins) > 0 {
+						svc["pins"] = info.Pins
+					}
+				}
+				c.Close()
+			}
+			out["service"] = svc
+		} else {
+			out["service"] = map[string]any{"running": false, "recording": "idle (no service running)"}
 		}
 		b, _ := json.MarshalIndent(out, "", "  ")
 		fmt.Println(string(b))

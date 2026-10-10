@@ -58,17 +58,21 @@ type Service struct {
 	mstop context.CancelFunc
 	tools *mcpserver.Tools
 
-	clients int
-	// everConnected: a client has said hello (before that, StartGrace)
-	everConnected bool
-	lingerT       *time.Timer
-	lingerGen     int
-	idleSince     time.Time
-	idleFor       time.Duration
-	stopOnce      sync.Once
-	stopping      chan struct{}
-	done          chan struct{}
-	reason        string
+	clients   int
+	exitGrace time.Duration // ExitGrace at Start
+	exitTick  time.Duration
+	idleSince time.Time // no clients, no pin, nothing recorded since (lifeLoop)
+	carry     device.WantState
+
+	pinMu    sync.Mutex
+	pins     *PinFile // nil: record.json is unusable (pinsErr)
+	pinsErr  error
+	pinNotes []string // crash accounting at start
+
+	stopOnce sync.Once
+	stopping chan struct{}
+	done     chan struct{}
+	reason   string
 }
 
 // Hello is the first request of a client.
@@ -89,6 +93,9 @@ type HelloReply struct {
 	Embedded     bool                `json:"embedded,omitempty"`
 	Tools        []mcpserver.ToolDef `json:"tools"`
 	Instructions string              `json:"instructions"`
+	// Recording summarizes what is recorded ("idle (starts on the first
+	// log tool call)" …); protocol 2.
+	Recording string `json:"recording,omitempty"`
 }
 
 // CallArgs / CallReply are the "call" op.
@@ -116,6 +123,11 @@ type Info struct {
 	Clients  int       `json:"clients"`
 	Embedded string    `json:"embedded,omitempty"`
 	Linger   string    `json:"linger,omitempty"`
+	// protocol 2 (issue #11)
+	Recording string   `json:"recording,omitempty"`
+	Devices   []string `json:"devices,omitempty"` // per recorded device
+	Pins      []string `json:"pins,omitempty"`    // per pin (with suspension, last error)
+	Lifetime  string   `json:"lifetime,omitempty"`
 }
 
 // Text renders the info for logcat_status / `service status`.
@@ -127,8 +139,20 @@ func (i Info) Text() string {
 	}
 	fmt.Fprintf(&b, "service: %s pid %d, version %s, protocol %d, up %s, clients %d\n", mode, i.PID, i.Version, i.Proto, time.Since(i.Started).Round(time.Second), i.Clients)
 	fmt.Fprintf(&b, "root: %s\n", i.Root)
+	if i.Recording != "" {
+		fmt.Fprintf(&b, "recording: %s\n", i.Recording)
+	}
+	for _, d := range i.Devices {
+		fmt.Fprintf(&b, "  %s\n", d)
+	}
+	for _, p := range i.Pins {
+		fmt.Fprintf(&b, "  %s\n", p)
+	}
 	if i.Linger != "" {
 		fmt.Fprintf(&b, "linger: %s\n", i.Linger)
+	}
+	if i.Lifetime != "" {
+		fmt.Fprintf(&b, "lifetime: %s\n", i.Lifetime)
 	}
 	if i.Log != "" {
 		fmt.Fprintf(&b, "service log: %s\n", i.Log)
@@ -152,7 +176,7 @@ func Start(opt Options) (*Service, error) {
 	if !ok {
 		return nil, ErrRunning
 	}
-	s := &Service{opt: opt, lock: lock, started: time.Now(), stopping: make(chan struct{}), done: make(chan struct{})}
+	s := &Service{opt: opt, lock: lock, started: time.Now(), stopping: make(chan struct{}), done: make(chan struct{}), exitGrace: ExitGrace, exitTick: exitTick}
 	s.exe, _ = os.Executable()
 	root := opt.Root
 	if root == "" {
@@ -166,6 +190,9 @@ func Start(opt Options) (*Service, error) {
 	if opt.Log != nil && opt.Log.Path() == "" {
 		opt.Log.SetRoot(root)
 	}
+	// before the manager's startup sweep removes a crashed service's
+	// stale service.json: a pinned recording counts that crash
+	s.loadPins(opt.Control.ReadState())
 	s.startManager(root)
 	go retryCleanup(opt.Control, root)
 	l, err := ipc.Listen(opt.Control.Socket())
@@ -176,12 +203,7 @@ func Start(opt Options) (*Service, error) {
 	}
 	s.srv = &ipc.Server{Handler: s.handle, OnConn: s.onConn}
 	go s.srv.Serve(l)
-	s.mu.Lock()
-	n := s.clients
-	s.mu.Unlock()
-	if n == 0 {
-		s.clientsChanged(0) // a service nobody connects to does not stay forever
-	}
+	go s.lifeLoop() // a service nobody uses does not stay forever
 	if err := s.writeState(); err != nil {
 		log.Printf("service: writing %s: %v", opt.Control.StatePath(), err)
 	}
@@ -196,12 +218,22 @@ func (s *Service) startManager(root string) {
 	if s.exe != "" {
 		m.KeepBin = filepath.Dir(s.exe) // never sweep the running binary
 	}
+	// lazy recording (issue #11): no adb until a log tool call or a pin
+	m.Lazy = true
+	m.Linger = deviceLinger
+	m.PinnedUntil = s.pinUntil
 	m.Start(ctx)
-	t := &mcpserver.Tools{M: m}
+	t := &mcpserver.Tools{M: m, Pins: pinner{s}}
 	t.Service = func() string { return s.Info().Text() }
 	s.mu.Lock()
 	s.root, s.m, s.mstop, s.tools = root, m, cancel, t
+	carry := s.carry
+	s.carry = nil
 	s.mu.Unlock()
+	if carry != nil {
+		m.Restore(carry) // set-root: started devices keep their timers
+	}
+	s.startPinned(m)
 }
 
 // stopManager stops recording (flushing every store) and waits for it.
@@ -212,8 +244,12 @@ func (s *Service) stopManager() {
 	if m == nil {
 		return
 	}
+	snap := m.Snapshot()
 	cancel()
 	m.Close()
+	s.mu.Lock()
+	s.carry = snap // set-root restarts them in the new root
+	s.mu.Unlock()
 }
 
 func (s *Service) writeState() error {
@@ -246,7 +282,10 @@ func (s *Service) Info() Info {
 	if s.opt.Log != nil {
 		i.Log = s.opt.Log.Path()
 	}
-	i.Linger = s.lingerText()
+	i.Linger = lingerText()
+	i.Lifetime = s.lifeText()
+	i.Recording, i.Devices = s.recordingText()
+	i.Pins = s.pinTexts()
 	return i
 }
 
@@ -257,9 +296,7 @@ func (s *Service) onConn(c *ipc.Conn, open bool) {
 	if _, ok := c.Value.(*Hello); ok {
 		s.mu.Lock()
 		s.clients--
-		n := s.clients
 		s.mu.Unlock()
-		s.clientsChanged(n)
 	}
 }
 
@@ -274,13 +311,12 @@ func (s *Service) handle(ctx context.Context, c *ipc.Conn, op string, body json.
 			c.Value = &h
 			s.mu.Lock()
 			s.clients++
-			s.everConnected = true
-			n := s.clients
+			s.idleSince = time.Time{}
 			s.mu.Unlock()
-			s.clientsChanged(n)
 		}
+		rec, _ := s.recordingText()
 		return HelloReply{Proto: Proto, MinProto: MinProto, Version: s.opt.Version, PID: os.Getpid(), Root: s.Root(),
-			Embedded: s.opt.Embedded != "", Tools: mcpserver.ToolDefs(), Instructions: mcpserver.Instructions()}, nil
+			Embedded: s.opt.Embedded != "", Tools: mcpserver.ToolDefs(), Instructions: mcpserver.Instructions(), Recording: rec}, nil
 	case "status":
 		return s.Info(), nil
 	}
@@ -344,7 +380,6 @@ func (s *Service) Stop(reason string) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	s.srv.Close()
-	s.stopLinger()
 	s.stopManager()
 	if st := s.opt.Control.ReadState(); st != nil && st.PID == os.Getpid() {
 		os.Remove(s.opt.Control.StatePath())

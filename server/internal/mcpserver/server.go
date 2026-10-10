@@ -18,9 +18,10 @@ import (
 // Version of the server.
 var Version = "0.4.1" // overridden at build time: -ldflags "-X main.version=..."
 
-const instructions = `Android logcat recorder. Logs from every connected device are captured continuously in the background and kept across sessions; nothing to start/stop/clear.
+const instructions = `Android logcat recorder. Recording starts on use: the first log tool call for a device starts recording it and backfills what is still in the device's log buffer (the call waits up to 10 s for that). Each device stops recording after a while without calls; stored logs stay queryable across sessions.
 Typical flows: crashes/ANRs → logcat_crashes. Startup time → logcat_app_launches. Anything else → logcat_search (use view="summary" first for wide ranges).
-To capture a reproduction: logcat_status → take ` + "`cursor`" + ` → user reproduces → logcat_search(after=cursor, wait_ms=20000).
+To capture a reproduction: logcat_status → take ` + "`cursor`" + ` → user reproduces → logcat_search(after=cursor, wait_ms=20000). If logcat_status says "backfill in progress", call logcat_status again before using a cursor.
+To keep recording without calls (e.g. a long reproduction), call logcat_status(record_for="30m"); record_for="0" stops.
 All times are device-local; responses state the device timezone.`
 
 // Tools implements the tool logic over a device manager. It runs in the
@@ -31,6 +32,8 @@ type Tools struct {
 	// Service, if set, describes the service process (pid, version,
 	// protocol, root …); logcat_status prints it first.
 	Service func() string
+	// Pins, if set, implements record_for (the service's pins).
+	Pins Pins
 }
 
 // toolError is a business error returned with isError=true.

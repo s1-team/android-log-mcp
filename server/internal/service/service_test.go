@@ -58,7 +58,7 @@ func TestServiceSingleInstanceAndOps(t *testing.T) {
 	if err := c.Do(context.Background(), "call", CallArgs{Name: "logcat_status"}, &r); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"service: background service pid", "version 0.4.0", "protocol 1", "root: " + ctrl.Dir} {
+	for _, want := range []string{"service: background service pid", "version 0.4.0", "protocol 2", "root: " + ctrl.Dir} {
 		if !strings.Contains(r.Text, want) {
 			t.Fatalf("status lacks %q:\n%s", want, r.Text)
 		}
@@ -192,15 +192,37 @@ func TestLingerFor(t *testing.T) {
 	}
 }
 
-func TestLingerStopsAfterLastClient(t *testing.T) {
-	t.Setenv(LingerEnv, "300ms")
+// shortExit makes the service exit quickly when unused (tests).
+func shortExit(t *testing.T, grace time.Duration) {
+	t.Helper()
+	og, ot := ExitGrace, exitTick
+	ExitGrace, exitTick = grace, 20*time.Millisecond
+	t.Cleanup(func() { ExitGrace, exitTick = og, ot })
+}
+
+// Issue #11 §6: the service never exits while clients are connected (an
+// idle connected service runs no adb) and exits ExitGrace after there are
+// no clients, no pin and no recorded device; ANDROID_LOG_MCP_LINGER only
+// concerns devices.
+func TestServiceLifetime(t *testing.T) {
+	t.Setenv(LingerEnv, "0")
+	shortExit(t, 500*time.Millisecond)
 	ctrl := testControl(t)
-	s := startTest(t, ctrl, "0.4.0")
-	c, err := Dial(context.Background(), ctrl, "0.4.0", "mcp")
+	s := startTest(t, ctrl, "0.5.0")
+	time.Sleep(200 * time.Millisecond)
+	select {
+	case <-s.Done():
+		t.Fatal("stopped before the first client could connect")
+	default:
+	}
+	c, err := Dial(context.Background(), ctrl, "0.5.0", "mcp")
 	if err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(700 * time.Millisecond) // longer than the linger: a client is connected
+	if !strings.Contains(c.Hello.Recording, "idle") {
+		t.Errorf("hello recording %q", c.Hello.Recording)
+	}
+	time.Sleep(time.Second) // longer than the grace: a client is connected
 	select {
 	case <-s.Done():
 		t.Fatal("stopped while a client was connected")
@@ -208,59 +230,55 @@ func TestLingerStopsAfterLastClient(t *testing.T) {
 	}
 	var info Info
 	c.Do(context.Background(), "status", nil, &info)
-	if !strings.Contains(info.Linger, "300ms") {
-		t.Fatalf("linger text %q", info.Linger)
+	if !strings.Contains(info.Recording, "idle (starts on the first log tool call)") || !strings.Contains(info.Lifetime, "staying: 1 client") {
+		t.Fatalf("info %+v", info)
+	}
+	if !strings.Contains(info.Text(), "recording: idle") {
+		t.Fatalf("text %s", info.Text())
 	}
 	c.Close()
 	select {
 	case <-s.Done():
-		if !strings.Contains(s.Reason(), "linger") {
+		if !strings.Contains(s.Reason(), "no client, no pin") {
 			t.Fatalf("reason %q", s.Reason())
 		}
-	case <-time.After(10 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("did not stop after the last client")
+	}
+	// and without any client it stops after the grace
+	s2 := startTest(t, ctrl, "0.5.0")
+	select {
+	case <-s2.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("no stop without clients")
 	}
 }
 
-// A service started with linger 0 waits StartGrace for its first client,
-// then stops when the last client leaves.
-func TestLingerZeroWaitsForFirstClient(t *testing.T) {
-	t.Setenv(LingerEnv, "0")
-	old := StartGrace
-	StartGrace = 500 * time.Millisecond
-	defer func() { StartGrace = old }()
+// An active pin keeps the service alive with no clients; once it ends the
+// service exits.
+func TestPinKeepsServiceAlive(t *testing.T) {
+	shortExit(t, 300*time.Millisecond)
 	ctrl := testControl(t)
-	s := startTest(t, ctrl, "0.4.0")
-	time.Sleep(200 * time.Millisecond)
-	select {
-	case <-s.Done():
-		t.Fatal("stopped before the first client could connect")
-	default:
-	}
-	c, err := Dial(context.Background(), ctrl, "0.4.0", "mcp")
-	if err != nil {
+	if err := os.MkdirAll(ctrl.Run(), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(700 * time.Millisecond)
+	pf := &PinFile{Pins: map[string]*Pin{"dev1": {Deadline: time.Now().Add(1500 * time.Millisecond), SetAt: time.Now(), SetBy: "test"}}}
+	if err := WritePins(ctrl, pf); err != nil {
+		t.Fatal(err)
+	}
+	s := startTest(t, ctrl, "0.5.0")
+	time.Sleep(time.Second)
 	select {
 	case <-s.Done():
-		t.Fatal("stopped while a client was connected")
+		t.Fatal("stopped although a pin is active")
 	default:
 	}
-	c.Close()
+	if txt := s.Info().Text(); !strings.Contains(txt, "dev1: pinned until") {
+		t.Errorf("status text:\n%s", txt)
+	}
 	select {
 	case <-s.Done():
 	case <-time.After(5 * time.Second):
-		t.Fatal("did not stop after the last client (linger 0)")
-	}
-	// and without any client it stops after the grace
-	s2 := startTest(t, ctrl, "0.4.0")
-	select {
-	case <-s2.Done():
-		if !strings.Contains(s2.Reason(), "before the first client connects") {
-			t.Fatalf("reason %q", s2.Reason())
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("no stop after the start grace")
+		t.Fatal("did not stop after the pin ended")
 	}
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/s1crab/android-log-mcp/server/internal/device"
 	"github.com/s1crab/android-log-mcp/server/internal/ipc"
+	"github.com/s1crab/android-log-mcp/server/internal/mcpserver"
 	"github.com/s1crab/android-log-mcp/server/internal/redact"
 	"github.com/s1crab/android-log-mcp/server/internal/report"
 	"github.com/s1crab/android-log-mcp/server/internal/store"
@@ -32,6 +33,8 @@ type ReportArgs struct {
 	Out      string         `json:"out"`
 	Args     []string       `json:"args,omitempty"`
 	NoADB    bool           `json:"no_adb,omitempty"`
+
+	warnings []string // set by the service (backfill notes)
 }
 
 // ReportReply is the "report" op's reply.
@@ -52,8 +55,12 @@ func init() {
 		s.opMu.RLock()
 		defer s.opMu.RUnlock()
 		s.mu.Lock()
-		m, root := s.m, s.root
+		m, root, t := s.m, s.root, s.tools
 		s.mu.Unlock()
+		var notes []string
+		if m != nil && t != nil && !a.NoADB {
+			notes = startForReport(ctx, m, t, a.Serials)
+		}
 		if m != nil {
 			for _, d := range m.Devices() {
 				if d.Store != nil {
@@ -65,8 +72,50 @@ func init() {
 		if m != nil {
 			adb = m.ADB()
 		}
+		a.warnings = notes
 		return BuildReport(ctx, root, s.opt.Version, a, adb)
 	}
+}
+
+// startForReport starts the report's devices (--serial, or the single
+// online one) like a log-tool call and waits for their catch-up (max
+// device.CatchUpWait); the returned notes go into the manifest.
+func startForReport(ctx context.Context, m *device.Manager, t *mcpserver.Tools, serials []string) []string {
+	names := serials
+	if len(names) == 0 {
+		names = []string{""}
+	}
+	var notes []string
+	var started []*device.Device
+	for _, n := range names {
+		id, _, err := t.Target(n)
+		if err != nil {
+			if n == "" {
+				notes = append(notes, "no device started for this report: "+err.Error())
+			} else {
+				notes = append(notes, fmt.Sprintf("%s: not started: %v", n, err))
+			}
+			continue
+		}
+		if id == "" {
+			continue // not connected: its stored logs only
+		}
+		if err := m.Want(id, true); err != nil {
+			notes = append(notes, fmt.Sprintf("%s: not started: %v", id, err))
+			continue
+		}
+		if d := m.Get(id); d != nil {
+			started = append(started, d)
+		}
+	}
+	deadline := time.Now().Add(device.CatchUpWait)
+	for _, d := range started {
+		p := d.WaitCaughtUp(ctx, max(0, time.Until(deadline)))
+		if p.Pending {
+			notes = append(notes, fmt.Sprintf("backfill incomplete: %s: %s when the report was packed (waited %s)", d.Serial, p.BackfillText(d.Loc()), device.CatchUpWait))
+		}
+	}
+	return notes
 }
 
 // BuildReport builds the zip for a (in the service, or in a CLI that holds
@@ -83,7 +132,7 @@ func BuildReport(ctx context.Context, root, version string, a ReportArgs, adb *d
 		mu.Unlock()
 	}
 	opt := report.Options{Base: root, Serials: a.Serials, Since: a.Since, From: a.From, To: a.To, Package: a.Package, MaxBytes: a.MaxBytes,
-		Note: a.Note, AmStart: a.AmStart, Redact: a.Redact, Out: a.Out, Version: version, Args: a.Args, Logf: logf}
+		Note: a.Note, AmStart: a.AmStart, Redact: a.Redact, Out: a.Out, Version: version, Args: a.Args, Logf: logf, Warnings: a.warnings}
 	if !a.NoADB {
 		if adb == nil {
 			if p, err := device.FindADB(); err == nil {
@@ -169,27 +218,20 @@ func RunOrLocal(ctx context.Context, ctrl Control, version, role string, remote 
 	}
 }
 
-// Report builds a report through the running service, or in this process
-// when none runs (see RunOrLocal).
+// Report builds a report through the service, starting it detached when
+// none runs (issue #11 §9: report is explicit use; the service starts and
+// backfills the selected devices first). It never runs the service in
+// this process: a failed detached start is an error.
 func Report(ctx context.Context, ctrl Control, version string, a ReportArgs) (*ReportReply, error) {
-	var rep *ReportReply
-	err := RunOrLocal(ctx, ctrl, version, "report",
-		func(c *Conn) error {
-			var r ReportReply
-			if err := c.Do(ctx, "report", a, &r); err != nil {
-				var re *ipc.RemoteError
-				if errors.As(err, &re) {
-					return errors.New(re.Msg)
-				}
-				return err
-			}
-			rep = &r
-			return nil
-		},
-		func(root string) error {
-			r, err := BuildReport(ctx, root, version, a, nil)
-			rep = r
-			return err
-		})
-	return rep, err
+	cl := NewClient(ClientOptions{Control: ctrl, Version: version, Role: "report", NoEmbedded: true})
+	defer cl.Close()
+	var r ReportReply
+	if err := cl.Do(ctx, "report", a, &r); err != nil {
+		var re *ipc.RemoteError
+		if errors.As(err, &re) {
+			return nil, errors.New(re.Msg)
+		}
+		return nil, err
+	}
+	return &r, nil
 }

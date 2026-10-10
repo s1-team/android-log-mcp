@@ -38,7 +38,9 @@ usage:
   android-log-mcp                              run as MCP server on stdin/stdout (a thin client of the
                                                background service, which it starts when needed)
   android-log-mcp call TOOL [JSON]             debug: call one tool through the service, print the result
-      env ANDROID_LOG_MCP_CALL_WAIT=5s: how long to let a service this call started record first
+  android-log-mcp record [--device X]... --for 2h | --stop | [--json]
+                                               keep recording a device until a deadline, stop it, or show
+                                               what is recorded (android-log-mcp record -h)
   android-log-mcp report [flags]               pack logs + diagnostics into a redacted zip
                                                (android-log-mcp report -h for flags)
   android-log-mcp root [--json]                print the data root (default: <user cache dir>/android-log-mcp)
@@ -74,7 +76,7 @@ usage:
 	}
 	if flag.NArg() > 0 {
 		switch flag.Arg(0) {
-		case "call", "report", "compat", "root", "service", "set-root", "install":
+		case "call", "report", "compat", "root", "service", "set-root", "install", "record":
 		default:
 			fmt.Fprintf(os.Stderr, "android-log-mcp: unknown command %q\n\n", flag.Arg(0))
 			flag.Usage()
@@ -105,8 +107,17 @@ usage:
 		cancel()
 		os.Exit(code)
 	}
+	if flag.NArg() > 0 && flag.Arg(0) == "record" {
+		if *offline != "" {
+			fmt.Fprintln(os.Stderr, "android-log-mcp: --offline cannot be combined with record")
+			os.Exit(2)
+		}
+		code := runRecord(ctx, flag.Args()[1:])
+		cancel()
+		os.Exit(code)
+	}
 	if flag.NArg() > 0 && flag.Arg(0) == "report" {
-		// through the service, or in-process if none runs; never starts one
+		// through the service, which it starts detached if none runs
 		code := runReport(ctx, *offline, flag.Args()[1:])
 		cancel()
 		os.Exit(code)
@@ -160,7 +171,7 @@ func runClient(ctx context.Context, args []string) int {
 	if len(args) > 0 {
 		role = args[0]
 	}
-	cl := service.NewClient(service.ClientOptions{Version: mcpserver.Version, Role: role, Cfg: store.ConfigFromEnv()})
+	cl := service.NewClient(service.ClientOptions{Version: mcpserver.Version, Role: role, Cfg: store.ConfigFromEnv(), RestartPinned: role == "mcp"})
 	defer cl.Close()
 	if role == "call" {
 		if len(args) < 2 {
@@ -171,16 +182,10 @@ func runClient(ctx context.Context, args []string) int {
 			fmt.Fprintln(os.Stderr, "android-log-mcp:", err)
 			return 1
 		}
-		if cl.Started() {
-			// a service that just started needs a moment to record
-			wait := 5 * time.Second
-			if v, err := time.ParseDuration(os.Getenv("ANDROID_LOG_MCP_CALL_WAIT")); err == nil {
-				wait = v
-			}
-			select {
-			case <-time.After(wait):
-			case <-ctx.Done():
-			}
+		if v := os.Getenv("ANDROID_LOG_MCP_CALL_WAIT"); v != "" {
+			// deprecated (issue #11): every log tool call waits for its
+			// device's catch-up itself
+			fmt.Fprintf(os.Stderr, "android-log-mcp: ANDROID_LOG_MCP_CALL_WAIT=%s is deprecated and ignored: calls wait for the backfill themselves (up to 10 s)\n", v)
 		}
 		raw := json.RawMessage("{}")
 		if len(args) > 2 {

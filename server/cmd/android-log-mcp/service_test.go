@@ -27,7 +27,7 @@ func isoEnv(t *testing.T, extra ...string) []string {
 	}
 	env := []string{
 		"XDG_CACHE_HOME=" + filepath.Join(d, "c"), "HOME=" + d, "USERPROFILE=" + d, "LocalAppData=" + filepath.Join(d, "l"),
-		"ANDROID_LOG_MCP_ADB=" + filepath.Join(d, "no-adb"), "ANDROID_LOG_MCP_CALL_WAIT=0s",
+		"ANDROID_LOG_MCP_ADB=" + filepath.Join(d, "no-adb"),
 	}
 	env = append(env, extra...)
 	t.Cleanup(func() {

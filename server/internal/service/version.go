@@ -9,7 +9,7 @@ import (
 // incompatible change of the ops or their bodies; raise MinProto when the
 // service can no longer serve clients of an older protocol.
 var (
-	Proto    = 1
+	Proto    = 2 // 2: lazy recording, record op (issue #11)
 	MinProto = 1
 )
 
