@@ -62,7 +62,7 @@ args = ["-y", "android-log-mcp"]
 }
 ```
 
-Windows 上如果客户端找不到 `npx`，把 command 改成 `"cmd"`，args 改成 `["/c", "npx", "-y", "android-log-mcp"]`。如果想固定版本，用 `android-log-mcp@0.2.0`。
+Windows 上如果客户端找不到 `npx`，把 command 改成 `"cmd"`，args 改成 `["/c", "npx", "-y", "android-log-mcp"]`。如果想固定版本，用 `android-log-mcp@0.2.1`。
 
 ### 从源码构建
 
@@ -282,7 +282,7 @@ android-log-mcp --home r/store --offline call logcat_crashes '{"package":"com.fo
 想在别的设备或 API 版本上确认，可以运行兼容性探测（只读：`getprop`、`logcat -d/-g`、`ps`、`pm list`、`dumpsys dropbox` 和帮助输出，不清日志、不启动 App）：
 
 ```bash
-android-log-mcp compat --serial <SERIAL>        # 下一个版本起也可以用 npx -y android-log-mcp compat
+android-log-mcp compat --serial <SERIAL>        # 或 npx -y android-log-mcp compat（v0.2.1 起）
 scripts/compat-probe.sh <SERIAL> out/            # 从源码构建并把结果写进 out/
 ```
 
@@ -315,7 +315,7 @@ scripts/compat-probe.sh <SERIAL> out/            # 从源码构建并把结果�
 
 ## 发布（维护者）
 
-1. 修改 `npm/VERSION`（以及 `server/internal/mcpserver/server.go` 里的默认 `Version`），然后打 tag 并 push：`git tag v0.2.0 && git push origin v0.2.0`。
+1. 修改 `npm/VERSION`（以及 `server/internal/mcpserver/server.go` 里的默认 `Version`），然后打 tag 并 push：`git tag v0.2.1 && git push origin v0.2.1`。
 2. `release.yml` 会依次跑测试、交叉编译、`npm publish --provenance`。先发 6 个平台包，再发主包。需要仓库里配置 secret `NPM_TOKEN`（npm 的 Automation 或 Granular token）。
 
 本地验证：`scripts/build-npm.sh 0.2.0 --pack`，生成的 tarball 在 `npm/dist/tarballs/`。

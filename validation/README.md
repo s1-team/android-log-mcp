@@ -167,7 +167,7 @@ emulator -avd api29 -port 5556 -no-window -no-audio -no-boot-anim -gpu swiftshad
 1. 连接设备（真机需要打开 USB 调试并授权），用 `adb devices` 确认它处于 `device` 状态。
 2. 运行探测，二选一：
    - 有本仓库和 Go：`scripts/compat-probe.sh <SERIAL> compat-out/`
-   - 只有 Node：`npx -y android-log-mcp compat --serial <SERIAL>`（`compat` 从下一个版本起包含在 npm 包里），加 `--json` 或 `--raw` 可以保存完整结果
+   - 只有 Node：`npx -y android-log-mcp compat --serial <SERIAL>`（`compat` 从 v0.2.1 起包含在 npm 包里），加 `--json` 或 `--raw` 可以保存完整结果
 3. 看最后一行：`SUPPORTED`、`SUPPORTED (degraded)`（列出降级的项目）或 `NOT SUPPORTED`（列出缺少的必需功能，此时退出码为 1）。
 4. 把结果发回来：
    - 只发探测结果：把 `compat-out/` 里的 `compat.txt`、`compat.json`、`host.txt` 附到 issue 里。`probe-raw.txt` 含有最近 20 行日志和已安装应用列表，分享前请先看一下。
