@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -87,15 +88,33 @@ func servicePID(t *testing.T, text string) (int, string) {
 type session struct {
 	cs  *mcp.ClientSession
 	cmd *exec.Cmd
-	err *strings.Builder
+	err *syncBuf
+}
+
+// syncBuf is a strings.Builder safe for a writer goroutine and readers.
+type syncBuf struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (s *syncBuf) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuf) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
 }
 
 func startMCP(t *testing.T, env []string) *session {
 	t.Helper()
 	cmd := exec.Command(os.Args[0])
 	cmd.Env = append(append(os.Environ(), "ALM_RUN_MAIN=1"), env...)
-	var errb strings.Builder
-	cmd.Stderr = &errb
+	errb := &syncBuf{}
+	cmd.Stderr = errb
 	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -103,7 +122,7 @@ func startMCP(t *testing.T, env []string) *session {
 	if err != nil {
 		t.Fatalf("mcp connect: %v\n%s", err, errb.String())
 	}
-	s := &session{cs: cs, cmd: cmd, err: &errb}
+	s := &session{cs: cs, cmd: cmd, err: errb}
 	t.Cleanup(func() { s.cs.Close() })
 	return s
 }
