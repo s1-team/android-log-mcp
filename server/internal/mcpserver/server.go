@@ -16,7 +16,7 @@ import (
 )
 
 // Version of the server.
-var Version = "0.2.1" // overridden at build time: -ldflags "-X main.version=..."
+var Version = "0.3.0" // overridden at build time: -ldflags "-X main.version=..."
 
 const instructions = `Android logcat recorder. Logs from every connected device are captured continuously in the background and kept across sessions; nothing to start/stop/clear.
 Typical flows: crashes/ANRs → logcat_crashes. Startup time → logcat_app_launches. Anything else → logcat_search (use view="summary" first for wide ranges).
