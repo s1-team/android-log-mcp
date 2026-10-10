@@ -13,24 +13,26 @@ Read [docs/GOALS.md](docs/GOALS.md) first, and check every change against its pr
    - `go vet ./...` and `go test ./...` in `server/`;
    - `-race` on the packages you touched;
    - `GOOS=windows go vet ./...`.
-3. **Commit with a reference to the issue so it closes**, for example `feat(store): … (closes #N)`.
-4. **Push to `main`** (never force-push).
-5. **Wait for CI to be fully green**, including the Windows tests and every npx-compat job. If it fails, fix forward.
+3. **Every user-facing change adds an entry under `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md)** (Keep a Changelog groups: Added / Changed / Deprecated / Removed / Fixed / Security; mark breaking changes with **Breaking** and link the issue). Internal-only changes (tests, refactoring, CI) need no entry.
+4. **Commit with a reference to the issue so it closes**, for example `feat(store): … (closes #N)`.
+5. **Push to `main`** (never force-push).
+6. **Wait for CI to be fully green**, including the Windows tests and every npx-compat job. If it fails, fix forward.
 
 ## 3. Releases
 
 Release only after **explicit sign-off from the user or maintainer**.
 
-1. Bump `npm/VERSION` and the default `Version` in `server/internal/mcpserver/server.go`, plus version examples in the READMEs. Commit `chore: release X.Y.Z`, push, and wait for CI to be green.
+1. In `CHANGELOG.md`, move the `[Unreleased]` entries under a new `## [X.Y.Z] - YYYY-MM-DD` heading (leave `[Unreleased]` empty) and update the compare links at the bottom. Bump `npm/VERSION` and the default `Version` in `server/internal/mcpserver/server.go`, plus version examples in the READMEs. Commit `chore: release X.Y.Z`, push, and wait for CI to be green.
 2. Tag the green commit `vX.Y.Z` (annotated) and push the tag. `.github/workflows/release.yml` then:
+   - checks that the tag matches `npm/VERSION` and that `CHANGELOG.md` has a non-empty `X.Y.Z` section (`scripts/changelog-section.sh X.Y.Z`), before publishing anything;
    - publishes all npm packages;
-   - creates the GitHub Release with the tarballs attached.
-3. If there are user-facing changes, replace the auto-generated release notes with written, English-first notes. Keep the "Full Changelog" line at the end.
+   - creates the GitHub Release with the tarballs attached and **the `X.Y.Z` changelog section as its notes** (plus the compare link). Do not hand-edit release notes: fix the changelog on `main` and update the release with `gh release edit vX.Y.Z --notes-file <(scripts/changelog-section.sh X.Y.Z)` (a re-run of the workflow also updates the notes of an existing release, but only after the npm publish steps).
+3. Breaking changes also need an upgrade note in the README ("Upgrading").
 4. Verify that the npm `latest` tag points at the new version and that `npx -y android-log-mcp@X.Y.Z --version` works.
 
 ## 4. Versioning
 
-- **Before 1.0:** breaking changes bump the **minor** version (0.x → 0.(x+1)), and they need an upgrade note in the README and the release notes.
+- **Before 1.0:** breaking changes bump the **minor** version (0.x → 0.(x+1)), and they need a **Breaking** changelog entry and an upgrade note in the README.
 - **After 1.0:** breaking changes bump the **major** version.
 - Changing a default that deletes or hides user data counts as breaking. One example is retention.
 

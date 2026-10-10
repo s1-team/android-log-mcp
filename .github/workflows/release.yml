@@ -31,6 +31,9 @@ jobs:
           tag="${GITHUB_REF_NAME#v}"
           file="$(tr -d ' \n' < npm/VERSION)"
           if [ "$tag" != "$file" ]; then echo "tag v$tag != npm/VERSION $file" >&2; exit 1; fi
+          # release notes come from the CHANGELOG.md section; fail before publishing if it is missing
+          scripts/changelog-section.sh "$tag" > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
 
       - name: build
         run: scripts/build-npm.sh "${GITHUB_REF_NAME#v}" --pack
@@ -62,7 +65,8 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            echo "release $GITHUB_REF_NAME already exists; skipping"
+            echo "release $GITHUB_REF_NAME already exists; updating its notes from CHANGELOG.md"
+            gh release edit "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"
             exit 0
           fi
-          gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes --title "$GITHUB_REF_NAME" npm/dist/tarballs/*.tgz
+          gh release create "$GITHUB_REF_NAME" --verify-tag --notes-file "$RUNNER_TEMP/notes.md" --title "$GITHUB_REF_NAME" npm/dist/tarballs/*.tgz

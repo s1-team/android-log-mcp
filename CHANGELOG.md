@@ -1,0 +1,114 @@
+# Changelog
+
+All notable changes to android-log-mcp are documented in this file.
+
+The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0, breaking changes bump the minor version (see [AGENTS.md](AGENTS.md)). Entries marked **Breaking** need action or change behavior on upgrade; the [README](README.md#upgrading) has upgrade notes. Every user-facing change adds an entry under `[Unreleased]`; a release moves them under the new version, and the GitHub Release notes are taken from that section.
+
+## [Unreleased]
+
+## [0.4.0] - 2026-10-10
+
+A breaking release: a new storage layout, one data root for all clients, and one background service per user that does all recording.
+
+Upgrade notes: [README › Upgrading › To 0.4.0](README.md#to-040-breaking).
+
+> 中文摘要：破坏性版本。新的存储结构 `v1/<设备ID>/`，旧数据不迁移、不读取；移除 `ANDROID_LOG_MCP_HOME` 和 `--home`，改用 `root` / `set-root` 统一管理数据根目录；每个用户一个后台服务负责全部录制，最后一个客户端关闭后继续录制一段时间（`ANDROID_LOG_MCP_LINGER`）；Windows 最低要求 Windows 10 1803 / Server 2019。
+
+### Added
+
+- **Background service** ([#3](https://github.com/s1crab/android-log-mcp/issues/3)): one long-lived process per user records every connected device and answers every tool call; MCP and `call` processes are thin stdio clients.
+  - Started on demand and detached, from a copy of the binary under `<root>/bin/<version>-<hash>/` (the running and at most one other version are kept). If that is impossible, the client runs the service in its own process and serves the same socket for other clients.
+  - Crash recovery: clients reconnect on their next call, one starts a new service and the call is retried; recording resumes with `logcat -T` and deduplication. A crash-loop guard stops respawning after 3 exits within a minute.
+  - Linger: the service keeps recording for `max(10 min, 2 × device log buffer span)`, at most 1 h, after the last client disconnects; new variable `ANDROID_LOG_MCP_LINGER` (`30m`, `0`, `forever`). A new service waits at least 30 s for its first client.
+  - Versions: a client replaces the service only if the service is older; a newer service is used as is. A separate protocol version lets compatible older clients use a newer service; incompatible clients get an error asking to upgrade.
+  - Local only: AF_UNIX socket in a user-only directory (0700 / 0600; protected DACL for the user and SYSTEM on Windows) with a same-user peer check. No TCP.
+  - Visibility: client stderr and `logcat_status` show the service pid, version, protocol, data root, linger and service log (`<root>/log/service.log`, 1 MiB plus one rotation, counted in the total cap; `crash.log` for runtime crashes).
+  - `android-log-mcp service [status [--json] | stop]`; `android-log-mcp service` runs it in the foreground.
+  - The adb server is started outside the service's process group and is never killed; the service's own adb children end with it.
+- **`android-log-mcp set-root DIR --keep-old | --delete-old [--timeout] [--json]`** ([#3](https://github.com/s1crab/android-log-mcp/issues/3), [#10](https://github.com/s1crab/android-log-mcp/issues/10)): moves the data root for every client. The service stops recording, carries each device's state over (seq numbers, the `logcat -T` resume point and the boundary lines, so there is no gap and no duplicate), commits `config.json` atomically under `run/config.lock` and resumes; any failure before the commit is rolled back. `--delete-old` removes only the tool's own directories; leftovers are reported (exit 3) and retried at the next service start. Works without a running service (never starts one).
+- **`android-log-mcp root [--json]`** prints the data root, control directory, config file, socket and running service ([#9](https://github.com/s1crab/android-log-mcp/issues/9), [#10](https://github.com/s1crab/android-log-mcp/issues/10)).
+- **Stable device IDs** ([#5](https://github.com/s1crab/android-log-mcp/issues/5)): `ro.serialno` for physical devices (the same over USB and Wi-Fi), `avd-<name>` for emulators, a fingerprint hash as fallback. Two devices online at once with the same ID are told apart by boot id and filed as `<id>~<adb serial>` with a note in `logcat_status` ([#6](https://github.com/s1crab/android-log-mcp/issues/6)).
+- `scripts/service-e2e.sh`: live check of the service on a device through the npm launcher.
+- CI: the npx compatibility jobs also run the MCP handshake through the background service.
+
+### Changed
+
+- **Breaking:** new versioned storage layout `<root>/v1/<device-id>/` under one data root, by default `<user cache dir>/android-log-mcp` ([#5](https://github.com/s1crab/android-log-mcp/issues/5), [#7](https://github.com/s1crab/android-log-mcp/issues/7)). **Data recorded by 0.3 or earlier is neither migrated nor read**, and 0.3 report zips cannot be loaded with `--offline`; the old `<serial>/` directories are ignored, not deleted.
+- **Breaking:** recording moved into the background service; it continues for the linger time after the last MCP client closes ([#3](https://github.com/s1crab/android-log-mcp/issues/3)).
+- **Breaking:** Windows 10 1803 / Windows Server 2019 or later is required (AF_UNIX); older Windows gets a clear error.
+- **Breaking:** `--offline <dir>` is the only read-only mode and takes the dataset directory (`--home DIR --offline` no longer works); the `report` flag that skips adb is now `--no-adb` ([#7](https://github.com/s1crab/android-log-mcp/issues/7)).
+- `report` is built by the running service (or by the command itself when none runs); `call` goes through the service.
+- Everything the tool creates is bounded: retention and the total size cap cover all format versions, `tmp/`, `run/`, `bin/` and `log/`; anything else under the root is ignored ([#5](https://github.com/s1crab/android-log-mcp/issues/5)).
+- Windows file locks use `LockFileEx`, released by the OS when the process exits (no staleness heuristics); `flock` on Linux/macOS ([#9](https://github.com/s1crab/android-log-mcp/issues/9)).
+- CI: Windows test failures now fail the build.
+- README rewritten English-first; this changelog added.
+
+### Removed
+
+- **Breaking:** `ANDROID_LOG_MCP_HOME` and `--home`. If either is still set, the program exits with an error naming `set-root` ([#9](https://github.com/s1crab/android-log-mcp/issues/9), [#10](https://github.com/s1crab/android-log-mcp/issues/10)).
+- Per-device owner locks (`owners/`), follower mode and takeover between MCP processes; a leftover `owners/` directory from development builds is removed automatically ([#3](https://github.com/s1crab/android-log-mcp/issues/3)).
+- Migration of the pre-0.4 flat layout and the `legacy/` handling ([#7](https://github.com/s1crab/android-log-mcp/issues/7)).
+
+### Fixed
+
+- A crash of the recorder when the newest segment is empty after a seq jump (`Store.Scan` indexed past the in-memory window) ([#9](https://github.com/s1crab/android-log-mcp/issues/9), [#10](https://github.com/s1crab/android-log-mcp/issues/10)).
+- Leaked `adb track-devices` processes after a recorder was killed: adb children now end with the service.
+
+### Security
+
+- The service socket is reachable only by the same user (directory 0700, socket 0600, peer credential check; Windows ACL for the user and SYSTEM) and there is no network listener.
+
+## [0.3.0] - 2026-10-10
+
+### Added
+
+- Memory and disk limits ([#2](https://github.com/s1crab/android-log-mcp/issues/2)): new variables `ANDROID_LOG_MCP_MEM_RECORDS`, `ANDROID_LOG_MCP_MEM_MB`, `ANDROID_LOG_MCP_HISTORY_CACHE_MB`, `ANDROID_LOG_MCP_IDLE_RELEASE`, `ANDROID_LOG_MCP_MAX_DEVICE_MB`, `ANDROID_LOG_MCP_MAX_TOTAL_MB`, `ANDROID_LOG_MCP_MIN_FREE_MB`.
+- Configurable retention with `ANDROID_LOG_MCP_MAX_AGE` (Go duration or days, e.g. `7d`); `logcat_status` shows the effective value.
+- Total cap for the data directory (default 2 GiB) and a recording pause when free disk space drops below 512 MiB, resuming with `logcat -T`.
+
+### Changed
+
+- **Breaking:** the default retention is **1 day instead of 7**; on first start, older segments and older crash, DropBox and ended-process records are deleted. Set `ANDROID_LOG_MCP_MAX_AGE=7d` to keep the old behavior.
+- In-memory window capped at 20,000 lines or about 16 MiB per device (was 100,000 lines, unbounded bytes); history is read from disk in about 512 KiB blocks into a 32 MiB LRU cache, released after 2 minutes without queries. Measured recorder RSS with 300k records: about 300 MiB → 65 MiB after queries, 19 MiB idle.
+- Aux files (`procs.jsonl`, `crashes.jsonl`) are compacted periodically, dropping expired entries.
+
+### Fixed
+
+- Windows: a source file named `aux.go` (a reserved device name on Windows) broke checkouts.
+
+## [0.2.1] - 2026-10-10
+
+### Added
+
+- `android-log-mcp compat [--serial S] [--json | --raw]` and `scripts/compat-probe.sh`: a read-only probe of a device's logcat / ps / pm / dumpsys features, evaluated with the recorder's own parsers.
+- README compatibility matrix (verified vs designed-only) and evidence from an API 29 emulator.
+- CI: npx compatibility jobs on Node 16 – current (Linux) and Node 22 on macOS and Windows; the release workflow creates a GitHub Release with the npm tarballs.
+
+### Fixed
+
+- uid names `llkd`, `lmkd`, `dhcp`, `mtp` and `dns` from API 29 logcat are mapped instead of left unparsed.
+
+## [0.2.0] - 2026-10-10
+
+### Added
+
+- `android-log-mcp report`: packs recorded logs, device info, DropBox entries, an optional `am start -W` result and a note into a zip, with sensitive values (tokens, credentials, emails, phone numbers, ID and card numbers, device IDs, IPs, MACs, domains) redacted by default; the packed store loads back read-only ([#1](https://github.com/s1crab/android-log-mcp/issues/1)).
+- Global `--offline` flag to browse a dataset without adb.
+
+### Fixed
+
+- Windows: stores closed in tests and safer file replace/delete (meta rename and segment pruning retried while another process has the file open).
+
+## [0.1.0] - 2026-10-10
+
+### Added
+
+- First release: an MCP stdio server giving AI agents read-only access to Android logcat, with background recording of every connected device, the tools `logcat_status`, `logcat_search` (Android Studio filter syntax with strict errors), `logcat_crashes` and `logcat_app_launches`, and the `call` debug subcommand.
+- npm packaging: a Node launcher plus per-platform binary packages (linux / darwin / win32 × x64 / arm64), CI and release workflows.
+
+[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/s1crab/android-log-mcp/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/s1crab/android-log-mcp/compare/v0.2.1...v0.3.0
+[0.2.1]: https://github.com/s1crab/android-log-mcp/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/s1crab/android-log-mcp/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/s1crab/android-log-mcp/releases/tag/v0.1.0
