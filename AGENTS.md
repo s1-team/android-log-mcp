@@ -14,6 +14,7 @@ Read [docs/GOALS.md](docs/GOALS.md) first, and check every change against its pr
    - `-race` on the packages you touched;
    - `GOOS=windows go vet ./...`.
 3. **Every user-facing change adds an entry under `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md)** (Keep a Changelog groups: Added / Changed / Deprecated / Removed / Fixed / Security; mark breaking changes with **Breaking** and link the issue). Internal-only changes (tests, refactoring, CI) need no entry.
+   **Bug fixes are described only in the CHANGELOG**, never in the README: the README describes the current behavior and options neutrally (no "before X.Y.Z this popped up / was broken" notes). Breaking changes still get an upgrade note in the README ("Upgrading").
 4. **Commit with a reference to the issue so it closes**, for example `feat(store): … (closes #N)`.
 5. **Push to `main`** (never force-push).
 6. **Wait for CI to be fully green**, including the Windows tests and every npx-compat job. If it fails, fix forward.

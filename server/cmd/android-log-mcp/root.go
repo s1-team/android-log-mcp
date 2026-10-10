@@ -26,6 +26,9 @@ func runRoot(args []string) int {
 	}
 	if *asJSON {
 		out := map[string]any{"root": root, "default_root": ctrl.Dir, "control": ctrl.Dir, "config": ctrl.ConfigPath(), "socket": ctrl.Socket()}
+		if _, err := os.Stat(ctrl.StableExe()); err == nil {
+			out["exe"] = ctrl.StableExe() // android-log-mcp install
+		}
 		if st := ctrl.ReadState(); st != nil && service.Running(ctrl) {
 			out["service"] = map[string]any{"pid": st.PID, "version": st.Version, "proto": st.Proto, "root": st.Root}
 		}

@@ -52,7 +52,9 @@ function binaryPath() {
 }
 
 const bin = binaryPath();
-const child = spawn(bin, process.argv.slice(2), { stdio: "inherit", windowsHide: true });
+// The binary is started directly (no shell, so no cmd.exe on Windows) and
+// without a console window of its own.
+const child = spawn(bin, process.argv.slice(2), { stdio: "inherit", windowsHide: true, shell: false });
 
 // Forward termination signals to the child; exit when it exits.
 const signals = ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT", "SIGBREAK"];

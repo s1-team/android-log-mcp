@@ -65,3 +65,23 @@ func TestEveryChildIsHidden(t *testing.T) {
 		t.Fatalf("scanned only %d files; wrong root?", files)
 	}
 }
+
+// TestLauncherSpawnsDirectly: the npm launcher must start the Go binary
+// directly (no shell, so no cmd.exe on Windows) with windowsHide.
+func TestLauncherSpawnsDirectly(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "..", "npm", "android-log-mcp", "bin", "android-log-mcp.js"))
+	if err != nil {
+		t.Skip("npm launcher not found:", err)
+	}
+	src := string(b)
+	spawn := regexp.MustCompile(`spawn\(bin, [^\n]*\{([^}]*)\}\)`).FindStringSubmatch(src)
+	if spawn == nil {
+		t.Fatal("launcher: spawn(bin, …, {…}) not found")
+	}
+	if !strings.Contains(spawn[1], "windowsHide: true") || !strings.Contains(spawn[1], "shell: false") {
+		t.Errorf("launcher spawn options %q: want windowsHide: true and shell: false", spawn[1])
+	}
+	if strings.Contains(src, "shell: true") || strings.Contains(src, "execSync") || strings.Contains(src, "exec(") {
+		t.Error("launcher must not start the binary through a shell")
+	}
+}

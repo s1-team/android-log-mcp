@@ -14,34 +14,48 @@ Prebuilt binaries for Linux, macOS and Windows (x64, arm64). Requires `adb`.
 
 ## Contents
 
-- [Quick start](#quick-start) · [Configure your MCP client](#configure-your-mcp-client) · [Tools](#tools) · [Command line](#command-line)
+- [Install and configure](#install-and-configure) ([A. npx](#a-using-npx) · [B. native binary](#b-without-npx-the-native-binary-recommended-on-windows)) · [Tools](#tools) · [Command line](#command-line)
 - [Background service](#background-service) · [Data root and `set-root`](#data-root-and-set-root) · [Data layout and limits](#data-layout-and-limits) · [Environment variables](#environment-variables)
 - [Diagnostic reports and privacy](#diagnostic-reports-and-privacy) · [Upgrading](#upgrading) · [Known limitations](#known-limitations) · [Compatibility](#compatibility)
 - [What has been verified](#what-has-been-verified) · [Repository layout](#repository-layout) · [Releasing](#releasing-maintainers) · [中文摘要](#中文摘要)
 
-## Quick start
+## Install and configure
 
-Prerequisites: Node.js ≥ 16 (only to download and launch) and adb (Android SDK platform-tools). Go is not needed. Windows needs **Windows 10 1803 / Windows Server 2019 or later**.
+Prerequisites: adb (Android SDK platform-tools). Windows needs **Windows 10 1803 / Windows Server 2019 or later**. Go is not needed.
+
+There are two ways to run it. Both use the same background service and data.
+
+| Your OS | Recommended | Why |
+|---|---|---|
+| macOS, Linux | **A. npx** (B works too) | One line, no install step; `npx` starts `node` and then the binary, which is cheap here |
+| Windows | **B. native binary** | Avoids `npx.cmd` → `cmd.exe` → `node` → binary for every MCP session; A still works |
+| No Node.js | **B**, from a GitHub Release asset | No npm at all |
+
+adb is looked up in this order: `ANDROID_LOG_MCP_ADB` → `PATH` → `platform-tools` under `$ANDROID_HOME` / `$ANDROID_SDK_ROOT` → the usual SDK locations (macOS `~/Library/Android/sdk`, Linux `~/Android/Sdk`, Windows `%LOCALAPPDATA%\Android\Sdk`). Set `ANDROID_LOG_MCP_ADB` in the client's `env` if adb is elsewhere.
+
+Whichever way the MCP client starts it, the background service always runs from its own copy under `<root>/bin/`, started directly (never through node, npx or cmd.exe) and without a console window.
+
+### A. Using npx
+
+Needs Node.js ≥ 16 (only to download and launch). The npm package is a tiny Node launcher; the program is a prebuilt Go binary in the optional dependency `android-log-mcp-<os>-<cpu>` (linux/darwin/win32 × x64/arm64), which the launcher starts directly (no shell) with stdio inherited and `windowsHide`. If the platform package is missing (e.g. installed with `--omit=optional`) it says so; `ANDROID_LOG_MCP_BINARY` can point at a binary you built yourself.
 
 ```bash
-npx -y android-log-mcp                               # MCP stdio server (started by your MCP client, not interactive)
-npx -y android-log-mcp --version
-npx -y android-log-mcp call logcat_status '{}'       # debugging: call one tool and print the result
+npx -y android-log-mcp --version                 # check that it runs
+npx -y android-log-mcp call logcat_status '{}'   # debugging: call one tool and print the result
 ```
 
-The npm package is a tiny Node launcher; the program is a prebuilt Go binary in the optional dependency `android-log-mcp-<os>-<cpu>` (linux/darwin/win32 × x64/arm64). The launcher inherits stdio and never writes to stdout. If the platform package is missing (e.g. installed with `--omit=optional`) it says so; `ANDROID_LOG_MCP_BINARY` can point at a binary you built yourself.
+**macOS / Linux**
 
-adb is looked up in this order: `ANDROID_LOG_MCP_ADB` → `PATH` → `platform-tools` under `$ANDROID_HOME` / `$ANDROID_SDK_ROOT` → the usual SDK locations (macOS `~/Library/Android/sdk`, Linux `~/Android/Sdk`, Windows `%LOCALAPPDATA%\Android\Sdk`).
+Codex (`~/.codex/config.toml`; the Codex CLI and IDE extension share it):
 
-## Configure your MCP client
-
-**Claude Code**
-
-```bash
-claude mcp add android-log -- npx -y android-log-mcp
+```toml
+[mcp_servers.android-log]
+command = "npx"
+args = ["-y", "android-log-mcp"]
+# env = { ANDROID_LOG_MCP_ADB = "/path/to/adb" }
 ```
 
-or in the project's `.mcp.json`:
+Cursor (`~/.cursor/mcp.json` or the project's `.cursor/mcp.json`) and Claude Code (the project's `.mcp.json`):
 
 ```json
 {
@@ -51,20 +65,89 @@ or in the project's `.mcp.json`:
 }
 ```
 
-**Codex CLI** (`~/.codex/config.toml`)
+or `claude mcp add android-log -- npx -y android-log-mcp`.
+
+**Windows**
+
+The same configuration works, with `npx` resolving to `npx.cmd`. If the client cannot start `npx` (some clients do not run `.cmd` files), go through `cmd`:
 
 ```toml
 [mcp_servers.android-log]
-command = "npx"
-args = ["-y", "android-log-mcp"]
-# env = { ANDROID_LOG_MCP_ADB = "/path/to/adb" }
+command = "cmd"
+args = ["/c", "npx", "-y", "android-log-mcp"]
 ```
 
-**Cursor** (`~/.cursor/mcp.json` or the project's `.cursor/mcp.json`): the same `mcpServers` JSON as for Claude Code.
+```json
+{ "mcpServers": { "android-log": { "command": "cmd", "args": ["/c", "npx", "-y", "android-log-mcp"] } } }
+```
 
-On Windows, if the client cannot find `npx`, use `"command": "cmd"` with `"args": ["/c", "npx", "-y", "android-log-mcp"]`. To pin a version, use `android-log-mcp@0.4.0`.
+Trade-offs on Windows: every MCP session runs a chain of `npx.cmd` → `cmd.exe` → `node` → the binary, i.e. three extra process layers and a slower start (npx resolves the package first). Whether `cmd.exe` gets a console window depends on how the client starts it. Path B starts the binary directly.
 
-**From source** (Go 1.24+): `cd server && go build -o android-log-mcp ./cmd/android-log-mcp`, then use the binary's absolute path as the command, with no args.
+**Upgrading:** `npx -y android-log-mcp` uses the newest version npx has cached and may not check for a new one every time. To upgrade, pin the version in `args` (`"android-log-mcp@0.4.1"`) and change it on upgrades, or use `android-log-mcp@latest`; then restart the MCP client. The new client replaces an older running background service by itself.
+
+### B. Without npx: the native binary (recommended on Windows)
+
+**Get the binary.** If you have Node.js, let android-log-mcp copy itself to a fixed path:
+
+```bash
+npx -y android-log-mcp@latest install
+```
+
+It prints the path: `<user cache dir>/android-log-mcp/exe/android-log-mcp[.exe]`, i.e.
+
+| OS | Path printed by `install` |
+|---|---|
+| Windows | `C:\Users\<you>\AppData\Local\android-log-mcp\exe\android-log-mcp.exe` (`%LOCALAPPDATA%\android-log-mcp\exe\android-log-mcp.exe`) |
+| macOS | `/Users/<you>/Library/Caches/android-log-mcp/exe/android-log-mcp` |
+| Linux | `/home/<you>/.cache/android-log-mcp/exe/android-log-mcp` (`$XDG_CACHE_HOME` if set) |
+
+`android-log-mcp root --json` also shows it as `exe`. Without Node.js, download the platform tarball from the [GitHub Releases](https://github.com/s1crab/android-log-mcp/releases) (`android-log-mcp-win32-x64-<version>.tgz`, `-darwin-arm64-`, `-linux-x64-`, …) and extract `package/bin/android-log-mcp[.exe]` (`tar -xzf <file>.tgz`, also built into Windows 10 1803+); run `<extracted binary> install` to put it at the fixed path, or keep it wherever you like. Building from source (Go 1.24+): `cd server && go build -o android-log-mcp ./cmd/android-log-mcp`.
+
+**Configure the client** with the absolute path and no args.
+
+Windows, Codex (`%USERPROFILE%\.codex\config.toml`; a TOML literal string `'…'` needs no escaping):
+
+```toml
+[mcp_servers.android-log]
+command = 'C:\Users\<you>\AppData\Local\android-log-mcp\exe\android-log-mcp.exe'
+args = []
+```
+
+Windows, Cursor (`.cursor\mcp.json`) and Claude Code (`.mcp.json`); JSON needs doubled backslashes:
+
+```json
+{
+  "mcpServers": {
+    "android-log": { "command": "C:\\Users\\<you>\\AppData\\Local\\android-log-mcp\\exe\\android-log-mcp.exe", "args": [] }
+  }
+}
+```
+
+or, in cmd.exe, `claude mcp add android-log -- "%LOCALAPPDATA%\android-log-mcp\exe\android-log-mcp.exe"`.
+
+macOS / Linux, Codex:
+
+```toml
+[mcp_servers.android-log]
+command = "/Users/<you>/Library/Caches/android-log-mcp/exe/android-log-mcp"   # Linux: /home/<you>/.cache/android-log-mcp/exe/android-log-mcp
+args = []
+```
+
+macOS / Linux, Cursor and Claude Code:
+
+```json
+{
+  "mcpServers": {
+    "android-log": { "command": "/Users/<you>/Library/Caches/android-log-mcp/exe/android-log-mcp", "args": [] }
+  }
+}
+```
+
+or `claude mcp add android-log -- ~/Library/Caches/android-log-mcp/exe/android-log-mcp` (Linux: `~/.cache/…`).
+
+**Upgrading:** run `npx -y android-log-mcp@latest install` again (or `<new binary> install`), then restart the MCP client. The fixed path stays the same, so the configuration does not change. A copy that MCP clients are running is replaced safely (on Windows the running file is renamed aside and removed by a later `install` once it has stopped), and the new client replaces the older running background service. Check with `android-log-mcp --version` and `android-log-mcp service status`.
+
+The `exe/` directory holds one binary (about 11 MB), plus renamed copies only while a client still runs them. It lives in the fixed control directory, so `set-root` never moves or deletes it, and it is not counted in the data cap. Delete it to uninstall.
 
 ## Tools
 
@@ -100,6 +183,7 @@ The same key repeated is OR (`tag:A tag:B` = A or B); different keys are AND. Un
 | `android-log-mcp call TOOL [JSON]` | Call one tool through the service and print the result. If this call started the service, it first lets it record for 5 s (`ANDROID_LOG_MCP_CALL_WAIT`) |
 | `android-log-mcp report [flags]` | Diagnostic zip (see [below](#diagnostic-reports-and-privacy)); `report -h` lists the flags |
 | `android-log-mcp service [status [--json] \| stop]` | Show or stop the background service; without arguments, run it in the foreground |
+| `android-log-mcp install [--json]` | Copy this binary to a fixed path (`<user cache dir>/android-log-mcp/exe/`) and print it, for MCP clients that run the binary directly (recommended on Windows) |
 | `android-log-mcp root [--json]` | Print the data root (and the control dir, config file, socket and running service) |
 | `android-log-mcp set-root DIR --keep-old\|--delete-old` | Move the data root for every client (see [below](#data-root-and-set-root)) |
 | `android-log-mcp compat [--serial S] [--json\|--raw]` | Read-only probe of a device for the logcat / ps / pm / dumpsys features this tool needs, evaluated with the recorder's own parsers. Exit 0 = supported (possibly degraded), 1 = a required feature is missing, 2 = usage or adb error |
@@ -145,6 +229,7 @@ android-log-mcp set-root /data/alm --delete-old   # move; remove our directories
 <control dir> = <user cache dir>/android-log-mcp   (fixed; also the default data root)
   run/                     0700: service.lock, service.json, service.sock, spawn.lock, config.lock
   config.json              {"root": "<dir>"}, written by set-root (absent = the default root)
+  exe/android-log-mcp[.exe]  written only by `android-log-mcp install` (fixed path for MCP clients)
 <root>/v1/<device-id>/     device data, format 1: seg-*.jsonl (16 MiB segments), meta.json, crashes.jsonl, procs.jsonl, packages.json
 <root>/tmp/                scratch files, removed after 1 hour
 <root>/bin/<version>-<hash>/android-log-mcp   service binaries: the running one and at most one other
@@ -373,7 +458,7 @@ MIT © s1crab. `server/third_party_ref/` is Apache-2.0 reference source and is n
 
 android-log-mcp 是一个 MCP stdio 服务器，让 AI agent（Claude Code / Codex / Cursor 等）**只读**地访问 Android logcat：不清空日志、不启动或停止应用（`report --am-start` 除外，且只在你明确要求时）、不改设备设置。
 
-- **安装**：`npx -y android-log-mcp`（Node.js ≥ 16 + adb）。客户端配置见上文 [Configure your MCP client](#configure-your-mcp-client)。Windows 需要 **Windows 10 1803 / Server 2019 及以上**。
+- **安装与配置（两种方式）**：A. **npx**（macOS / Linux 推荐）：MCP 客户端的 command 设为 `npx`，args 为 `["-y", "android-log-mcp"]`；Windows 上每个会话会经过 `npx.cmd` → `cmd.exe` → `node` 三层额外进程，启动较慢；升级时修改 `@版本` 或用 `@latest` 并重启客户端。B. **直接运行原生二进制**（Windows 推荐）：运行 `npx -y android-log-mcp@latest install`，把客户端的 command 设为它打印的绝对路径（Windows：`%LOCALAPPDATA%\android-log-mcp\exe\android-log-mcp.exe`），args 留空；没有 Node.js 时可从 GitHub Release 下载对应平台的 tgz 并解压出 `package/bin/` 下的二进制；升级时再运行一次 `install` 并重启客户端。Windows 需要 **Windows 10 1803 / Server 2019 及以上**。
 - **工具**：`logcat_status`、`logcat_search`（Android Studio 过滤语法，严格报错）、`logcat_crashes`（Java / native / ANR 按签名分组）、`logcat_app_launches`（冷 / 温 / 热启动时间线）。所有时间都是设备本地时区。
 - **后台服务（0.4 起）**：每个用户只有一个后台服务负责录制所有设备并回答所有工具调用；MCP 客户端启动的进程只是薄客户端，需要时自动启动服务。服务崩溃后客户端自动重连并重启它；新版客户端会替换旧版服务，旧版客户端在协议兼容时直接使用新版服务。最后一个客户端关闭后服务还会继续录制 `max(10 分钟, 2 × 设备日志缓冲区跨度)`，最多 1 小时（`ANDROID_LOG_MCP_LINGER` 可调）。`android-log-mcp service status|stop` 查看或停止。只使用本机 AF_UNIX socket（仅当前用户可访问），没有网络监听。
 - **数据根目录**：默认 `<用户缓存目录>/android-log-mcp`（`android-log-mcp root` 查看）；用 `android-log-mcp set-root <绝对路径> --keep-old|--delete-old` 为所有客户端统一切换，失败会回滚；切换前的历史留在旧目录里，不再被查询。

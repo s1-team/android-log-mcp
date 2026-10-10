@@ -45,6 +45,7 @@ usage:
   android-log-mcp set-root DIR (--keep-old|--delete-old)
                                                move the data root for every client (android-log-mcp set-root -h)
   android-log-mcp service [status|stop]        the background service (see android-log-mcp service -h)
+  android-log-mcp install [--json]             copy this binary to a fixed path for MCP clients to run directly
   android-log-mcp --offline R/store ...         browse a dataset read-only, e.g. an unzipped report (no adb, no writes)
   android-log-mcp compat [--serial S] [--json]  probe a device for the features this tool needs (read-only)
 
@@ -73,7 +74,7 @@ usage:
 	}
 	if flag.NArg() > 0 {
 		switch flag.Arg(0) {
-		case "call", "report", "compat", "root", "service", "set-root":
+		case "call", "report", "compat", "root", "service", "set-root", "install":
 		default:
 			fmt.Fprintf(os.Stderr, "android-log-mcp: unknown command %q\n\n", flag.Arg(0))
 			flag.Usage()
@@ -82,6 +83,9 @@ usage:
 	}
 	if flag.NArg() > 0 && flag.Arg(0) == "root" {
 		os.Exit(runRoot(flag.Args()[1:]))
+	}
+	if flag.NArg() > 0 && flag.Arg(0) == "install" {
+		os.Exit(runInstall(flag.Args()[1:]))
 	}
 	if flag.NArg() > 0 && flag.Arg(0) == "service" {
 		if *offline != "" {

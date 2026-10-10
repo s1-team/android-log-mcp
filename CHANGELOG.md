@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+### Added
+
+- `android-log-mcp install [--json]`: copies the binary to a fixed path, `<user cache dir>/android-log-mcp/exe/android-log-mcp[.exe]` (Windows `%LocalAppData%\android-log-mcp\exe\android-log-mcp.exe`), and prints it, so MCP clients can run the native binary directly instead of the `npx.cmd` → `cmd.exe` → `node` → binary chain. Re-running it updates the copy even while clients run it; a copy that is still running is renamed aside and removed by a later install. `root --json` shows it as `exe`. The README recommends this on Windows, with Codex, Cursor and Claude Code examples; `npx` remains supported.
+
+### Changed
+
+- README: "Install and configure" now has two paths, A. npx and B. the native binary (recommended on Windows; from `install` or a GitHub Release tarball), with Codex, Cursor and Claude Code examples for Windows and macOS/Linux, upgrade steps and a table of which path to use on which OS.
+- The npm launcher states `shell: false` explicitly (it already started the binary directly with `windowsHide`); a test guards it.
+
 ### Fixed
 
 - Windows: console windows kept popping up while the background service ran (for example with Codex or ChatGPT as the MCP client). The service was started with `DETACHED_PROCESS`, i.e. without any console, so every console child it started (`adb devices`, `track-devices`, `shell getprop`, `logcat`, `start-server`, …) got a new visible console window. The service now starts with its own hidden console (`CREATE_NO_WINDOW`, still in a new process group and outside the client's job), and every child process the program starts is created without a window. A source scan test makes sure no new `exec.Command` skips this.
