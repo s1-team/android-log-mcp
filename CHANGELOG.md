@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 A breaking release: a new storage layout, one data root for all clients, and one background service per user that does all recording.
 
-Upgrade notes: [README › Upgrading › To 0.4.0](README.md#to-040-breaking).
+Upgrade notes: [README › Upgrading › To 0.4.0](https://github.com/s1crab/android-log-mcp/blob/main/README.md#to-040-breaking).
 
 > 中文摘要：破坏性版本。新的存储结构 `v1/<设备ID>/`，旧数据不迁移、不读取；移除 `ANDROID_LOG_MCP_HOME` 和 `--home`，改用 `root` / `set-root` 统一管理数据根目录；每个用户一个后台服务负责全部录制，最后一个客户端关闭后继续录制一段时间（`ANDROID_LOG_MCP_LINGER`）；Windows 最低要求 Windows 10 1803 / Server 2019。
 
