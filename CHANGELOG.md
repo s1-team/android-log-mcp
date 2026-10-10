@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-10
+
 ### Added
 
 - `android-log-mcp install [--json]`: copies the binary to a fixed path, `<user cache dir>/android-log-mcp/exe/android-log-mcp[.exe]` (Windows `%LocalAppData%\android-log-mcp\exe\android-log-mcp.exe`), and prints it, so MCP clients can run the native binary directly instead of the `npx.cmd` → `cmd.exe` → `node` → binary chain. Re-running it updates the copy even while clients run it; a copy that is still running is renamed aside and removed by a later install. `root --json` shows it as `exe`. The README recommends this on Windows, with Codex, Cursor and Claude Code examples; `npx` remains supported.
@@ -119,7 +121,8 @@ Upgrade notes: [README › Upgrading › To 0.4.0](https://github.com/s1crab/and
 - First release: an MCP stdio server giving AI agents read-only access to Android logcat, with background recording of every connected device, the tools `logcat_status`, `logcat_search` (Android Studio filter syntax with strict errors), `logcat_crashes` and `logcat_app_launches`, and the `call` debug subcommand.
 - npm packaging: a Node launcher plus per-platform binary packages (linux / darwin / win32 × x64 / arm64), CI and release workflows.
 
-[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/s1crab/android-log-mcp/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/s1crab/android-log-mcp/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/s1crab/android-log-mcp/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/s1crab/android-log-mcp/compare/v0.2.0...v0.2.1

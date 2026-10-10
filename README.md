@@ -442,7 +442,7 @@ It prints `SUPPORTED`, `SUPPORTED (degraded)` or `NOT SUPPORTED`. Results from o
 
 ## Releasing (maintainers)
 
-See [AGENTS.md](AGENTS.md) §3. In short: move the `Unreleased` entries in `CHANGELOG.md` under the new version, bump `npm/VERSION` and the default `Version` in `server/internal/mcpserver/server.go`, commit `chore: release X.Y.Z`, wait for green CI, then tag and push: `git tag -a v0.4.0 -m v0.4.0 && git push origin v0.4.0`. `release.yml` tests, cross-compiles, publishes the six platform packages and then the main package (`npm publish --provenance`, secret `NPM_TOKEN`) and creates the GitHub Release with the notes taken from the version's `CHANGELOG.md` section. Local dry run: `scripts/build-npm.sh 0.4.0 --pack` (tarballs in `npm/dist/tarballs/`).
+See [AGENTS.md](AGENTS.md) §3. In short: move the `Unreleased` entries in `CHANGELOG.md` under the new version, bump `npm/VERSION` and the default `Version` in `server/internal/mcpserver/server.go`, commit `chore: release X.Y.Z`, wait for green CI, then tag and push: `git tag -a vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z`. `release.yml` tests, cross-compiles, publishes the six platform packages and then the main package (`npm publish --provenance`, secret `NPM_TOKEN`) and creates the GitHub Release with the notes taken from the version's `CHANGELOG.md` section. Local dry run: `scripts/build-npm.sh X.Y.Z --pack` (tarballs in `npm/dist/tarballs/`).
 
 ## Third-party reference
 
