@@ -1,5 +1,7 @@
 // Package store keeps per-device logcat records in append-only JSONL segment
-// files under <base>/<serial>/ plus an in-memory window of recent records.
+// files under <base>/<serial>/ plus a bounded in-memory window of recent
+// records (records + bytes caps). Older records are read from disk in blocks
+// through a byte-capped LRU (history.go); caches are released when idle.
 //
 // One process per device directory is the writer (holds writer.lock); other
 // processes open the same directory as followers and tail the files. This
@@ -9,6 +11,7 @@ package store
 import (
 	"bufio"
 	"bytes"
+	"container/list"
 	"context"
 	"encoding/json"
 	"errors"
@@ -17,10 +20,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/s1crab/android-log-mcp/server/internal/logcat"
@@ -32,23 +37,56 @@ type Config struct {
 	SegmentBytes int64         // rotate segments at this size (default 16 MiB)
 	MaxBytes     int64         // per-device cap (default 512 MiB)
 	MaxAge       time.Duration // per-device age cap (default 7 days)
-	MemRecords   int           // in-memory window (default 100k)
+	MemRecords   int           // recent in-memory window, records (default 20k)
+	MemBytes     int64         // recent window, estimated bytes (default 16 MiB)
+	// HistoryCacheBytes caps the decoded blocks of older records kept for
+	// history queries (default 32 MiB).
+	HistoryCacheBytes int64
+	// IdleRelease drops the history cache (and a follower's recent window)
+	// after this long without queries (default 2 min; negative: never).
+	IdleRelease time.Duration
+	BlockBytes  int64 // history read/cache granularity (default 512 KiB)
 }
+
+// Defaults (see README "环境变量与数据目录").
+const (
+	DefaultMemRecords        = 20_000
+	DefaultMemBytes          = 16 << 20
+	DefaultHistoryCacheBytes = 32 << 20
+	DefaultIdleRelease       = 2 * time.Minute
+	DefaultMaxBytes          = 512 << 20
+)
 
 func (c *Config) defaults() {
 	if c.SegmentBytes <= 0 {
 		c.SegmentBytes = 16 << 20
 	}
 	if c.MaxBytes <= 0 {
-		c.MaxBytes = 512 << 20
+		c.MaxBytes = DefaultMaxBytes
 	}
 	if c.MaxAge <= 0 {
 		c.MaxAge = 7 * 24 * time.Hour
 	}
 	if c.MemRecords <= 0 {
-		c.MemRecords = 100_000
+		c.MemRecords = DefaultMemRecords
+	}
+	if c.MemBytes <= 0 {
+		c.MemBytes = DefaultMemBytes
+	}
+	if c.HistoryCacheBytes <= 0 {
+		c.HistoryCacheBytes = DefaultHistoryCacheBytes
+	}
+	if c.IdleRelease == 0 {
+		c.IdleRelease = DefaultIdleRelease
+	}
+	if c.BlockBytes <= 0 {
+		c.BlockBytes = 512 << 10
 	}
 }
+
+// freeOSMemory returns released cache memory to the OS after an idle
+// release (nil in tests that only check accounting).
+var freeOSMemory = debug.FreeOSMemory
 
 type segment struct {
 	first uint64
@@ -62,29 +100,43 @@ type Store struct {
 	Serial string
 	cfg    Config
 
-	mu      sync.RWMutex
-	writer  bool
-	lockF   *os.File
-	mem     []*model.Record // ascending seq, contiguous
-	lastSeq uint64
-	segs    []segment
-	cur     *os.File
-	curW    *bufio.Writer
-	curSize int64
-	meta    Meta
-	metaMod time.Time
-	dirty   bool
-	notify  chan struct{}
+	mu       sync.RWMutex
+	writer   bool
+	lockF    *os.File
+	mem      []*model.Record // ascending seq, contiguous
+	memBytes int64           // RecordBytes sum of mem
+	loaded   bool            // mem holds the recent window (followers load it on demand)
+	lastSeq  uint64
+	newestNs int64 // time of the newest record
+	segs     []segment
+	cur      *os.File
+	curW     *bufio.Writer
+	curSize  int64
+	meta     Meta
+	metaMod  time.Time
+	dirty    bool
+	notify   chan struct{}
 
 	// follower tail state
 	tailSeg string
 	tailOff int64
 
-	// small cache of decoded on-disk segments
-	cacheMu sync.Mutex
-	cache   map[string][]*model.Record
-	cacheQ  []string
-	closed  bool
+	// history: block index per segment + byte-capped LRU of decoded blocks
+	hmu     sync.Mutex
+	idx     map[string]*segIndex
+	blocks  map[blockKey]*list.Element
+	lru     *list.List
+	hBytes  int64
+	lastUse time.Time
+	idleT   *time.Timer
+	closed  atomic.Bool
+
+	auxMu sync.Mutex // serializes aux appends with compaction
+}
+
+func newStore(dir string, cfg Config) *Store {
+	return &Store{Dir: dir, cfg: cfg, notify: make(chan struct{}),
+		idx: map[string]*segIndex{}, blocks: map[blockKey]*list.Element{}, lru: list.New()}
 }
 
 // SanitizeSerial makes a serial safe as a directory name.
@@ -108,7 +160,8 @@ func Open(base, serial string, cfg Config) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	s := &Store{Dir: dir, Serial: serial, cfg: cfg, notify: make(chan struct{}), cache: map[string][]*model.Record{}}
+	s := newStore(dir, cfg)
+	s.Serial = serial
 	s.meta.Serial = serial
 	s.loadMeta()
 	if f, ok := tryLock(filepath.Join(dir, "writer.lock")); ok {
@@ -124,10 +177,11 @@ func Open(base, serial string, cfg Config) (*Store, error) {
 	return s, nil
 }
 
-// OpenReadOnly opens an existing device directory without ever writing.
+// OpenReadOnly opens an existing device directory without ever writing. The
+// recent window is loaded on the first query.
 func OpenReadOnly(dir string, cfg Config) (*Store, error) {
 	cfg.defaults()
-	s := &Store{Dir: dir, cfg: cfg, notify: make(chan struct{}), cache: map[string][]*model.Record{}}
+	s := newStore(dir, cfg)
 	s.loadMeta()
 	s.Serial = s.meta.Serial
 	if err := s.loadSegments(); err != nil {
@@ -254,7 +308,9 @@ func (s *Store) listSegments() ([]segment, error) {
 	return segs, nil
 }
 
-// loadSegments indexes segment files and fills the memory window from the tail.
+// loadSegments lists segment files and positions the tail reader. The
+// writer fills the recent window right away (it keeps appending to it);
+// followers only learn the newest seq and load the window on demand.
 func (s *Store) loadSegments() error {
 	segs, err := s.listSegments()
 	if err != nil {
@@ -264,6 +320,7 @@ func (s *Store) loadSegments() error {
 	defer s.mu.Unlock()
 	s.segs = segs
 	if len(segs) == 0 {
+		s.loaded = true
 		return nil
 	}
 	if s.writer {
@@ -274,27 +331,152 @@ func (s *Store) loadSegments() error {
 				s.segs[len(s.segs)-1].size = st.Size()
 			}
 		}
+		s.loadWindowLocked()
+		return nil
 	}
-	var mem []*model.Record
-	for i := len(segs) - 1; i >= 0 && len(mem) < s.cfg.MemRecords; i-- {
-		recs, end, err := readSegment(segs[i].path, 0)
-		if err != nil {
+	s.findTailLocked()
+	return nil
+}
+
+// findTailLocked sets lastSeq / newestNs / the tail position from the last
+// complete line on disk without decoding anything else.
+func (s *Store) findTailLocked() {
+	n := len(s.segs)
+	if n == 0 {
+		return
+	}
+	s.tailSeg, s.tailOff = s.segs[n-1].path, 0
+	for i := n - 1; i >= 0; i-- {
+		r, end := lastRecord(s.segs[i].path)
+		if i == n-1 {
+			s.tailOff = end
+		}
+		if r != nil {
+			s.lastSeq = max(s.lastSeq, r.Seq)
+			s.newestNs = r.TimeNs
+			return
+		}
+		if s.segs[i].first > 0 {
+			s.lastSeq = max(s.lastSeq, s.segs[i].first-1)
+		}
+	}
+}
+
+// loadWindowLocked fills the recent window (newest MemRecords / MemBytes)
+// from disk, block by block from the end.
+func (s *Store) loadWindowLocked() {
+	var chunks [][]*model.Record
+	count, size := 0, int64(0)
+	n := len(s.segs)
+	for i := n - 1; i >= 0 && count < s.cfg.MemRecords && size < s.cfg.MemBytes; i-- {
+		ix := s.segIndexFor(s.segs[i].path)
+		if ix == nil {
 			continue
 		}
-		if i == len(segs)-1 {
-			s.tailSeg, s.tailOff = segs[i].path, end
+		if i == n-1 {
+			s.tailSeg, s.tailOff = s.segs[i].path, ix.end
 		}
-		mem = append(recs, mem...)
+		for b := len(ix.blocks) - 1; b >= 0 && count < s.cfg.MemRecords && size < s.cfg.MemBytes; b-- {
+			recs, sz, err := decodeRange(s.segs[i].path, ix.blocks[b].off, ix.blocks[b].end)
+			if err != nil {
+				continue
+			}
+			chunks = append(chunks, recs)
+			count += len(recs)
+			size += sz
+		}
+	}
+	mem := make([]*model.Record, 0, count)
+	for i := len(chunks) - 1; i >= 0; i-- {
+		mem = append(mem, chunks[i]...)
 	}
 	mem = contiguousTail(mem)
-	if len(mem) > s.cfg.MemRecords {
-		mem = mem[len(mem)-s.cfg.MemRecords:]
+	s.mem, s.memBytes = mem, sumBytes(mem)
+	s.trimLocked(true)
+	if len(s.mem) > 0 {
+		last := s.mem[len(s.mem)-1]
+		s.lastSeq = max(s.lastSeq, last.Seq)
+		s.newestNs = last.TimeNs
+	} else {
+		s.findTailLocked()
 	}
-	s.mem = mem
-	if len(mem) > 0 {
-		s.lastSeq = mem[len(mem)-1].Seq
+	s.loaded = true
+}
+
+func sumBytes(m []*model.Record) int64 {
+	var n int64
+	for _, r := range m {
+		n += RecordBytes(r)
 	}
-	return nil
+	return n
+}
+
+// trimLocked drops the oldest window records beyond MemRecords / MemBytes.
+// Unless exact, it only trims once a cap is exceeded by 25% so appends do
+// not copy the window every time.
+func (s *Store) trimLocked(exact bool) {
+	maxN, maxB := s.cfg.MemRecords, s.cfg.MemBytes
+	if !exact && len(s.mem) <= maxN+maxN/4 && s.memBytes <= maxB+maxB/4 {
+		return
+	}
+	drop := 0
+	b := s.memBytes
+	for drop < len(s.mem) && (len(s.mem)-drop > maxN || b > maxB) {
+		b -= RecordBytes(s.mem[drop])
+		drop++
+	}
+	if drop == 0 {
+		return
+	}
+	s.mem = append([]*model.Record(nil), s.mem[drop:]...)
+	s.memBytes = b
+}
+
+// lastRecord decodes the last complete line of a segment and returns it with
+// the offset just past it (nil, 0 if the file has no complete line).
+func lastRecord(path string) (*model.Record, int64) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, 0
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil || st.Size() == 0 {
+		return nil, 0
+	}
+	const chunk = 64 << 10
+	var tail []byte // bytes from pos to the end of the file
+	end := int64(-1)
+	for pos := st.Size(); pos > 0; {
+		n := int64(chunk)
+		if pos < n {
+			n = pos
+		}
+		pos -= n
+		buf := make([]byte, n)
+		if _, err := f.ReadAt(buf, pos); err != nil && err != io.EOF {
+			return nil, 0
+		}
+		tail = append(buf, tail...)
+		if end < 0 {
+			i := bytes.LastIndexByte(tail, '\n')
+			if i < 0 {
+				continue
+			}
+			end = pos + int64(i) + 1
+		}
+		body := tail[:end-pos-1] // up to (excluding) the final newline
+		if j := bytes.LastIndexByte(body, '\n'); j >= 0 || pos == 0 {
+			line := body[j+1:]
+			r := new(model.Record)
+			if json.Unmarshal(line, r) != nil {
+				return nil, end
+			}
+			r.Msg = logcat.UnescapePrintable(r.Msg)
+			return r, end
+		}
+	}
+	return nil, max(end, 0)
 }
 
 // contiguousTail keeps the longest suffix whose seqs increase by exactly 1.
@@ -359,22 +541,7 @@ func readSegment(path string, off int64) ([]*model.Record, int64, error) {
 	if last < 0 {
 		return nil, off, nil
 	}
-	data = data[:last+1]
-	recs := make([]*model.Record, 0, len(data)/180)
-	for len(data) > 0 {
-		i := bytes.IndexByte(data, '\n')
-		line := data[:i]
-		data = data[i+1:]
-		if len(line) == 0 {
-			continue
-		}
-		r := new(model.Record)
-		if json.Unmarshal(line, r) == nil {
-			// records written before printable-unescaping existed
-			r.Msg = logcat.UnescapePrintable(r.Msg)
-			recs = append(recs, r)
-		}
-	}
+	recs, _ := decodeLines(data[:last+1])
 	return recs, off + int64(last) + 1, nil
 }
 
@@ -427,6 +594,8 @@ func (s *Store) Append(recs []*model.Record) error {
 			return err
 		}
 		s.mem = append(s.mem, r)
+		s.memBytes += RecordBytes(r)
+		s.newestNs = r.TimeNs
 		if r.TimeNs > s.meta.LastTimeNs {
 			s.meta.LastTimeNs = r.TimeNs
 		}
@@ -438,10 +607,7 @@ func (s *Store) Append(recs []*model.Record) error {
 		return err
 	}
 	s.meta.IngestHostNs = time.Now().UnixNano()
-	if len(s.mem) > s.cfg.MemRecords+s.cfg.MemRecords/4 {
-		drop := len(s.mem) - s.cfg.MemRecords
-		s.mem = append([]*model.Record(nil), s.mem[drop:]...)
-	}
+	s.trimLocked(false)
 	s.dirty = true
 	close(s.notify)
 	s.notify = make(chan struct{})
@@ -518,7 +684,13 @@ func (s *Store) Close() {
 		s.lockF = nil
 	}
 	s.writer = false
-	s.closed = true
+	s.closed.Store(true)
+	s.hmu.Lock()
+	if s.idleT != nil {
+		s.idleT.Stop()
+		s.idleT = nil
+	}
+	s.hmu.Unlock()
 }
 
 func (s *Store) prune() {
@@ -552,20 +724,38 @@ func (s *Store) pruneLocked() {
 		s.segs = s.segs[1:]
 		s.dropCache(old.path)
 	}
+	s.dropMemBeforeLocked()
+}
+
+// dropMemBeforeLocked removes window records older than the oldest segment.
+func (s *Store) dropMemBeforeLocked() {
 	if len(s.segs) > 0 && len(s.mem) > 0 && s.mem[0].Seq < s.segs[0].first {
 		k := s.segs[0].first - s.mem[0].Seq
 		if k >= uint64(len(s.mem)) {
-			s.mem = nil
+			s.mem, s.memBytes = nil, 0
 		} else {
+			s.memBytes -= sumBytes(s.mem[:k])
 			s.mem = append([]*model.Record(nil), s.mem[k:]...)
 		}
 	}
 }
 
-func (s *Store) dropCache(p string) {
-	s.cacheMu.Lock()
-	delete(s.cache, p)
-	s.cacheMu.Unlock()
+// RemoveOldestSegment deletes the oldest segment if it is path and not the
+// active one (writer only; used by the data-directory size cap).
+func (s *Store) RemoveOldestSegment(path string) (int64, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.writer || len(s.segs) < 2 || s.segs[0].path != path {
+		return 0, false
+	}
+	old := s.segs[0]
+	if err := os.Remove(old.path); err != nil && !os.IsNotExist(err) {
+		return 0, false
+	}
+	s.segs = s.segs[1:]
+	s.dropCache(old.path)
+	s.dropMemBeforeLocked()
+	return old.size, true
 }
 
 // Refresh (followers) picks up records appended by the writer process.
@@ -617,17 +807,20 @@ func (s *Store) Refresh() {
 			if r.Seq <= s.lastSeq {
 				continue
 			}
-			if len(s.mem) > 0 && r.Seq != s.lastSeq+1 {
-				s.mem = nil // discontinuity: restart window
+			if s.loaded { // unloaded followers only track the newest seq
+				if len(s.mem) > 0 && r.Seq != s.lastSeq+1 {
+					s.mem, s.memBytes = nil, 0 // discontinuity: restart window
+				}
+				s.mem = append(s.mem, r)
+				s.memBytes += RecordBytes(r)
 			}
-			s.mem = append(s.mem, r)
 			s.lastSeq = r.Seq
+			s.newestNs = r.TimeNs
 			added = true
 		}
 	}
-	if len(s.mem) > s.cfg.MemRecords+s.cfg.MemRecords/4 {
-		s.mem = append([]*model.Record(nil), s.mem[len(s.mem)-s.cfg.MemRecords:]...)
-	}
+	s.dropMemBeforeLocked()
+	s.trimLocked(false)
 	if added {
 		close(s.notify)
 		s.notify = make(chan struct{})
@@ -669,6 +862,17 @@ func (s *Store) Wait(ctx context.Context, afterSeq uint64, timeout time.Duration
 // ascending or descending. fn returns false to stop. Records older than the
 // memory window are read from disk.
 func (s *Store) Scan(after, before uint64, desc bool, fn func(*model.Record) bool) {
+	s.touch()
+	s.mu.RLock()
+	loaded := s.loaded
+	s.mu.RUnlock()
+	if !loaded { // followers load the recent window on the first query
+		s.mu.Lock()
+		if !s.loaded {
+			s.loadWindowLocked()
+		}
+		s.mu.Unlock()
+	}
 	s.mu.RLock()
 	mem := s.mem
 	segs := append([]segment(nil), s.segs...)
@@ -730,16 +934,30 @@ func (s *Store) Scan(after, before uint64, desc bool, fn func(*model.Record) boo
 			}
 		}
 		for _, i := range idx {
-			recs := s.segmentRecords(segs[i].path)
+			ix := s.segIndexFor(segs[i].path)
+			if ix == nil {
+				continue
+			}
+			var bl []block
+			for _, b := range ix.blocks {
+				if b.first < hi && b.last >= lo {
+					bl = append(bl, b)
+				}
+			}
 			if desc {
-				for k := len(recs) - 1; k >= 0; k-- {
-					r := recs[k]
-					if r.Seq >= lo && r.Seq < hi && !fn(r) {
-						return false
+				for k := len(bl) - 1; k >= 0; k-- {
+					recs := s.blockRecords(segs[i].path, bl[k])
+					for j := len(recs) - 1; j >= 0; j-- {
+						r := recs[j]
+						if r.Seq >= lo && r.Seq < hi && !fn(r) {
+							return false
+						}
 					}
 				}
-			} else {
-				for _, r := range recs {
+				continue
+			}
+			for _, b := range bl {
+				for _, r := range s.blockRecords(segs[i].path, b) {
 					if r.Seq >= lo && r.Seq < hi && !fn(r) {
 						return false
 					}
@@ -760,25 +978,6 @@ func (s *Store) Scan(after, before uint64, desc bool, fn func(*model.Record) boo
 	}
 }
 
-func (s *Store) segmentRecords(path string) []*model.Record {
-	s.cacheMu.Lock()
-	if r, ok := s.cache[path]; ok {
-		s.cacheMu.Unlock()
-		return r
-	}
-	s.cacheMu.Unlock()
-	recs, _, _ := readSegment(path, 0)
-	s.cacheMu.Lock()
-	s.cache[path] = recs
-	s.cacheQ = append(s.cacheQ, path)
-	if len(s.cacheQ) > 3 {
-		delete(s.cache, s.cacheQ[0])
-		s.cacheQ = s.cacheQ[1:]
-	}
-	s.cacheMu.Unlock()
-	return recs
-}
-
 // Get returns the record with the given seq, or nil.
 func (s *Store) Get(seq uint64) *model.Record {
 	var out *model.Record
@@ -795,11 +994,14 @@ type Stats struct {
 	FirstSeq   uint64
 	LastSeq    uint64
 	MemRecords int
+	MemBytes   int64 // estimated size of the recent window
+	MemLoaded  bool  // false: follower whose window is not loaded (idle)
+	CacheBytes int64 // estimated size of the history block cache
 }
 
 func (s *Store) Stats() Stats {
 	s.mu.RLock()
-	st := Stats{LastSeq: s.lastSeq, MemRecords: len(s.mem)}
+	st := Stats{LastSeq: s.lastSeq, MemRecords: len(s.mem), MemBytes: s.memBytes, MemLoaded: s.loaded, NewestNs: s.newestNs}
 	for _, sg := range s.segs {
 		st.Bytes += sg.size
 	}
@@ -809,17 +1011,13 @@ func (s *Store) Stats() Stats {
 	} else if len(s.mem) > 0 {
 		first = s.mem[0].Seq
 	}
-	if len(s.mem) > 0 {
-		st.NewestNs = s.mem[len(s.mem)-1].TimeNs
-	}
 	s.mu.RUnlock()
 	st.FirstSeq = first
 	if first > 0 && st.LastSeq >= first {
 		st.Records = st.LastSeq - first + 1
-		if r := s.Get(first); r != nil {
-			st.OldestNs = r.TimeNs
-		}
+		st.OldestNs = s.oldestNs()
 	}
+	st.CacheBytes = s.HistoryCacheBytes()
 	return st
 }
 
@@ -834,6 +1032,8 @@ func (s *Store) AppendAux(name string, v any) error {
 	if err != nil {
 		return err
 	}
+	s.auxMu.Lock()
+	defer s.auxMu.Unlock()
 	f, err := os.OpenFile(filepath.Join(s.Dir, name+".jsonl"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return err
@@ -859,6 +1059,12 @@ func (s *Store) ReadAux(name string) [][]byte {
 
 // RewriteAux atomically replaces an aux file (writer only), e.g. to trim it.
 func (s *Store) RewriteAux(name string, lines [][]byte) error {
+	s.auxMu.Lock()
+	defer s.auxMu.Unlock()
+	return s.rewriteAuxLocked(name, lines)
+}
+
+func (s *Store) rewriteAuxLocked(name string, lines [][]byte) error {
 	tmp := filepath.Join(s.Dir, name+".jsonl.tmp")
 	var buf bytes.Buffer
 	for _, l := range lines {
@@ -888,4 +1094,35 @@ func ListDeviceDirs(base string) []string {
 		}
 	}
 	return out
+}
+
+// Config returns the effective configuration (defaults applied).
+func (s *Store) Config() Config { return s.cfg }
+
+// oldestNs is the time of the oldest stored record, read from the first
+// line of the oldest segment (no cache involved).
+func (s *Store) oldestNs() int64 {
+	s.mu.RLock()
+	var path string
+	if len(s.segs) > 0 {
+		path = s.segs[0].path
+	}
+	var memT int64
+	if len(s.mem) > 0 {
+		memT = s.mem[0].TimeNs
+	}
+	s.mu.RUnlock()
+	if path != "" {
+		if f, err := os.Open(path); err == nil {
+			defer f.Close()
+			br := bufio.NewReaderSize(f, 64<<10)
+			if line, err := br.ReadBytes('\n'); err == nil {
+				var r model.Record
+				if json.Unmarshal(line, &r) == nil {
+					return r.TimeNs
+				}
+			}
+		}
+	}
+	return memT
 }

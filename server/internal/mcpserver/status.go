@@ -156,6 +156,8 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 		stats := d.Store.Stats()
 		var rec string
 		switch {
+		case st.Paused != "":
+			rec = st.Paused
 		case st.Recording:
 			rec = "recording (this process)"
 		case st.State == "device" && !st.Writer:
@@ -198,6 +200,11 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 			fmt.Fprintf(&b, "; gaps: %d (latest: %s)", len(m.Gaps), gapText(m.Gaps[len(m.Gaps)-1], loc))
 		}
 		b.WriteString("\n")
+		win := fmt.Sprintf("%s lines (~%.1f MB)", commas(stats.MemRecords), float64(stats.MemBytes)/1e6)
+		if !stats.MemLoaded {
+			win = "not loaded (loads on the next query)"
+		}
+		fmt.Fprintf(&b, "    memory: recent window %s; history cache ~%.1f MB\n", win, float64(stats.CacheBytes)/1e6)
 		if note := lagNote(d, st, m, stats); note != "" {
 			fmt.Fprintf(&b, "    note: %s\n", note)
 		}

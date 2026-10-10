@@ -3,6 +3,7 @@ package device
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"os"
@@ -44,6 +45,25 @@ type Device struct {
 	dbxPending map[string]bool
 	dbxMu      sync.Mutex
 	crashMu    sync.Mutex // serializes ID assignment + persistence
+	disk       *store.DiskGuard
+}
+
+// errDiskPaused ends a recording session because free disk space is low.
+var errDiskPaused = errors.New("recording paused: low free disk space")
+
+// PauseGapReason is the gap recorded while recording is paused for disk space.
+const PauseGapReason = "recording paused: free disk space was low (ANDROID_LOG_MCP_MIN_FREE_MB); resumed with logcat -T, so only lines the device buffer dropped meanwhile are lost"
+
+// recordPause notes an open gap (closed by the first record after resuming).
+func recordPause(st *store.Store) {
+	st.UpdateMeta(func(m *store.Meta) {
+		for _, g := range m.Gaps {
+			if g.ToNs <= 0 {
+				return // already open
+			}
+		}
+		m.Gaps = append(m.Gaps, store.Gap{FromNs: m.LastTimeNs, ToNs: -1, Reason: PauseGapReason})
+	})
 }
 
 func newDevice(adb *ADB, st *store.Store, serial string) *Device {
@@ -168,6 +188,7 @@ type Status struct {
 	Writer    bool
 	LastErr   string
 	WriterPID string
+	Paused    string // non-empty: this process would record but disk space is low
 }
 
 func (d *Device) Status() Status {
@@ -175,6 +196,9 @@ func (d *Device) Status() Status {
 	s := Status{State: d.state, Recording: d.recording, LastErr: d.lastErr}
 	d.mu.RUnlock()
 	s.Writer = d.Store.IsWriter()
+	if s.Writer && s.State == "device" {
+		s.Paused = d.disk.Reason()
+	}
 	if !s.Writer {
 		if b, err := os.ReadFile(filepath.Join(d.Store.Dir, "writer.lock")); err == nil {
 			s.WriterPID = strings.TrimSpace(string(b))
@@ -276,6 +300,12 @@ func (d *Device) run(ctx context.Context) {
 			continue
 		}
 		os.WriteFile(filepath.Join(d.Store.Dir, "writer.lock"), []byte(strconv.Itoa(os.Getpid())), 0o644)
+		if d.disk.Paused() {
+			// keep the writer lock (one recorder) but do not write; the
+			// manager re-checks free space every 10 s
+			sleep(ctx, 5*time.Second)
+			continue
+		}
 		started := time.Now()
 		err := d.recordOnce(ctx)
 		d.mu.Lock()
@@ -283,6 +313,10 @@ func (d *Device) run(ctx context.Context) {
 		d.mu.Unlock()
 		if ctx.Err() != nil {
 			return
+		}
+		if errors.Is(err, errDiskPaused) {
+			d.setErr(nil)
+			continue
 		}
 		d.setErr(err)
 		if time.Since(started) > time.Minute {
@@ -479,6 +513,13 @@ func (d *Device) recordOnce(ctx context.Context) error {
 			pipe.Tick(0)
 		case <-flushT.C:
 			d.Store.Flush()
+			if d.disk.Paused() {
+				accept(asm.Flush())
+				drain(true)
+				d.Store.Flush()
+				recordPause(d.Store)
+				return errDiskPaused
+			}
 		case <-ctx.Done():
 			drain(true)
 			d.Store.Flush()

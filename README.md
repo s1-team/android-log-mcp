@@ -202,6 +202,13 @@ android-log-mcp --home r/store --offline call logcat_crashes '{"package":"com.fo
 | `ANDROID_LOG_MCP_ADB` | adb 的路径 |
 | `ANDROID_LOG_MCP_BINARY` | （仅 npm 启动器使用）不用平台包，改用这个路径下的二进制 |
 | `ANDROID_LOG_MCP_MAX_DEVICES` | 最多同时录制几台设备，默认 4 |
+| `ANDROID_LOG_MCP_MEM_RECORDS` | 每台设备在内存里缓存的最近日志条数，默认 20000。更早的日志查询时从磁盘读 |
+| `ANDROID_LOG_MCP_MEM_MB` | 最近日志缓存的字节上限（估算值，单位 MiB），默认 16。超长行不会把内存撑大 |
+| `ANDROID_LOG_MCP_HISTORY_CACHE_MB` | 历史查询时，已解码日志块缓存的字节上限（每台设备，单位 MiB），默认 32。按块（约 512 KiB 的分段内容）做 LRU 淘汰 |
+| `ANDROID_LOG_MCP_IDLE_RELEASE` | 多久没有查询就释放缓存，默认 `2m`；设为 `0` 表示不释放。释放时历史缓存清空；只读进程连最近日志缓存一起释放，下次查询再按需加载 |
+| `ANDROID_LOG_MCP_MAX_DEVICE_MB` | 每台设备的日志上限（MiB），默认 512 |
+| `ANDROID_LOG_MCP_MAX_TOTAL_MB` | 整个数据目录（所有设备，包括辅助文件）的上限（MiB），默认 2048；设为 `0` 表示不限制 |
+| `ANDROID_LOG_MCP_MIN_FREE_MB` | 数据目录所在磁盘的剩余空间低于这个值（MiB）时暂停录制，默认 512；恢复到 2 倍以上时自动续录。设为 `0` 表示关闭 |
 
 每台设备的数据放在一个子目录里，内容包括：
 
@@ -209,13 +216,26 @@ android-log-mcp --home r/store --offline call logcat_crashes '{"package":"com.fo
 - `meta.json`：会话（boot_id）、缺口、时区等
 - `crashes.jsonl`、`procs.jsonl`、`packages.json`
 
-保留策略：每台设备总量不超过 512 MiB，且不超过 7 天，超出后按段删除最旧的。
+保留策略：
+- 每台设备总量不超过 512 MiB，且不超过 7 天，超出后按段删除最旧的。
+- 整个数据目录不超过 2 GiB。超出时跨设备按段删除最旧的，每台设备的最新一段永远保留；只清理本进程负责录制的设备，或者当前没有进程在录制的设备。
+- 辅助文件定期压缩（启动约 30 秒后一次，之后每 10 分钟一次）：
+  - `procs.jsonl`、`crashes.jsonl` 每个条目只保留最新版本；
+  - 早于保留期（且早于最早一条日志）的已结束进程、早于保留期的崩溃和 `dropbox_seen` 记录会被删除；
+  - 遗留的 `*.tmp` 文件也会清掉。
+- 磁盘剩余空间低于 512 MiB 时暂停录制（`logcat_status` 会显示原因），并记一个缺口；剩余空间恢复到 1 GiB 以上后用 `logcat -T` 自动续录。
+
+内存：
+- 每台设备在内存里只缓存最近 20000 条日志（同时不超过约 16 MiB），更早的日志查询时从磁盘按块读取，并放进一个 32 MiB 的 LRU 缓存。
+- 2 分钟没有查询就释放历史缓存。
+- 只读进程（另一个进程在录制）启动时不预读日志，第一次查询时才加载，空闲后再释放。
+- `logcat_status` 的 `memory:` 一行显示当前的缓存占用。
 
 **多个客户端同时运行**：同一台设备只有一个进程负责录制（通过 `writer.lock` 文件锁决定），其他进程跟随读取同一批文件。录制进程退出后，其他进程会自动接管录制。
 
 ## 已知限制
 
-- **没有独立 daemon**：录制随 MCP 进程存在，所有 MCP 客户端都关闭后录制就停止。下次启动时会用 `logcat -T <上次时间>` 续录并去重。如果设备的 ring buffer 在此期间已经被覆盖，丢失的部分会被记为缺口，并在 `status` 和搜索结果里标出。`Tools.Call(name, rawArgs)` 是预留的接口，以后可以换成"薄代理 + 常驻 daemon"。
+- **没有独立 daemon**：录制随 MCP 进程存在，所有 MCP 客户端都关闭后录制就停止。下次启动时会用 `logcat -T <上次时间>` 续录并去重。如果设备的 ring buffer 在此期间已经被覆盖，丢失的部分会被记为缺口，并在 `status` 和搜索结果里标出。`Tools.Call(name, rawArgs)` 是预留的接口，以后可以换成"薄代理 + 常驻 daemon"（计划见 issue #3）。在那之前，每个 MCP 客户端都会有一个进程；不负责录制的进程空闲时只占十几 MiB（见上面的「内存」）。
 - **设备 ring buffer 很小**：模拟器上每个 buffer 默认只有 2 MiB（`logcat -g`），繁忙时几分钟就会被覆盖。录制开始之前的日志能拿到多少取决于它；更早的崩溃只能从 DropBox 补（`logcat_crashes` 会注明来源）。
 - **不使用设备端过滤**：API 29 的 logcat 没有 `--uid`，`--pid` 也只认一个，所以本工具总是录制全部 buffer（main、system、crash、events），按包、pid 和 uid 的过滤都在主机端完成。
 - **读取延迟（刷新策略）**：录制进程每收到一批日志就写入并 flush（不等缓冲区满），另有约 800 ms 的延迟队列用来等 pid→进程映射。所以跟随读取的进程（另一个 MCP 客户端）通常在约 1 秒内就能看到新日志。v1 实测时出现过读者落后约 3.5 分钟的情况：根因是设备端积压，即 TCG 软件模拟下 logcat 首次 `-D` 导出整个 buffer 很慢；另外旧版本的写入缓冲区要攒满才落盘，也会加剧延迟。现在 `logcat_status` 会区分三种情况并明确说明：录制进程停写、设备端积压（最新日志落后于设备时钟，但仍在持续写入）、设备本身安静。

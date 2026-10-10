@@ -3,6 +3,7 @@ package device
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -20,6 +21,11 @@ type Manager struct {
 	MaxDevices int
 	// NoADB disables adb entirely (tests, or browsing recorded history only).
 	NoADB bool
+	// MaxTotalBytes caps the whole data directory (all devices, incl.
+	// auxiliary files); 0 disables. Default 2 GiB.
+	MaxTotalBytes int64
+	// Disk pauses recording while free space on the data disk is low.
+	Disk *store.DiskGuard
 
 	adb      *ADB
 	adbErr   error
@@ -45,11 +51,78 @@ func DefaultBase() string {
 }
 
 func NewManager(base string, cfg store.Config) *Manager {
-	m := &Manager{Base: base, Cfg: cfg, MaxDevices: 4, devices: map[string]*Device{}, states: map[string]string{}, ready: make(chan struct{})}
+	m := &Manager{Base: base, Cfg: cfg, MaxDevices: 4, devices: map[string]*Device{}, states: map[string]string{}, ready: make(chan struct{}),
+		MaxTotalBytes: DefaultMaxTotalBytes, Disk: &store.DiskGuard{MinFree: DefaultMinFreeBytes}}
 	if v, err := strconv.Atoi(os.Getenv("ANDROID_LOG_MCP_MAX_DEVICES")); err == nil && v > 0 {
 		m.MaxDevices = v
 	}
+	if v, ok := store.EnvInt64("ANDROID_LOG_MCP_MAX_TOTAL_MB"); ok {
+		m.MaxTotalBytes = v << 20 // 0 disables
+	}
+	if v, ok := store.EnvInt64("ANDROID_LOG_MCP_MIN_FREE_MB"); ok {
+		m.Disk.MinFree = uint64(v) << 20 // 0 disables
+	}
 	return m
+}
+
+// Disk protection defaults.
+const (
+	DefaultMaxTotalBytes = 2 << 30
+	DefaultMinFreeBytes  = 512 << 20 // resume at 2× this
+)
+
+func (m *Manager) newDevice(st *store.Store, serial string) *Device {
+	d := newDevice(m.adb, st, serial)
+	d.disk = m.Disk
+	return d
+}
+
+// maintain runs the disk protection: the free-space guard (every 10 s), the
+// data-directory size cap (every minute) and aux-file compaction of the
+// devices this process records (shortly after start, then every 10 min).
+func (m *Manager) maintain(ctx context.Context) {
+	m.Disk.Check(m.Base)
+	tick := time.NewTicker(10 * time.Second)
+	defer tick.Stop()
+	n := 0
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+		n++
+		if paused, changed := m.Disk.Check(m.Base); changed {
+			if paused {
+				log.Print(m.Disk.Reason())
+			} else {
+				log.Print("free disk space recovered; recording resumes")
+			}
+		}
+		if n%6 == 0 {
+			m.MaintainOnce(false)
+		}
+		if n == 3 || n%60 == 0 {
+			m.MaintainOnce(true)
+		}
+	}
+}
+
+// MaintainOnce applies the data-directory size cap and, with aux, compacts
+// the auxiliary files of the devices this process writes.
+func (m *Manager) MaintainOnce(aux bool) {
+	owned := map[string]*store.Store{}
+	for _, d := range m.Devices() {
+		if d.Store.IsWriter() {
+			owned[d.Store.Dir] = d.Store
+			if aux {
+				CompactAux(d.Store, time.Now())
+			}
+		}
+	}
+	if freed := store.EnforceTotal(m.Base, m.MaxTotalBytes, owned); freed > 0 {
+		log.Printf("data directory over %d MiB: removed %d MiB of the oldest logs (ANDROID_LOG_MCP_MAX_TOTAL_MB)", m.MaxTotalBytes>>20, freed>>20)
+	}
 }
 
 // Start begins device tracking (non-blocking).
@@ -66,11 +139,12 @@ func (m *Manager) Start(ctx context.Context) {
 		if _, ok := m.devices[st.Serial]; !ok {
 			// reopen properly (may become writer later when the device shows up)
 			if s2, err := store.Open(m.Base, st.Serial, m.Cfg); err == nil {
-				m.devices[st.Serial] = newDevice(nil, s2, st.Serial)
+				m.devices[st.Serial] = m.newDevice(s2, st.Serial)
 			}
 		}
 		m.mu.Unlock()
 	}
+	go m.maintain(ctx)
 	if m.NoADB {
 		m.adbErr = fmt.Errorf("adb disabled")
 		m.once.Do(func() { close(m.ready) })
@@ -132,7 +206,7 @@ func (m *Manager) onDevices(list []DevState, err error) {
 			if err != nil {
 				continue
 			}
-			d = newDevice(m.adb, st, ds.Serial)
+			d = m.newDevice(st, ds.Serial)
 			m.devices[ds.Serial] = d
 			recording++
 		}

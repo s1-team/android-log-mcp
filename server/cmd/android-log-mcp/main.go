@@ -68,7 +68,7 @@ usage:
 		cancel()
 		os.Exit(code)
 	}
-	m := device.NewManager(base, store.Config{})
+	m := device.NewManager(base, store.ConfigFromEnv())
 	m.NoADB = *offline
 	m.Start(ctx)
 	defer m.Close()
