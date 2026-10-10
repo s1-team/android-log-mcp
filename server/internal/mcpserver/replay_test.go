@@ -57,29 +57,23 @@ func fixtureFile(t *testing.T, name string) string {
 	return string(b)
 }
 
-// replayDir is like t.TempDir, but its removal retries for up to 10 s.
-// Every store in it is closed by then (the cleanup runs after the
-// Manager's), yet on the Windows runners a freshly written segment is
-// sometimes still held by another process (presumably the virus scanner)
-// longer than t.TempDir's 2 s retry ("being used by another process").
+// replayDir is t.TempDir plus a check, run after every later cleanup (the
+// store's / Manager's Close), that no file in it is still open. On Windows an
+// open handle makes the TempDir removal fail ("being used by another
+// process"); /proc/self/fd lets Linux CI catch the same leak.
 func replayDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "replay-")
-	if err != nil {
-		t.Fatal(err)
-	}
+	dir := t.TempDir()
 	t.Cleanup(func() {
-		deadline := time.Now().Add(10 * time.Second)
-		for {
-			err := os.RemoveAll(dir)
-			if err == nil {
-				return
+		ents, err := os.ReadDir("/proc/self/fd")
+		if err != nil {
+			return // not Linux
+		}
+		for _, e := range ents {
+			p, err := os.Readlink(filepath.Join("/proc/self/fd", e.Name()))
+			if err == nil && strings.HasPrefix(p, dir+string(os.PathSeparator)) {
+				t.Errorf("file still open at end of test: %s", p)
 			}
-			if time.Now().After(deadline) {
-				t.Errorf("removing %s: %v", dir, err)
-				return
-			}
-			time.Sleep(100 * time.Millisecond)
 		}
 	})
 	return dir
@@ -93,6 +87,9 @@ func newReplay(t *testing.T, boot string) *replayEnv {
 		t.Fatalf("open: %v", err)
 	}
 	e.st = st
+	// tests that never call a tool (e.call closes it) still release the
+	// segment and writer.lock; Close is idempotent
+	t.Cleanup(st.Close)
 	st.UpdateMeta(func(m *store.Meta) {
 		m.Serial, m.Model, m.Release, m.SDK = fxSerial, "Android SDK built for x86_64", "10", "29"
 		m.TZ, m.TZOffset = "Asia/Kuching", "+0800"
