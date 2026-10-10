@@ -113,6 +113,9 @@ func (t *Tools) noDeviceHint() string {
 func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 	t.M.WaitReady(3 * time.Second)
 	var b strings.Builder
+	if t.Service != nil {
+		b.WriteString(t.Service())
+	}
 	if t.M.NoADB {
 		b.WriteString("adb: not used (--offline)\n")
 	} else if err := t.M.ADBError(); err != nil {

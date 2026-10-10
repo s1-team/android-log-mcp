@@ -49,6 +49,7 @@ type Manager struct {
 	resolving map[string]bool
 	attachMu  sync.Mutex // serializes attach / migration / sweep
 	watchErr  error
+	closed    bool // Close was called: never attach again
 	ready     chan struct{}
 	once      sync.Once
 }
@@ -135,6 +136,9 @@ func (m *Manager) MaintainOnce(aux bool) {
 	}
 	m.attachMu.Lock()
 	defer m.attachMu.Unlock()
+	if m.closed {
+		return
+	}
 	owned := map[string]*store.Store{}
 	for _, d := range m.Devices() {
 		if d.Owned() && d.Store.IsWriter() {
@@ -438,7 +442,7 @@ func (m *Manager) collision(id Identity) (string, bool) {
 func (m *Manager) attach(id Identity) string {
 	m.attachMu.Lock()
 	defer m.attachMu.Unlock()
-	if m.NoADB || (m.ctx != nil && m.ctx.Err() != nil) {
+	if m.NoADB || m.closed || (m.ctx != nil && m.ctx.Err() != nil) {
 		return "" // --offline never records, follows or creates anything
 	}
 	if other, ok := m.collision(id); ok {
@@ -648,12 +652,30 @@ func (m *Manager) AddrOf(addr string) string {
 	return m.addrs[addr]
 }
 
-// Close stops recorders and flushes stores.
+// Close stops the recorders, waits (bounded) until each has flushed its
+// last lines and closes the stores. Attach does nothing afterwards.
 func (m *Manager) Close() {
-	for _, d := range m.Devices() {
+	m.attachMu.Lock()
+	m.closed = true
+	m.attachMu.Unlock()
+	devs := m.Devices()
+	for _, d := range devs {
 		d.stop()
 	}
-	time.Sleep(200 * time.Millisecond)
+	done := make(chan struct{})
+	go func() {
+		for _, d := range devs {
+			d.runWG.Wait()
+		}
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		log.Print("recorders did not stop within 10 s; closing the stores anyway")
+	}
+	m.attachMu.Lock()
+	defer m.attachMu.Unlock()
 	for _, d := range m.Devices() {
 		d.Store.Close()
 		d.owner.Release()

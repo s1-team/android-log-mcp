@@ -53,6 +53,7 @@ type Device struct {
 	dbxMu      sync.Mutex
 	crashMu    sync.Mutex // serializes ID assignment + persistence
 	disk       *store.DiskGuard
+	runWG      sync.WaitGroup // the recorder goroutine (run)
 }
 
 // errDiskPaused ends a recording session because free disk space is low.
@@ -280,8 +281,12 @@ func (d *Device) setState(ctx context.Context, state string) {
 		cctx, cancel := context.WithCancel(ctx)
 		d.mu.Lock()
 		d.cancel = cancel
+		d.runWG.Add(1)
 		d.mu.Unlock()
-		go d.run(cctx)
+		go func() {
+			defer d.runWG.Done()
+			d.run(cctx)
+		}()
 	} else if state != "device" && running {
 		d.stop()
 	}

@@ -463,8 +463,8 @@ func SweepRun(dir string, maxAge time.Duration, now time.Time) int {
 	for _, e := range ents {
 		p := filepath.Join(dir, e.Name())
 		fi, err := e.Info()
-		if err != nil || strings.HasSuffix(e.Name(), ".json") {
-			continue
+		if err != nil || strings.HasSuffix(e.Name(), ".json") || strings.HasSuffix(e.Name(), ".lock") {
+			continue // lock files: deleting a held one would let a second holder in
 		}
 		switch {
 		case fi.Mode()&os.ModeSocket != 0 || strings.HasSuffix(e.Name(), ".sock"):

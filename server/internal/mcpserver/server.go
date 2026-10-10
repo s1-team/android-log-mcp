@@ -23,11 +23,14 @@ Typical flows: crashes/ANRs → logcat_crashes. Startup time → logcat_app_laun
 To capture a reproduction: logcat_status → take ` + "`cursor`" + ` → user reproduces → logcat_search(after=cursor, wait_ms=20000).
 All times are device-local; responses state the device timezone.`
 
-// Tools implements the tool logic over a device manager. It is the seam for a
-// future shared daemon: a thin proxy could forward (name, raw args) to a
-// daemon process running the same Tools and relay the text back.
+// Tools implements the tool logic over a device manager. It runs in the
+// background service; MCP processes are thin clients that forward
+// (name, raw args) to it and relay the text back (issue #3).
 type Tools struct {
 	M *device.Manager
+	// Service, if set, describes the service process (pid, version,
+	// protocol, root …); logcat_status prints it first.
+	Service func() string
 }
 
 // toolError is a business error returned with isError=true.
@@ -107,23 +110,53 @@ func fieldNames(v any) []string {
 
 func boolPtr(b bool) *bool { return &b }
 
-// NewServer builds the MCP server with the 4 tools.
+// ToolDef is a tool definition as sent from the service to its clients
+// (hello), so a client always lists exactly the tools the service runs.
+type ToolDef struct {
+	Name   string          `json:"name"`
+	Title  string          `json:"title"`
+	Desc   string          `json:"desc"`
+	Schema json.RawMessage `json:"schema"`
+}
+
+// ToolDefs are this binary's tool definitions.
+func ToolDefs() []ToolDef {
+	var out []ToolDef
+	for _, d := range toolDefs() {
+		out = append(out, ToolDef{Name: d.name, Title: d.title, Desc: d.desc, Schema: json.RawMessage(d.schema)})
+	}
+	return out
+}
+
+// Instructions are this binary's MCP server instructions.
+func Instructions() string { return instructions }
+
+// CallFunc runs one tool: (name, raw JSON args) → (text, isError).
+type CallFunc func(ctx context.Context, name string, raw json.RawMessage) (string, bool)
+
+// NewServer builds the MCP server with the 4 tools, run in this process.
 func NewServer(t *Tools) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "android-log", Title: "Android logcat", Version: Version}, &mcp.ServerOptions{Instructions: instructions})
-	for _, def := range toolDefs() {
+	return NewProxyServer(ToolDefs(), Instructions(), t.Call)
+}
+
+// NewProxyServer builds an MCP server from tool definitions whose calls go
+// through call (the thin client forwards them to the background service).
+func NewProxyServer(defs []ToolDef, instr string, call CallFunc) *mcp.Server {
+	s := mcp.NewServer(&mcp.Implementation{Name: "android-log", Title: "Android logcat", Version: Version}, &mcp.ServerOptions{Instructions: instr})
+	for _, def := range defs {
 		def := def
 		s.AddTool(&mcp.Tool{
-			Name:        def.name,
-			Title:       def.title,
-			Description: def.desc,
-			InputSchema: json.RawMessage(def.schema),
-			Annotations: &mcp.ToolAnnotations{Title: def.title, ReadOnlyHint: true, OpenWorldHint: boolPtr(false), DestructiveHint: boolPtr(false), IdempotentHint: true},
+			Name:        def.Name,
+			Title:       def.Title,
+			Description: def.Desc,
+			InputSchema: def.Schema,
+			Annotations: &mcp.ToolAnnotations{Title: def.Title, ReadOnlyHint: true, OpenWorldHint: boolPtr(false), DestructiveHint: boolPtr(false), IdempotentHint: true},
 		}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			var raw json.RawMessage
 			if req.Params != nil {
 				raw = req.Params.Arguments
 			}
-			text, isErr := t.Call(ctx, def.name, raw)
+			text, isErr := call(ctx, def.Name, raw)
 			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}, IsError: isErr}, nil
 		})
 	}

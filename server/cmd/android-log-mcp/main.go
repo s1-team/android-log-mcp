@@ -40,6 +40,7 @@ usage:
   android-log-mcp report [flags]               pack logs + diagnostics into a redacted zip
                                                (android-log-mcp report -h for flags)
   android-log-mcp root [--json]                print the data root (fixed: <user cache dir>/android-log-mcp)
+  android-log-mcp service [status|stop]        the background service (see android-log-mcp service -h)
   android-log-mcp --offline R/store ...         browse a dataset read-only, e.g. an unzipped report (no adb, no writes)
   android-log-mcp compat [--serial S] [--json]  probe a device for the features this tool needs (read-only)
 
@@ -68,7 +69,7 @@ usage:
 	}
 	if flag.NArg() > 0 {
 		switch flag.Arg(0) {
-		case "call", "report", "compat", "root":
+		case "call", "report", "compat", "root", "service":
 		default: // e.g. set-root: not part of 0.4.0 (#10)
 			fmt.Fprintf(os.Stderr, "android-log-mcp: unknown command %q\n\n", flag.Arg(0))
 			flag.Usage()
@@ -77,6 +78,13 @@ usage:
 	}
 	if flag.NArg() > 0 && flag.Arg(0) == "root" {
 		os.Exit(runRoot(flag.Args()[1:]))
+	}
+	if flag.NArg() > 0 && flag.Arg(0) == "service" {
+		if *offline != "" {
+			fmt.Fprintln(os.Stderr, "android-log-mcp: --offline cannot be combined with service")
+			os.Exit(2)
+		}
+		os.Exit(runServiceCmd(flag.Args()[1:]))
 	}
 	base := *offline
 	if base == "" {
