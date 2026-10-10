@@ -19,3 +19,6 @@ func tryLock(path string) (*os.File, bool) {
 	}
 	return f, true
 }
+
+// refreshLock: not needed, flock never goes stale.
+func refreshLock(string) {}

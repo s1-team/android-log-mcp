@@ -258,6 +258,7 @@ func (s *Store) loadMetaLocked() {
 			s.meta.Serial = serial
 		}
 		s.metaMod = st.ModTime()
+		s.lastSeq = max(s.lastSeq, m.SeqFloor)
 	}
 }
 
@@ -268,6 +269,7 @@ func (s *Store) Meta() Meta {
 	m := s.meta
 	m.Sessions = append([]Session(nil), m.Sessions...)
 	m.Gaps = append([]Gap(nil), m.Gaps...)
+	m.Holes = append([]SeqRange(nil), m.Holes...)
 	return m
 }
 
@@ -610,6 +612,9 @@ func (s *Store) Append(recs []*model.Record) error {
 		if err != nil {
 			return err
 		}
+		if n := len(s.mem); n > 0 && s.mem[n-1].Seq+1 != r.Seq {
+			s.mem, s.memBytes = nil, 0 // seq jump (set-root move): the window must stay contiguous
+		}
 		s.mem = append(s.mem, r)
 		s.memBytes += RecordBytes(r)
 		s.newestNs = r.TimeNs
@@ -631,6 +636,14 @@ func (s *Store) Append(recs []*model.Record) error {
 	return nil
 }
 
+// continuesSeg reports whether seq first directly follows segment sg.
+func continuesSeg(sg segment, first uint64) bool {
+	if r, _ := lastRecord(sg.path); r != nil {
+		return r.Seq+1 == first
+	}
+	return sg.first == first
+}
+
 func (s *Store) rotateLocked(first uint64) error {
 	if s.cur != nil {
 		s.curW.Flush()
@@ -640,8 +653,9 @@ func (s *Store) rotateLocked(first uint64) error {
 			s.segs[n-1].size = s.curSize
 		}
 	}
-	// Reuse the last segment if it is not full (e.g. after restart).
-	if n := len(s.segs); n > 0 && s.segs[n-1].size < s.cfg.SegmentBytes && s.cur == nil && s.curSize == 0 {
+	// Reuse the last segment if it is not full (e.g. after restart) and the
+	// seqs continue it (not after a set-root move, which leaves a seq jump).
+	if n := len(s.segs); n > 0 && s.segs[n-1].size < s.cfg.SegmentBytes && s.cur == nil && s.curSize == 0 && continuesSeg(s.segs[n-1], first) {
 		f, err := os.OpenFile(s.segs[n-1].path, os.O_WRONLY|os.O_APPEND, 0o644)
 		if err == nil {
 			s.cur, s.curW, s.curSize = f, bufio.NewWriterSize(f, 256<<10), s.segs[n-1].size
@@ -926,7 +940,10 @@ func (s *Store) Scan(after, before uint64, desc bool, fn func(*model.Record) boo
 		memFirst = mem[0].Seq
 	}
 	inMem := func(lo, hi uint64, desc bool) bool { // [lo,hi)
-		if len(mem) == 0 || hi <= memFirst {
+		// seqs above the window's last one exist nowhere here (e.g. a
+		// set-root move back left meta.seq_floor above the stored data)
+		hi = min(hi, memFirst+uint64(len(mem)))
+		if len(mem) == 0 || hi <= memFirst || lo >= hi {
 			return true
 		}
 		lo = max(lo, memFirst)
@@ -1048,10 +1065,17 @@ func (s *Store) Stats() Stats {
 	} else if len(s.mem) > 0 {
 		first = s.mem[0].Seq
 	}
+	holes := s.meta.Holes
 	s.mu.RUnlock()
 	st.FirstSeq = first
 	if first > 0 && st.LastSeq >= first {
 		st.Records = st.LastSeq - first + 1
+		for _, h := range holes { // seqs recorded in another root (set-root)
+			lo, hi := max(h.First, first), min(h.Last, st.LastSeq)
+			if hi >= lo && st.Records > hi-lo {
+				st.Records -= hi - lo + 1
+			}
+		}
 		st.OldestNs = s.oldestNs()
 	}
 	st.CacheBytes = s.HistoryCacheBytes()
@@ -1114,8 +1138,6 @@ func (s *Store) rewriteAuxLocked(name string, lines [][]byte) error {
 	return os.Rename(tmp, filepath.Join(s.Dir, name+".jsonl"))
 }
 
-func timeSince(t time.Time) float64 { return time.Since(t).Seconds() }
-
 // DataFormat is the on-disk format version: device data lives in
 // <root>/v<DataFormat>/<device-id>/ (also inside reports: store/v1/<id>/).
 // Directories of versions before 0.4 (<root>/<serial>/) are ignored.
@@ -1162,9 +1184,14 @@ func ListSegments(dir string) []SegmentFile {
 	return out
 }
 
-// TryLock takes an exclusive, non-blocking lock file (flock on unix, an
-// exclusively created file elsewhere); it is held while the file stays open.
+// TryLock takes an exclusive, non-blocking lock file (flock on unix,
+// LockFileEx on Windows, an exclusively created file elsewhere); it is held
+// while the file stays open and released by the OS when the process exits.
 func TryLock(path string) (*os.File, bool) { return tryLock(path) }
+
+// RefreshLock keeps a held lock fresh; only the fallback lock of platforms
+// with neither flock nor LockFileEx needs it (it goes stale after a minute).
+func RefreshLock(path string) { refreshLock(path) }
 
 // ReleaseLock releases a lock taken with TryLock.
 func ReleaseLock(f *os.File) { releaseLock(f) }

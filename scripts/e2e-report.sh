@@ -16,21 +16,21 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SERIAL="${1:-${ANDROID_SERIAL:-emulator-5556}}"
 EVID="${2:-}"
 ADB="${ANDROID_LOG_MCP_ADB:-$(command -v adb || echo "$HOME/android-sdk/platform-tools/adb")}"
-# The data root (Linux): ANDROID_LOG_MCP_HOME if set, else the per-user cache
-# dir. Owner locks always live in the fixed per-user owners dir, whatever the
-# root: if another process (any root) records SERIAL, its data dir is used.
-CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/android-log-mcp"
-HOME_DIR="${ANDROID_LOG_MCP_HOME:-$CACHE_DIR}"
-OWNERS_DIR="$CACHE_DIR/owners"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"; [ -n "${REC_PID:-}" ] && kill "$REC_PID" 2>/dev/null || true' EXIT
 
 BIN="$WORK/android-log-mcp"
 (cd "$ROOT/server" && go build -o "$BIN" ./cmd/android-log-mcp)
+# The data root is the one every process uses (`android-log-mcp root`, set
+# with set-root). Owner locks always live in the fixed per-user owners dir
+# (Linux): if another process records SERIAL, its data dir is used.
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/android-log-mcp"
+HOME_DIR="$("$BIN" root 2>/dev/null)"
+OWNERS_DIR="$CACHE_DIR/owners"
 "$ADB" -s "$SERIAL" get-state >/dev/null
 
 RUN="LT$(date +%s)"
-echo "run id $RUN, device $SERIAL, home $HOME_DIR" >&2
+echo "run id $RUN, device $SERIAL, root $HOME_DIR" >&2
 
 # (key prefixes are split with ${U}/${D}/${E} so that the fake keys do not
 # look like real ones to secret scanners in this repository)
@@ -101,7 +101,7 @@ PY
 d0=$(find_dir)
 if [ -z "$d0" ] || ! find "$d0" -maxdepth 1 -newermt '-60 seconds' 2>/dev/null | grep -q .; then
   echo "no active recorder seen; starting one (root $HOME_DIR)" >&2
-  (sleep infinity | ANDROID_LOG_MCP_HOME="$HOME_DIR" "$BIN" >/dev/null 2>"$WORK/rec.log") &
+  (sleep infinity | "$BIN" >/dev/null 2>"$WORK/rec.log") &
   REC_PID=$!
   sleep 15
 fi
@@ -128,7 +128,7 @@ DEVICE_ID=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["ser
 [ "$got" -ge "$N" ]
 
 OUT="$WORK/report.zip"
-ANDROID_LOG_MCP_HOME="$HOME_DIR" "$BIN" report --serial "$SERIAL" --since 20m -o "$OUT" \
+"$BIN" report --serial "$SERIAL" --since 20m -o "$OUT" \
   --note "e2e $RUN: reporter leak.e2e@example.com, token=abcDEF123456ghiJKL789xyz" 2> "$WORK/report.stderr"
 cat "$WORK/report.stderr" >&2
 mkdir "$WORK/r" && (cd "$WORK/r" && unzip -q "$OUT")

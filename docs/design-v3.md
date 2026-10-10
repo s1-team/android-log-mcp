@@ -547,25 +547,26 @@ agent 可以借此发现自己写的 `message:foo message:bar` 实际被解释�
 - `report` 的默认窗口仍然是 2 小时，在 1 天以内。`--since` 超出已保留的历史时，照旧在 manifest 和输出里注明 history 起点。
 - 升级提示见 README「升级到 0.3.0」。
 
-## 10. Storage layout, device identity and ownership (issues #5, #7)
+## 10. Storage layout, device identity and ownership (issues #5, #7, #9)
 
 Goal (GOALS "Bounded", "Observe, never interfere"): one data root that owns every file the tool creates, one recorder per device per user, and no unbounded leftovers.
 
 ### 10.1 Layout
 
 ```
-<root> = ANDROID_LOG_MCP_HOME / --home, else os.UserCacheDir()/android-log-mcp
+<root> = config.json "root" (set-root), else os.UserCacheDir()/android-log-mcp
+  .android-log-mcp          marker (set-root accepts a non-empty target only if it is a root)
   v1/<device-id>/           store format 1 (store.DataFormat); other vN/ dirs are swept like unowned data
   run/                      runtime endpoints (for the planned daemon, #3): <name>.json {pid, socket}
   tmp/                      scratch, expires after 1 h
 os.UserCacheDir()/android-log-mcp/owners/   fixed per user, whatever <root> is
-  <device-id>.lock          flock (unix) / O_EXCL file refreshed every 10 s (Windows); JSON {pid, version, data_dir, addr, home, boot_id, since}
+  <device-id>.lock          flock (unix) / LockFileEx on a byte past EOF (Windows); JSON {pid, version, data_dir, root, addr, boot_id, since}
+os.UserConfigDir()/android-log-mcp/config.json   {"root": "<dir>", "switch": {from, to, old, requested_at, pid} while pending}
 ```
 
-Three ways to run (issue #7, a clean break before 0.4.0):
-- **Default root:** records the devices it owns, follows the others.
-- **Relocated root** (`ANDROID_LOG_MCP_HOME` / `--home`): exactly the same, with the data elsewhere. Because the owners dir does not move, a device is never recorded by two roots at once: a process that finds the device owned elsewhere reads the owner's `data_dir` read-only and `logcat_status` names the owner (pid, version, relocated root, data dir). When the owner exits it takes over into its own root. There is no registry of roots; `owners/` is the only shared state.
-- **`--offline <dir>`:** the only read-only mode. It opens `<dir>/v1/*` with no adb and never records, prunes, migrates or creates a file, not even `owners/`, `run/` or `tmp/` (`Manager.NoADB`; `attach` and `MaintainOnce` return immediately). Used for unzipped reports and replay.
+Two ways to run (issue #7, revised by #9):
+- **Recording (default):** the root comes only from `config.json` (`layout.ConfiguredRoot`), the same file for every process of the user. There is no env var or flag for it. `ANDROID_LOG_MCP_HOME` and `--home` were removed in #9; if either is still set, the process exits 2 with an error pointing to `set-root`, so a client configuration is never silently ignored. The process records the devices it owns and follows the others.
+- **`--offline <dir>`:** the only read-only mode. It opens `<dir>/v1/*` with no adb and never records, prunes, migrates or creates a file, not even `owners/`, `run/` or `tmp/` (`Manager.NoADB`; `attach` and `MaintainOnce` return immediately). Used for unzipped reports and replay. It ignores `config.json`.
 
 Everything else under the root (pre-0.4 flat `<serial>/` dirs, `legacy/`, `android-log-mcp.*` siblings) is ignored: not listed, not read, not migrated, not counted towards the cap, not deleted. Users delete old dirs by hand (README upgrade note). Removed in #7: flat-layout migration, following pre-0.4 writers, sibling adoption into `legacy/`, the strict read-only HOME of #6, `meta.aliases`, `store.ListFlatDirs`.
 
@@ -581,9 +582,9 @@ Known limitation: an API ≤ 29 emulator attached via `adb connect` has no AVD n
 
 On a new online adb serial the manager probes the identity asynchronously (retried every 10 s on failure), then `attach`:
 1. check for an ID collision (above);
-2. try `owners/<id>.lock` in the fixed owners dir; held → follow the owner's `data_dir` read-only, whatever root it is in (status names pid, version, relocated root, data dir);
+2. re-read `config.json` (`syncRootLocked`) so that ownership is never taken into a root that is no longer configured, then try `owners/<id>.lock` in the fixed owners dir; held → follow the owner's `data_dir` read-only (status names pid, version, data dir);
 3. acquired → open `<root>/v1/<id>` as writer and record (`Device.run` records only while holding the owner lock).
-The maintenance tick re-attaches followers whose owner went away (takeover into this process's root). Devices only on disk are opened read-only. `report` resolves devices the same way: a device recorded by a live owner with another root is read from that owner's `data_dir`.
+The maintenance tick re-attaches followers whose owner went away (takeover), or whose owner now writes another dir (`ownerMoved`, after a set-root). Devices only on disk are opened read-only. `report` resolves devices the same way: a device recorded by a live owner with another root is read from that owner's `data_dir`.
 
 ### 10.4 Sweep (`layout.Sweep`, at startup and every minute)
 
@@ -594,3 +595,38 @@ The maintenance tick re-attaches followers whose owner went away (takeover into 
 5. Total cap over all managed files (device dirs of every `v<N>/`, `tmp/`, `run/`, `owners/` when it is under the root): delete the oldest files first; each current-format device keeps its newest segment; non-current directories without segments are removed.
 Only known file names are deleted from a device directory, and only under `v<N>/`, `tmp/`, `run/`, `owners/`, so a root pointed at a directory with other content cannot lose unrelated files. The sweep never runs with `--offline`.
 
+### 10.5 Locks
+
+`store.TryLock` is the only lock primitive. It is used for `owners/<id>.lock` and `v1/<id>/writer.lock`, and is held while the file stays open:
+- **unix:** `flock(LOCK_EX|LOCK_NB)` (`store/lock_unix.go`).
+- **Windows:** `LockFileEx(LOCKFILE_EXCLUSIVE_LOCK|LOCKFILE_FAIL_IMMEDIATELY)` via `golang.org/x/sys/windows` (`store/lock_windows.go`). It locks one byte at offset 2^62. Windows byte-range locks are mandatory, so locking the content would make the owner JSON at offset 0 unreadable to `ReadOwner` in other processes; a range past EOF is allowed and still excludes other lockers.
+- **Other platforms** (neither unix nor windows): a fallback `O_EXCL` file that is stale after 1 min unless refreshed (`store.RefreshLock`, called by `OwnerLock.Refresh` on the maintenance tick; a no-op elsewhere).
+
+With flock and LockFileEx the OS releases the lock when the handle is closed or the process dies, so there is no pid check and no staleness heuristic. Whether an owner is live is `store.LockHeld`. `AcquireOwner` re-checks the inode on unix, because the sweep / a releasing owner unlinks the file while holding the lock. Tested on all three CI OSes: exclusivity, the content readable while locked, release on close, and release when the holder process is killed (`store/lock_test.go`).
+
+### 10.6 `set-root`: changing the root while processes run (issue #9)
+
+`android-log-mcp set-root <dir> (--keep-old | --delete-old) [--json] [--timeout 150s]` (`layout.SetRoot`). `android-log-mcp root [--json]` prints the root and any pending switch.
+
+1. **Exactly one of `--keep-old` / `--delete-old`**, otherwise exit 2 listing both. There are no prompts.
+2. **Validate the target** (`ValidateTarget`):
+   - resolve it to an absolute path, with symlinks resolved on the longest existing prefix;
+   - it must not equal the current root, lie inside it, or be a parent of it;
+   - it must be new or empty, the default root, or already a root (marker or `v<N>/`), because the sweep manages `tmp/` and `run/` there;
+   - it must be creatable and writable (a test file is written).
+3. **Write `config.json` atomically** (tmp + rename) with `root = target` and a `switch` marker {from, to, old, requested_at, pid}. Initialise the target (`Root.Ensure`).
+4. **Wait for the acknowledgement.** Until every held owner lock reports `root == target` (poll 1 s; timeout 150 s; immediate when no lock is held). Each recording process does this on its maintenance tick (every 10 s, `Manager.SyncRoot`):
+   - for every device it owns, `moveDevice`:
+     - stop the recorder and wait until it has returned, so its last batch is stored;
+     - collect the hashes of the stored lines at the newest timestamp;
+     - close the store, which flushes the current segment and meta;
+     - `store.ContinueIn(old, new, lastSeq)`: copy meta.json (sessions, gaps, `last_time_ns`/`last_boot_id` for `logcat -T`, counters, clock/TZ) and the aux files (crashes, procs, dropbox_seen, packages), and set `meta.seq_floor = lastSeq`. If the new dir already holds this device's older segments (moving back to a root used before), the seqs recorded elsewhere become a `meta.holes` entry, so `stored N lines` stays exact. Seqs never repeat, so cursors stay monotonic;
+     - open the new dir as writer. The first append starts a new segment `seg-<lastSeq+1>`: a segment is only reused if the seqs continue it, and the in-memory window resets on a seq jump;
+     - restart the recorder with `logcat -T <last time>`. The carried hashes deduplicate the boundary lines, and no "recorder was not running" gap is added;
+     - rewrite the owner lock with `{root, data_dir}`. That is the ack.
+     The owner lock is held throughout, so there are never two writers. If the new dir cannot be opened, recording stays in the old dir and no ack is given, so set-root times out.
+   - Read-only dirs of the old root are dropped and the new root's are loaded. Followers re-follow when their owner's `data_dir` changes.
+5. **After the ack.** `--keep-old` leaves the old root untouched; it is no longer read or swept. `--delete-old` removes only `v<N>/`, `tmp/`, `run/` and the marker, then the old root if it is empty, and reports what remained (e.g. `owners/` and `legacy/` in the default root). Then the marker is cleared.
+6. **Timeout** (e.g. a client still runs a version without set-root): exit 3. The config stays switched, so new processes use the new root; the old root is untouched and the marker stays. Re-running the same command resumes waiting (target == configured root with a pending switch) and finishes.
+
+History before the switch is deliberately not copied: segments can be gigabytes, and the user chose between keeping and deleting the old root. `logcat_status` shows a pending switch. Test isolation (`internal/testhome`) redirects both the user cache dir and the user config dir.

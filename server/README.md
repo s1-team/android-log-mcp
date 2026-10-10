@@ -18,9 +18,9 @@ REPLAY_DUMP=1 go test ./internal/mcpserver -run ReplayExplore -v  # 打印 fixtu
 | `internal/procs` | pid 到进程的生命周期表（am_proc_*、ps 快照、force-stop、重启） |
 | `internal/analysis` | 崩溃、ANR、tombstone 识别和 DropBox 合并；启动时间线 |
 | `internal/filter` | Android Studio Logcat 过滤语法的解析器（移植，含 AS 测试） |
-| `internal/layout` | Data root: `v1/<device-id>/` layout, owner locks in the fixed per-user `owners/` dir, and the sweep (retention + total cap over every `v<N>/` format, `tmp/`, `run/`; stale sockets / owner locks). Anything else under the root (pre-0.4 dirs) is ignored |
-| `internal/testhome` | `TestMain` helper that redirects the per-user cache dir so tests never touch the real owners dir |
-| `internal/store` | JSONL 分段存储；单写者多读者（flock）；最近窗口和按块的历史缓存（条数 / 字节上限，空闲释放）；保留期（`ANDROID_LOG_MCP_MAX_AGE`）、目录总量上限和低剩余空间暂停 |
+| `internal/layout` | Data root: `v1/<device-id>/` layout, owner locks in the fixed per-user `owners/` dir, the per-user `config.json` that sets the root and `set-root` (live switch, issue #9), and the sweep (retention + total cap over every `v<N>/` format, `tmp/`, `run/`; stale sockets / owner locks). Anything else under the root (pre-0.4 dirs) is ignored |
+| `internal/testhome` | `TestMain` helper that redirects the per-user cache and config dirs so tests never touch the real owners dir or config.json |
+| `internal/store` | JSONL 分段存储；单写者多读者（flock / Windows LockFileEx）；`set-root` 切换时的续写（`continue.go`：seq 下限、meta 和辅助文件）；最近窗口和按块的历史缓存（条数 / 字节上限，空闲释放）；保留期（`ANDROID_LOG_MCP_MAX_AGE`）、目录总量上限和低剩余空间暂停 |
 | `internal/mcpserver` | 4 个工具的实现、渲染，以及回归测试（含 replay-from-report） |
 | `internal/compat` | `compat` 子命令：只读探测设备的 logcat / ps / pm / dumpsys 功能，并用录制时的解析器评估 |
 | `internal/redact` | 敏感信息打码规则（`[REDACTED:<类型>#n]`，同值同号，HMAC 随机密钥） |

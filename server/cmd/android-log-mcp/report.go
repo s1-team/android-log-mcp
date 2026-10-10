@@ -41,7 +41,7 @@ func parseSize(s string) (int64, error) {
 	return int64(f * float64(mult)), nil
 }
 
-const reportUsage = `usage: android-log-mcp [--home DIR] report [flags]
+const reportUsage = `usage: android-log-mcp report [flags]
 
 Packs recorded logs and diagnostics into a zip for the maintainer, with
 sensitive values redacted (on by default). Reads the data directory only;
@@ -72,7 +72,6 @@ func runReport(ctx context.Context, home string, args []string) int {
 	offline := fs.Bool("no-adb", false, "do not use adb (no live device info, DropBox or --am-start)")
 	out := fs.String("o", "", "output zip (default ./android-log-mcp-report-<time>.zip)")
 	fs.StringVar(out, "out", "", "same as -o")
-	homeFlag := fs.String("home", home, "data root (default $ANDROID_LOG_MCP_HOME or <user cache dir>/android-log-mcp)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -81,11 +80,8 @@ func runReport(ctx context.Context, home string, args []string) int {
 		fs.Usage()
 		return 2
 	}
-	opt := report.Options{Base: *homeFlag, Serials: serials, From: *from, To: *to, Package: *pkg, AmStart: *amStart, Out: *out,
+	opt := report.Options{Base: home, Serials: serials, From: *from, To: *to, Package: *pkg, AmStart: *amStart, Out: *out,
 		Version: mcpserver.Version, Args: append([]string{"report"}, args...)}
-	if opt.Base == "" {
-		opt.Base = device.DefaultBase()
-	}
 	opt.OwnersDir = layout.DefaultOwnersDir()
 	if *from == "" {
 		d, err := time.ParseDuration(*since)

@@ -13,7 +13,7 @@ import (
 	"github.com/s1crab/android-log-mcp/server/internal/store"
 )
 
-// logcat_status of a process with another data root (e.g. ANDROID_LOG_MCP_HOME)
+// logcat_status of a process with another data root (e.g. started before a set-root)
 // names the process that owns a device instead of claiming to record it;
 // owner locks live in one owners dir shared by all roots.
 func TestStatusNamesForeignOwner(t *testing.T) {
@@ -35,11 +35,11 @@ func TestStatusNamesForeignOwner(t *testing.T) {
 	if isErr {
 		t.Fatal(out)
 	}
-	want := fmt.Sprintf("owned by another android-log-mcp process (pid %d, version 9.9.9, relocated root %s, data %s)", os.Getpid(), root, layout.DeviceDir(root, "avd-a"))
+	want := fmt.Sprintf("owned by another android-log-mcp process (pid %d, version 9.9.9, data %s)", os.Getpid(), layout.DeviceDir(root, "avd-a"))
 	if !strings.Contains(out, "NOT recorded by this process") || !strings.Contains(out, want) {
 		t.Fatalf("status does not name the owner:\n%s", out)
 	}
-	if !strings.Contains(out, "owner locks: "+owners) || strings.Contains(out, "read-only: ANDROID_LOG_MCP_HOME") {
+	if !strings.Contains(out, "owner locks: "+owners) {
 		t.Fatalf("status mode lines:\n%s", out)
 	}
 	out1, _ := (&Tools{M: m1}).Call(context.Background(), "logcat_status", json.RawMessage(`{"device":"avd-a"}`))

@@ -1,35 +1,35 @@
 device avd-api29 · times are device-local Asia/Kuching (+08:00) · date 2026-10-10
-filter parsed as: tag == "LeakTest" AND message contains "LT1791631955"
-matched 29 lines; showing newest 29 (19:31:48.964–19:32:02.905)
+filter parsed as: tag == "LeakTest" AND message contains "LT1791633902"
+matched 29 lines; showing newest 29 (20:03:16.714–20:03:31.709)
 format: time level pid/tid process tag: message
-19:31:48.964 I 10554/10554 ?(uid shell) LeakTest: LT1791631955 #1 Authorization: Bearer [REDACTED:token#1]
-19:31:49.323 I 10557/10557 ?(uid shell) LeakTest: LT1791631955 #2 got id_token [REDACTED:jwt#1]
-19:31:49.701 I 10560/10560 ?(uid shell) LeakTest: LT1791631955 #3 github key [REDACTED:secret#1]
-19:31:50.069 I 10563/10563 ?(uid shell) LeakTest: LT1791631955 #4 openai key [REDACTED:secret#2]
-19:31:50.988 I 10571/10571 ?(uid shell) LeakTest: LT1791631955 #5 npm token [REDACTED:secret#3]
-19:31:51.972 I 10575/10575 ?(uid shell) LeakTest: LT1791631955 #6 aws [REDACTED:secret#4] configured
-19:31:52.828 I 10580/10580 ?(uid shell) LeakTest: LT1791631955 #7 login {"password":[REDACTED:credential#1],"user":"bob"}
-19:31:53.175 I 10583/10583 ?(uid shell) LeakTest: LT1791631955 #8 config api_key=[REDACTED:credential#2] client_secret=[REDACTED:credential#3]
-19:31:53.529 I 10586/10586 ?(uid shell) LeakTest: LT1791631955 #9 GET https://[REDACTED:domain#1]/a.png?Expires=1791572202&Signature=[REDACTED:url_param#1]&x=1
-19:31:53.886 I 10589/10589 ?(uid shell) LeakTest: LT1791631955 #10 connect postgres://bob:[REDACTED:password#1]@[REDACTED:domain#2]:5432/app
-19:31:54.556 I 10592/10592 ?(uid shell) LeakTest: LT1791631955 #11 Cookie: [REDACTED:cookie#1]
-19:31:55.011 I 10595/10595 ?(uid shell) LeakTest: LT1791631955 #12 signed in as [REDACTED:email#1]
-19:31:55.440 I 10598/10598 ?(uid shell) LeakTest: LT1791631955 #13 sms code sent to [REDACTED:phone#1]
-19:31:56.076 I 10603/10603 ?(uid shell) LeakTest: LT1791631955 #14 call [REDACTED:phone#2] now
-19:31:56.800 I 10607/10607 ?(uid shell) LeakTest: LT1791631955 #15 kyc id [REDACTED:id_card#1] verified
-19:31:57.170 I 10610/10610 ?(uid shell) LeakTest: LT1791631955 #16 paid with card [REDACTED:bank_card#1]
-19:31:57.487 I 10613/10613 ?(uid shell) LeakTest: LT1791631955 #17 card=[REDACTED:bank_card#2] charged
-19:31:57.834 I 10616/10616 ?(uid shell) LeakTest: LT1791631955 #18 imei=[REDACTED:device_id#1] slot=0
-19:31:58.161 I 10619/10619 ?(uid shell) LeakTest: LT1791631955 #19 connecting to [REDACTED:ipv4#1]:443
-19:31:58.574 I 10622/10622 ?(uid shell) LeakTest: LT1791631955 #20 peer [REDACTED:ipv6#1] up
-19:31:58.980 I 10625/10625 ?(uid shell) LeakTest: LT1791631955 #21 wlan0 hwaddr [REDACTED:mac#1]
-19:31:59.355 I 10628/10628 ?(uid shell) LeakTest: LT1791631955 #22 --> POST https://[REDACTED:domain#3]:8443/v1/login?page=2 (64-byte body)
-19:31:59.696 I 10631/10631 ?(uid shell) LeakTest: LT1791631955 #23 Unable to resolve host [REDACTED:domain#4]: No address associated with hostname
-19:32:00.096 I 10634/10634 ?(uid shell) LeakTest: LT1791631955 keep pid 13812 tid 13813 uid 10146 at 1791572202.589379
-19:32:01.040 I 10637/10637 ?(uid shell) LeakTest: LT1791631955 keep fault addr 0x7ffd5b8e1a20 rcx 4111111111111111 rdx 0000000000000004
-19:32:01.720 I 10643/10643 ?(uid shell) LeakTest: LT1791631955 keep #01 pc 0000000013812345  /data/app/com.example.logtest-1/lib/x86_64/liblogtest.so
-19:32:02.214 I 10646/10646 ?(uid shell) LeakTest: LT1791631955 keep versionName=10.0.2.15 Chrome/83.0.41.10 build 2026-10-10 03:05:52.878
-19:32:02.528 I 10649/10649 ?(uid shell) LeakTest: LT1791631955 keep at com.example.logtest.Net.call(Net.java:42) java.lang.RuntimeException android.app.ActivityThread
-19:32:02.905 I 10652/10652 ?(uid shell) LeakTest: LT1791631955 keep act=android.intent.action.MAIN ro.build.fingerprint persist.sys.timezone base.apk libc.so base.odex main.xml app.json
-more: before="c1.YXZkLWFwaTI5.ccb368e7.152"  ·  newer/wait: after="c1.YXZkLWFwaTI5.ccb368e7.197"
+20:03:16.714 I 11673/11673 ?(uid shell) LeakTest: LT1791633902 #1 Authorization: Bearer [REDACTED:token#1]
+20:03:17.118 I 11676/11676 ?(uid shell) LeakTest: LT1791633902 #2 got id_token [REDACTED:jwt#1]
+20:03:17.489 I 11679/11679 ?(uid shell) LeakTest: LT1791633902 #3 github key [REDACTED:secret#1]
+20:03:17.948 I 11682/11682 ?(uid shell) LeakTest: LT1791633902 #4 openai key [REDACTED:secret#2]
+20:03:19.431 I 11690/11690 log LeakTest: LT1791633902 #5 npm token [REDACTED:secret#3]
+20:03:20.529 I 11696/11696 ?(uid shell) LeakTest: LT1791633902 #6 aws [REDACTED:secret#4] configured
+20:03:21.467 I 11702/11702 ?(uid shell) LeakTest: LT1791633902 #7 login {"password":[REDACTED:credential#1],"user":"bob"}
+20:03:22.213 I 11707/11707 ?(uid shell) LeakTest: LT1791633902 #8 config api_key=[REDACTED:credential#2] client_secret=[REDACTED:credential#3]
+20:03:22.992 I 11712/11712 ?(uid shell) LeakTest: LT1791633902 #9 GET https://[REDACTED:domain#1]/a.png?Expires=1791572202&Signature=[REDACTED:url_param#1]&x=1
+20:03:23.689 I 11718/11718 ?(uid shell) LeakTest: LT1791633902 #10 connect postgres://bob:[REDACTED:password#1]@[REDACTED:domain#2]:5432/app
+20:03:24.414 I 11724/11724 log LeakTest: LT1791633902 #11 Cookie: [REDACTED:cookie#1]
+20:03:24.772 I 11727/11727 ?(uid shell) LeakTest: LT1791633902 #12 signed in as [REDACTED:email#1]
+20:03:25.089 I 11730/11730 ?(uid shell) LeakTest: LT1791633902 #13 sms code sent to [REDACTED:phone#1]
+20:03:25.452 I 11733/11733 ?(uid shell) LeakTest: LT1791633902 #14 call [REDACTED:phone#2] now
+20:03:25.849 I 11736/11736 ?(uid shell) LeakTest: LT1791633902 #15 kyc id [REDACTED:id_card#1] verified
+20:03:26.319 I 11739/11739 ?(uid shell) LeakTest: LT1791633902 #16 paid with card [REDACTED:bank_card#1]
+20:03:26.720 I 11742/11742 ?(uid shell) LeakTest: LT1791633902 #17 card=[REDACTED:bank_card#2] charged
+20:03:27.138 I 11745/11745 ?(uid shell) LeakTest: LT1791633902 #18 imei=[REDACTED:device_id#1] slot=0
+20:03:27.478 I 11748/11748 ?(uid shell) LeakTest: LT1791633902 #19 connecting to [REDACTED:ipv4#1]:443
+20:03:27.845 I 11751/11751 ?(uid shell) LeakTest: LT1791633902 #20 peer [REDACTED:ipv6#1] up
+20:03:28.195 I 11754/11754 ?(uid shell) LeakTest: LT1791633902 #21 wlan0 hwaddr [REDACTED:mac#1]
+20:03:28.692 I 11757/11757 ?(uid shell) LeakTest: LT1791633902 #22 --> POST https://[REDACTED:domain#3]:8443/v1/login?page=2 (64-byte body)
+20:03:29.450 I 11763/11763 log LeakTest: LT1791633902 #23 Unable to resolve host [REDACTED:domain#4]: No address associated with hostname
+20:03:29.793 I 11766/11766 ?(uid shell) LeakTest: LT1791633902 keep pid 13812 tid 13813 uid 10146 at 1791572202.589379
+20:03:30.128 I 11769/11769 ?(uid shell) LeakTest: LT1791633902 keep fault addr 0x7ffd5b8e1a20 rcx 4111111111111111 rdx 0000000000000004
+20:03:30.512 I 11772/11772 ?(uid shell) LeakTest: LT1791633902 keep #01 pc 0000000013812345  /data/app/com.example.logtest-1/lib/x86_64/liblogtest.so
+20:03:30.896 I 11775/11775 ?(uid shell) LeakTest: LT1791633902 keep versionName=10.0.2.15 Chrome/83.0.41.10 build 2026-10-10 03:05:52.878
+20:03:31.341 I 11778/11778 ?(uid shell) LeakTest: LT1791633902 keep at com.example.logtest.Net.call(Net.java:42) java.lang.RuntimeException android.app.ActivityThread
+20:03:31.709 I 11781/11781 ?(uid shell) LeakTest: LT1791633902 keep act=android.intent.action.MAIN ro.build.fingerprint persist.sys.timezone base.apk libc.so base.odex main.xml app.json
+more: before="c1.YXZkLWFwaTI5.ccb368e7.213"  ·  newer/wait: after="c1.YXZkLWFwaTI5.ccb368e7.18994"
 

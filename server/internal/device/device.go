@@ -35,17 +35,22 @@ type Device struct {
 	owner   *layout.OwnerLock // held while this process owns the device; only then it records
 	idNote  string            // why the ID was disambiguated (collision), if it was
 
-	mu         sync.RWMutex
-	state      string // adb state ("" = not attached)
-	recording  bool
-	lastErr    string
-	loc        *time.Location
-	tzName     string
-	offset     time.Duration // device clock - host clock
-	offsetAt   time.Time     // when offset was measured (host time)
-	bootID     string
-	pipe       *Pipeline // current boot session (writer only)
-	cancel     context.CancelFunc
+	mu        sync.RWMutex
+	state     string // adb state ("" = not attached)
+	recording bool
+	lastErr   string
+	loc       *time.Location
+	tzName    string
+	offset    time.Duration // device clock - host clock
+	offsetAt  time.Time     // when offset was measured (host time)
+	bootID    string
+	pipe      *Pipeline // current boot session (writer only)
+	cancel    context.CancelFunc
+	done      chan struct{} // closed when the running recorder (run) returns
+	// dedupSeed: hashes of the lines at the resume timestamp that are
+	// already stored in the previous root (set-root move); the first
+	// logcat -T session skips them and adds no "not running" gap.
+	dedupSeed  map[uint64]bool
 	lastSeen   time.Time
 	unknownPID time.Time // debounce for ps refresh
 	pkgRefresh time.Time
@@ -278,15 +283,35 @@ func (d *Device) setState(ctx context.Context, state string) {
 	d.mu.Unlock()
 	if state == "device" && !running {
 		cctx, cancel := context.WithCancel(ctx)
+		done := make(chan struct{})
 		d.mu.Lock()
-		d.cancel = cancel
+		d.cancel, d.done = cancel, done
 		d.mu.Unlock()
-		go d.run(cctx)
+		go func() {
+			defer close(done)
+			d.run(cctx)
+		}()
 	} else if state != "device" && running {
 		d.stop()
 	}
 	if prev != state {
 		d.Store.UpdateMeta(func(m *store.Meta) { m.State = state })
+	}
+}
+
+// stopWait stops the recorder and waits (bounded) until it has returned,
+// i.e. its last batch is in the store.
+func (d *Device) stopWait(timeout time.Duration) {
+	d.mu.RLock()
+	done := d.done
+	d.mu.RUnlock()
+	d.stop()
+	if done == nil {
+		return
+	}
+	select {
+	case <-done:
+	case <-time.After(timeout):
 	}
 }
 
@@ -407,10 +432,17 @@ func (d *Device) recordOnce(ctx context.Context) error {
 	d.mu.RUnlock()
 	boot := store.BootShort(bootID)
 	meta := d.Store.Meta()
+	d.mu.Lock()
+	seed := d.dedupSeed
+	d.dedupSeed = nil
+	d.mu.Unlock()
 
 	resume := ""
 	var dedupNs int64
 	dedup := map[uint64]bool{}
+	for h := range seed {
+		dedup[h] = true // moved from another root: these are stored there
+	}
 	if meta.LastBootID == bootID && meta.LastTimeNs > 0 {
 		resume = logcat.FormatResumeTime(meta.LastTimeNs)
 		dedupNs = meta.LastTimeNs
@@ -481,7 +513,7 @@ func (d *Device) recordOnce(ctx context.Context) error {
 			for _, g := range m.Gaps {
 				open = open || g.ToNs <= 0
 			}
-			if !open && m.LastSeenHostNs != 0 && time.Since(time.Unix(0, m.LastSeenHostNs)) > 5*time.Second {
+			if !open && seed == nil && m.LastSeenHostNs != 0 && time.Since(time.Unix(0, m.LastSeenHostNs)) > 5*time.Second {
 				m.Gaps = append(m.Gaps, store.Gap{FromNs: m.LastTimeNs, ToNs: -1, Reason: "recorder was not running; resumed with logcat -T (anything the device buffer dropped meanwhile is lost)"})
 			}
 		})

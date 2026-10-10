@@ -9,12 +9,14 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/s1crab/android-log-mcp/server/internal/device"
+	"github.com/s1crab/android-log-mcp/server/internal/layout"
 	"github.com/s1crab/android-log-mcp/server/internal/mcpserver"
 	"github.com/s1crab/android-log-mcp/server/internal/store"
 )
@@ -26,23 +28,34 @@ func main() {
 	if version != "" {
 		mcpserver.Version = version
 	}
-	home := flag.String("home", "", "data root (default $ANDROID_LOG_MCP_HOME or <user cache dir>/android-log-mcp); a relocated root records normally, but never a device another process already records")
 	version := flag.Bool("version", false, "print version and exit")
 	offline := flag.String("offline", "", "open the dataset in `DIR` read-only (e.g. an unzipped report's store/): no adb, never records, prunes or creates files")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `android-log-mcp %s — MCP stdio server for Android logcat
 
 usage:
-  android-log-mcp [--home DIR]                 run as MCP server on stdin/stdout
-  android-log-mcp [--home DIR] call TOOL [JSON] debug: record for a few seconds, call one tool, print result
+  android-log-mcp                              run as MCP server on stdin/stdout
+  android-log-mcp call TOOL [JSON]             debug: record for a few seconds, call one tool, print result
       env ANDROID_LOG_MCP_CALL_WAIT=5s controls how long to record before the call
-  android-log-mcp [--home DIR] report [flags]   pack logs + diagnostics into a redacted zip
+  android-log-mcp report [flags]               pack logs + diagnostics into a redacted zip
                                                (android-log-mcp report -h for flags)
+  android-log-mcp root [--json]                print the data root (from %s)
+  android-log-mcp set-root DIR (--keep-old | --delete-old) [--json] [--timeout 150s]
+                                               move the data root for all processes, live
   android-log-mcp --offline R/store ...         browse a dataset read-only, e.g. an unzipped report (no adb, no writes)
   android-log-mcp compat [--serial S] [--json]  probe a device for the features this tool needs (read-only)
 
-`, mcpserver.Version)
+`, mcpserver.Version, layout.ConfigPath())
 		flag.PrintDefaults()
+	}
+	for _, a := range os.Args[1:] {
+		if a == "--" {
+			break
+		}
+		if a == "-home" || a == "--home" || strings.HasPrefix(a, "-home=") || strings.HasPrefix(a, "--home=") {
+			fmt.Fprintln(os.Stderr, "android-log-mcp: error:", layout.ErrHomeRemoved)
+			os.Exit(2)
+		}
 	}
 	flag.Parse()
 	if *version {
@@ -51,21 +64,33 @@ usage:
 	}
 	log.SetOutput(os.Stderr) // stdout belongs to the MCP protocol
 	log.SetPrefix("android-log-mcp: ")
-	if *offline != "" && *home != "" {
-		fmt.Fprintln(os.Stderr, "android-log-mcp: --offline DIR already names the dataset; do not combine it with --home")
+	if err := layout.CheckRemovedHome(); err != nil {
+		fmt.Fprintln(os.Stderr, "android-log-mcp: error:", err)
 		os.Exit(2)
 	}
-	base := *home
-	if *offline != "" {
-		base = *offline
-	} else if base == "" {
-		base = device.DefaultBase()
+	if flag.NArg() > 0 && (flag.Arg(0) == "root" || flag.Arg(0) == "set-root") {
+		if *offline != "" {
+			fmt.Fprintln(os.Stderr, "android-log-mcp: --offline is not used with", flag.Arg(0))
+			os.Exit(2)
+		}
+		if flag.Arg(0) == "root" {
+			os.Exit(runRoot(flag.Args()[1:]))
+		}
+		os.Exit(runSetRoot(flag.Args()[1:]))
+	}
+	base := *offline
+	if base == "" {
+		var err error
+		if base, err = layout.ConfiguredRoot(); err != nil {
+			fmt.Fprintln(os.Stderr, "android-log-mcp: error:", err)
+			os.Exit(2)
+		}
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	if flag.NArg() > 0 && flag.Arg(0) == "report" {
 		// reads the data directory only; must not start a recorder
-		code := runReport(ctx, *home, flag.Args()[1:])
+		code := runReport(ctx, base, flag.Args()[1:])
 		cancel()
 		os.Exit(code)
 	}
@@ -76,6 +101,7 @@ usage:
 	}
 	m := device.NewManager(base, store.ConfigFromEnv())
 	m.NoADB = *offline != ""
+	m.FollowConfig = !m.NoADB
 	m.Version = mcpserver.Version
 	m.Start(ctx)
 	defer m.Close()

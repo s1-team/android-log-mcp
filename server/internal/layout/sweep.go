@@ -14,7 +14,7 @@ import (
 
 // SweepOptions configures Sweep.
 type SweepOptions struct {
-	// Base is the data root (default dir or ANDROID_LOG_MCP_HOME).
+	// Base is the data root (config.json's root, or the default dir).
 	Base string
 	// Root names the owners dir (fixed per user) and run/, tmp/; nil =
 	// Root{Dir: Base}, i.e. owners/ under Base.
@@ -46,7 +46,7 @@ type SweepResult struct {
 var versionDir = regexp.MustCompile(`^v[0-9]+$`)
 
 // known file names of a device directory (only these are ever deleted from
-// one, so a misconfigured ANDROID_LOG_MCP_HOME cannot lose foreign files)
+// one, so a root set to a directory with other content cannot lose foreign files)
 func deviceFile(name string) bool {
 	switch {
 	case strings.HasPrefix(name, "seg-") && strings.HasSuffix(name, ".jsonl"),

@@ -9,7 +9,7 @@ import (
 	"github.com/s1crab/android-log-mcp/server/internal/store"
 )
 
-// A report run with another data root (ANDROID_LOG_MCP_HOME) reads a device
+// A report run with another data root (e.g. before a set-root) reads a device
 // from the live owner's data dir: one device, one directory across roots.
 func TestReportReadsLiveOwnersDataDir(t *testing.T) {
 	rootA, rootB, owners := t.TempDir(), t.TempDir(), filepath.Join(t.TempDir(), "owners")

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/s1crab/android-log-mcp/server/internal/device"
+	"github.com/s1crab/android-log-mcp/server/internal/layout"
 	"github.com/s1crab/android-log-mcp/server/internal/procs"
 	"github.com/s1crab/android-log-mcp/server/internal/store"
 )
@@ -141,8 +142,17 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 	fmt.Fprintf(&b, "store: %s (data in %s/<device-id>)\n", t.M.Base, filepath.Base(store.DataDir(t.M.Base)))
 	if t.M.NoADB {
 		b.WriteString("mode: offline (read-only dataset; nothing is recorded, pruned or created)\n")
-	} else if o := t.M.Root.Owners(); filepath.Dir(filepath.Clean(o)) != filepath.Clean(t.M.Base) {
-		fmt.Fprintf(&b, "owner locks: %s (shared by all roots of this user)\n", o)
+	} else {
+		if t.M.FollowConfig {
+			if c, err := layout.ReadConfig(); err != nil {
+				fmt.Fprintf(&b, "WARNING: %v (keeping %s)\n", err, t.M.Base)
+			} else if c.Switch != nil {
+				fmt.Fprintf(&b, "root switch pending (set-root): %s -> %s, requested %s; recorders move within ~10 s\n", c.Switch.From, c.Switch.To, c.Switch.RequestedAt.Local().Format("2006-01-02 15:04:05"))
+			}
+		}
+		if o := t.M.Root.Owners(); filepath.Dir(filepath.Clean(o)) != filepath.Clean(t.M.Base) {
+			fmt.Fprintf(&b, "owner locks: %s (shared by every process of this user)\n", o)
+		}
 	}
 	fmt.Fprintf(&b, "devices (%d):\n", len(devs))
 	known := map[string]bool{}
