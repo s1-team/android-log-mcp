@@ -1,5 +1,7 @@
 # android-log-mcp
 
+> Project goals: [docs/GOALS.md](docs/GOALS.md) · Contributor / agent guidelines: [AGENTS.md](AGENTS.md)
+
 **English:** An MCP (Model Context Protocol) stdio server that gives AI coding agents (Claude Code, Codex CLI, Cursor, …) **read-only** access to Android logcat. It records every connected device in the background, searches with Android Studio's Logcat filter syntax (with strict error messages), groups Java/native crashes and ANRs (with DropBox traces/tombstones), and reconstructs app launch timelines (COLD/WARM/HOT, TTID). Run it with `npx -y android-log-mcp`; requires `adb`. Prebuilt binaries for Linux/macOS/Windows (x64, arm64). Docs below are in Chinese.
 
 ---
@@ -345,7 +347,8 @@ scripts/compat-probe.sh <SERIAL> out/            # 从源码构建并把结果�
 | `npm/` | npm 启动器和包模板。用 `scripts/build-npm.sh [版本] [--pack]` 交叉编译并组装所有包 |
 | `scripts/` | `build-npm.sh`（打 npm 包）、`e2e-report.sh`（在真机 / 模拟器上验证 `report` 的打码）、`compat-probe.sh`（设备兼容性探测） |
 | `validation/` | 在 API 29 模拟器上的实测记录：结论、触发脚本、测试 App 源码、MCP 工具的实际输出（v1 在 `mcp/`，v2 在 `mcp-v2/`） |
-| `docs/` | 调研和设计文档 |
+| `docs/` | 项目目标（`GOALS.md`）、调研和设计文档 |
+| `AGENTS.md` | 给 agent 和贡献者的工作约定（流程、发版、版本规则、安全规则） |
 | `.github/workflows/` | CI（测试）和 release（打 `v*` tag 时发布到 npm） |
 
 ## 发布（维护者）
