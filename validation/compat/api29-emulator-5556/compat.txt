@@ -1,0 +1,34 @@
+device       emulator-5556
+android      10 (API 29), abi x86_64
+fingerprint  google/sdk_gphone_x86_64/generic_x86_64:10/QSR1.211112.011/13135432:userdebug/dev-keys
+adb          1.0.41 (platform-tools 37.0.1-15733141)
+track-devices ok (first frame: 1 device(s))
+
+[ok]      logcat format              61/61 lines parsed, uid column present
+                                     used for: recording (logcat -v threadtime -v epoch -v uid -v usec -v printable)
+[ok]      log buffers                main=2 MiB system=2 MiB crash=2 MiB events=2 MiB
+                                     used for: recording -b main,system,crash,events
+[ok]      logcat -T <epoch>          accepted
+                                     used for: resuming after a restart without duplicates
+[info]    logcat --uid               unavailable on this build (API 29 has no --uid)
+                                     used for: not used (filtering is host-side)
+[ok]      lifecycle events           am_on_*_called (API ≤ 29 format, no callback durations)
+                                     used for: launch timeline (onCreate/onStart/onResume)
+[ok]      activity/process events    am_activity_launch_time am_proc_start am_proc_died am_kill am_crash am_anr
+                                     used for: COLD/WARM/HOT, process table, crashes, ANRs
+[info]    am_crash fields            declared (User|1|5),(PID|1|5),…
+                                     used for: crash grouping (pid chosen by value, both orders handled)
+[ok]      ps -A -o PID,UID,NAME      98 processes parsed
+                                     used for: pid → process name (30 s snapshots)
+[ok]      pm list packages -U        40 packages with uid (first 40 lines)
+                                     used for: uid → package (crash/launch attribution, package: filter)
+[ok]      dumpsys dropbox            Drop box contents: 407 entries
+                                     used for: ANR traces, tombstones, crashes from before recording
+[ok]      date +%s.%N / +%z          1791614547.386576123 +0800
+                                     used for: device clock offset, time zone
+[ok]      boot_id                    ccb368e7-f2c9-484e-83b8-8533bde26262
+                                     used for: reboot detection / sessions
+[ok]      am start -W                listed in `am` help
+                                     used for: report --am-start only (not executed by the probe)
+
+SUPPORTED: API 29 (Android 10): 11 ok, 2 info

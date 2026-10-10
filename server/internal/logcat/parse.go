@@ -32,7 +32,7 @@ func pad6(n int64) string {
 }
 
 // Known short uid names printed by logprint when getpwuid() name ≤ 5 chars.
-var uidNames = map[string]int{"root": 0, "radio": 1001, "input": 1004, "audio": 1005, "media": 1013, "nfc": 1027, "shell": 2000, "cache": 2001, "diag": 2002, "log": 1007, "wifi": 1010, "drm": 1019, "gps": 1021, "vpn": 1016, "keystore": 1017}
+var uidNames = map[string]int{"root": 0, "radio": 1001, "input": 1004, "audio": 1005, "media": 1013, "nfc": 1027, "shell": 2000, "cache": 2001, "diag": 2002, "log": 1007, "wifi": 1010, "drm": 1019, "gps": 1021, "vpn": 1016, "keystore": 1017, "dhcp": 1014, "mtp": 1024, "dns": 1051, "lmkd": 1069, "llkd": 1070}
 
 // Line is one parsed physical output line.
 type Line struct {

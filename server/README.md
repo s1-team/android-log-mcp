@@ -20,6 +20,7 @@ REPLAY_DUMP=1 go test ./internal/mcpserver -run ReplayExplore -v  # 打印 fixtu
 | `internal/filter` | Android Studio Logcat 过滤语法的解析器（移植，含 AS 测试） |
 | `internal/store` | JSONL 分段存储；单写者多读者（flock） |
 | `internal/mcpserver` | 4 个工具的实现、渲染，以及回归测试（含 replay-from-report） |
+| `internal/compat` | `compat` 子命令：只读探测设备的 logcat / ps / pm / dumpsys 功能，并用录制时的解析器评估 |
 | `internal/redact` | 敏感信息打码规则（`[REDACTED:<类型>#n]`，同值同号，HMAC 随机密钥） |
 | `internal/report` | `report` 子命令：按窗口 / 包名 / 大小裁剪、打码、生成 zip 和 manifest |
 | `internal/testdata/api29` | 真实设备 fixture，见其中的 README |

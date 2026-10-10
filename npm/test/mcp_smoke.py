@@ -2,10 +2,14 @@
 """MCP stdio smoke test: initialize, tools/list, tools/call logcat_status.
 
 usage: mcp_smoke.py CMD [ARGS...]   (e.g. npx -y android-log-mcp)
-Checks that every stdout line is JSON-RPC (the launcher must not write to stdout)."""
-import json, subprocess, sys, time
+Checks that every stdout line is JSON-RPC (the launcher must not write to stdout)
+and that the expected tools are listed. CMD is resolved on PATH (npx.cmd etc. on
+Windows)."""
+import json, shutil, subprocess, sys, time
 
-p = subprocess.Popen(sys.argv[1:], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+cmd = sys.argv[1:]
+cmd[0] = shutil.which(cmd[0]) or cmd[0]
+p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
 
 def send(o):
     p.stdin.write(json.dumps(o) + "\n"); p.stdin.flush()
@@ -28,7 +32,11 @@ print("initialize: server=%s protocol=%s (%.1fs)" % (r["result"]["serverInfo"], 
 send({"jsonrpc": "2.0", "method": "notifications/initialized"})
 send({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
 r = recv(2)
-print("tools/list:", [x["name"] for x in r["result"]["tools"]])
+names = [x["name"] for x in r["result"]["tools"]]
+print("tools/list:", names)
+missing = {"logcat_status", "logcat_search", "logcat_crashes"} - set(names)
+if missing:
+    raise SystemExit("missing tools: %s" % sorted(missing))
 send({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "logcat_status", "arguments": {}}})
 r = recv(3)
 print("tools/call logcat_status (isError=%s):" % r["result"].get("isError"))

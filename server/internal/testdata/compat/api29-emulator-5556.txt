@@ -1,0 +1,553 @@
+@@sdk
+29
+@@release
+10
+@@fingerprint
+google/sdk_gphone_x86_64/generic_x86_64:10/QSR1.211112.011/13135432:userdebug/dev-keys
+@@abi
+x86_64
+@@format
+--------- beginning of main
+         1791614491.615400  1000  2044  3026 I system_server: Starting a blocking GC Alloc
+         1791614491.813225  1000  2044  3026 W FastPrintWriter: Write failure
+         1791614491.813225  1000  2044  3026 W FastPrintWriter: java.io.IOException: write failed: EPIPE (Broken pipe)
+         1791614491.813225  1000  2044  3026 W FastPrintWriter: 	at libcore.io.IoBridge.write(IoBridge.java:544)
+         1791614491.813225  1000  2044  3026 W FastPrintWriter: 	at java.io.FileOutputStream.write(FileOutputStream.java:392)
+         1791614491.813225  1000  2044  3026 W FastPrintWriter: 	at com.android.internal.util.FastPrintWriter.flushBytesLocked(FastPrintWriter.java:354)
+         1791614491.813225  1000  2044  3026 W FastPrintWriter: 	at com.android.internal.util.FastPrintWriter.flushLocked(FastPrintWriter.java:377)
+         1791614491.813225  1000  2044  3026 W FastPrintWriter: 	at com.android.internal.util.FastPrintWriter.appendLocked(FastPrintWriter.java:322)
+         1791614491.813225  1000  2044  3026 W FastPrintWriter: 	at com.android.internal.util.FastPrintWriter.appendLocked(FastPrintWriter.java:315)
+         1791614491.813225  1000  2044  3026 W FastPrintWriter: 	at com.android.internal.util.FastPrintWriter.write(FastPrintWriter.java:640)
+         1791614491.813225  1000  2044  3026 W FastPrintWriter: 	at com.android.server.DropBoxManagerService.dump(DropBoxManagerService.java:680)
+         1791614491.813225  1000  2044  3026 W FastPrintWriter: 	at com.android.server.DropBoxManagerService$2.dump(DropBoxManagerService.java:160)
+         1791614491.813225  1000  2044  3026 W FastPrintWriter: 	at android.os.Binder.doDump(Binder.java:818)
+         1791614491.813225  1000  2044  3026 W FastPrintWriter: 	at android.os.Binder.dump(Binder.java:808)
+         1791614491.813225  1000  2044  3026 W FastPrintWriter: 	at android.os.Binder.onTransact(Binder.java:744)
+         1791614491.813225  1000  2044  3026 W FastPrintWriter: 	at com.android.internal.os.IDropBoxManagerService$Stub.onTransact(IDropBoxManagerService.java:152)
+         1791614491.813225  1000  2044  3026 W FastPrintWriter: 	at android.os.Binder.execTransactInternal(Binder.java:1021)
+         1791614491.813225  1000  2044  3026 W FastPrintWriter: 	at android.os.Binder.execTransact(Binder.java:994)
+         1791614491.813225  1000  2044  3026 W FastPrintWriter: Caused by: android.system.ErrnoException: write failed: EPIPE (Broken pipe)
+         1791614491.813225  1000  2044  3026 W FastPrintWriter: 	at libcore.io.Linux.writeBytes(Native Method)
+         1791614491.813225  1000  2044  3026 W FastPrintWriter: 	at libcore.io.Linux.write(Linux.java:294)
+         1791614491.813225  1000  2044  3026 W FastPrintWriter: 	at libcore.io.ForwardingOs.write(ForwardingOs.java:241)
+         1791614491.813225  1000  2044  3026 W FastPrintWriter: 	at libcore.io.BlockGuardOs.write(BlockGuardOs.java:416)
+         1791614491.813225  1000  2044  3026 W FastPrintWriter: 	at libcore.io.IoBridge.write(IoBridge.java:539)
+         1791614491.813225  1000  2044  3026 W FastPrintWriter: 	... 14 more
+         1791614496.873503  1000  2044  3026 E memtrack: Couldn't load memtrack module
+         1791614496.873790  1000  2044  3026 W android.os.Debug: failed to get memory consumption info: -1
+--------- beginning of events
+         1791614520.039754  1000  2044  2084 I dvm_lock_sample: [system_server,1,PowerManagerService,21,PowerManagerService.java,2286,void com.android.server.power.PowerManagerService.handleSandman(),-,1044,void com.android.server.power.PowerManagerService.acquireWakeLockInternal(android.os.IBinder, int, java.lang.String, java.lang.String, android.os.WorkSource, java.lang.String, int, int),4]
+         1791614520.067499 10110  2225  2225 D KeyguardClockSwitch: Updating clock: 2\356\270\20142
+         1791614534.752007  1000  2044  3026 D WificondControl: Scan result ready event
+         1791614543.503988  root  1816  1816 E wifi_forwarder: RemoteConnection failed to initialize: RemoteConnection failed to open pipe
+         1791614544.486494  root  1803  1803 E netmgr  : Failed to open QEMU pipe 'qemud:network': Invalid argument
+         1791614546.426790  1000  2044  2483 I system_server: Starting a blocking GC Alloc
+         1791614546.427175  1000  2044  2483 I system_server: Starting a blocking GC Alloc
+         1791614546.521429  1000  2044  2483 I system_server: Alloc young concurrent copying GC freed 39427(1604KB) AllocSpace objects, 5(140KB) LOS objects, 21% free, 12MB/16MB, paused 181us total 93.479ms
+         1791614551.918159  1000  2044  2084 I dvm_lock_sample: [system_server,1,PowerManagerService,6,PowerManagerService.java,2286,void com.android.server.power.PowerManagerService.handleSandman(),-,1044,void com.android.server.power.PowerManagerService.acquireWakeLockInternal(android.os.IBinder, int, java.lang.String, java.lang.String, android.os.WorkSource, java.lang.String, int, int),1]
+         1791614552.952584  1000  2044  2084 I dvm_lock_sample: [system_server,1,PowerManagerService,36,PowerManagerService.java,2286,void com.android.server.power.PowerManagerService.handleSandman(),-,1044,void com.android.server.power.PowerManagerService.acquireWakeLockInternal(android.os.IBinder, int, java.lang.String, java.lang.String, android.os.WorkSource, java.lang.String, int, int),7]
+         1791614553.570959  1000  2044  2483 I system_server: Waiting for a blocking GC Alloc
+         1791614553.676524  1000  2044  2058 I system_server: Background young concurrent copying GC freed 83671(2950KB) AllocSpace objects, 5(196KB) LOS objects, 19% free, 12MB/16MB, paused 1.325ms total 246.656ms
+         1791614553.678240  1000  2044  2483 I system_server: WaitForGcToComplete blocked Alloc on HeapTrim for 107.306ms
+         1791614553.678905  1000  2044  2483 I system_server: Starting a blocking GC Alloc
+         1791614554.304974  1000  2044  2483 W FastPrintWriter: Write failure
+         1791614554.304974  1000  2044  2483 W FastPrintWriter: java.io.IOException: write failed: EPIPE (Broken pipe)
+         1791614554.304974  1000  2044  2483 W FastPrintWriter: 	at libcore.io.IoBridge.write(IoBridge.java:544)
+         1791614554.304974  1000  2044  2483 W FastPrintWriter: 	at java.io.FileOutputStream.write(FileOutputStream.java:392)
+         1791614554.304974  1000  2044  2483 W FastPrintWriter: 	at com.android.internal.util.FastPrintWriter.flushBytesLocked(FastPrintWriter.java:354)
+         1791614554.304974  1000  2044  2483 W FastPrintWriter: 	at com.android.internal.util.FastPrintWriter.flushLocked(FastPrintWriter.java:377)
+         1791614554.304974  1000  2044  2483 W FastPrintWriter: 	at com.android.internal.util.FastPrintWriter.appendLocked(FastPrintWriter.java:322)
+         1791614554.304974  1000  2044  2483 W FastPrintWriter: 	at com.android.internal.util.FastPrintWriter.appendLocked(FastPrintWriter.java:315)
+         1791614554.304974  1000  2044  2483 W FastPrintWriter: 	at com.android.internal.util.FastPrintWriter.write(FastPrintWriter.java:640)
+         1791614554.304974  1000  2044  2483 W FastPrintWriter: 	at com.android.server.DropBoxManagerService.dump(DropBoxManagerService.java:680)
+         1791614554.304974  1000  2044  2483 W FastPrintWriter: 	at com.android.server.DropBoxManagerService$2.dump(DropBoxManagerService.java:160)
+         1791614554.304974  1000  2044  2483 W FastPrintWriter: 	at android.os.Binder.doDump(Binder.java:818)
+         1791614554.304974  1000  2044  2483 W FastPrintWriter: 	at android.os.Binder.dump(Binder.java:808)
+         1791614554.304974  1000  2044  2483 W FastPrintWriter: 	at android.os.Binder.onTransact(Binder.java:744)
+         1791614554.304974  1000  2044  2483 W FastPrintWriter: 	at com.android.internal.os.IDropBoxManagerService$Stub.onTransact(IDropBoxManagerService.java:152)
+         1791614554.304974  1000  2044  2483 W FastPrintWriter: 	at android.os.Binder.execTransactInternal(Binder.java:1021)
+         1791614554.304974  1000  2044  2483 W FastPrintWriter: 	at android.os.Binder.execTransact(Binder.java:994)
+         1791614554.304974  1000  2044  2483 W FastPrintWriter: Caused by: android.system.ErrnoException: write failed: EPIPE (Broken pipe)
+         1791614554.304974  1000  2044  2483 W FastPrintWriter: 	at libcore.io.Linux.writeBytes(Native Method)
+         1791614554.304974  1000  2044  2483 W FastPrintWriter: 	at libcore.io.Linux.write(Linux.java:294)
+         1791614554.304974  1000  2044  2483 W FastPrintWriter: 	at libcore.io.ForwardingOs.write(ForwardingOs.java:241)
+         1791614554.304974  1000  2044  2483 W FastPrintWriter: 	at libcore.io.BlockGuardOs.write(BlockGuardOs.java:416)
+         1791614554.304974  1000  2044  2483 W FastPrintWriter: 	at libcore.io.IoBridge.write(IoBridge.java:539)
+         1791614554.304974  1000  2044  2483 W FastPrintWriter: 	... 14 more
+         1791614554.519577  1000  2044  2058 I system_server: Background young concurrent copying GC freed 81015(2723KB) AllocSpace objects, 2(116KB) LOS objects, 17% free, 13MB/16MB, paused 841us total 232.384ms
+@@rc 0
+@@resume
+@@rc 0
+@@uidfilter
+@@rc 1
+@@buffers
+main: ring buffer is 2 MiB (1 MiB consumed), max entry is 5120 B, max payload is 4068 B
+events: ring buffer is 2 MiB (456 KiB consumed), max entry is 5120 B, max payload is 4068 B
+system: ring buffer is 2 MiB (319 KiB consumed), max entry is 5120 B, max payload is 4068 B
+crash: ring buffer is 2 MiB (9 KiB consumed), max entry is 5120 B, max payload is 4068 B
+@@rc 0
+@@ps
+  PID   UID NAME                       
+    1     0 init
+    2     0 [kthreadd]
+    4     0 [kworker/0:0H]
+    6     0 [mm_percpu_wq]
+    7     0 [ksoftirqd/0]
+    8     0 [rcu_preempt]
+    9     0 [rcu_sched]
+   10     0 [rcu_bh]
+   11     0 [migration/0]
+   12     0 [watchdog/0]
+   13     0 [cpuhp/0]
+   14     0 [cpuhp/1]
+   15     0 [watchdog/1]
+   16     0 [migration/1]
+   17     0 [ksoftirqd/1]
+   19     0 [kworker/1:0H]
+   20     0 [cpuhp/2]
+   21     0 [watchdog/2]
+   22     0 [migration/2]
+   23     0 [ksoftirqd/2]
+   25     0 [kworker/2:0H]
+   26     0 [cpuhp/3]
+   27     0 [watchdog/3]
+   28     0 [migration/3]
+   29     0 [ksoftirqd/3]
+   31     0 [kworker/3:0H]
+   32     0 [netns]
+   43     0 [kworker/0:1]
+  314     0 [khungtaskd]
+  344     0 [oom_reaper]
+  347     0 [writeback]
+  353     0 [kcompactd0]
+  354     0 [ksmd]
+  355     0 [khugepaged]
+  356     0 [crypto]
+  358     0 [kblockd]
+  487     0 [md]
+  500     0 [cfg80211]
+  532     0 [kauditd]
+  538     0 [kswapd0]
+  784     0 [hwrng]
+  840     0 [kworker/2:1H]
+  841     0 [kworker/0:1H]
+  856     0 [kworker/3:1H]
+  970     0 [dm_bufio_cache]
+ 1047     0 [ion_system_heap]
+ 1082     0 [ipv6_addrconf]
+ 1242     0 [kdmflush]
+ 1243     0 [bioset]
+ 1248     0 [kdmflush]
+ 1249     0 [bioset]
+ 1256     0 [kdmflush]
+ 1257     0 [bioset]
+ 1258     0 [kverityd]
+ 1259     0 [bioset]
+ 1260     0 [bioset]
+ 1261     0 [bioset]
+ 1267     0 [kworker/1:1H]
+ 1268     0 [ext4-rsv-conver]
+ 1271     0 [ext4-rsv-conver]
+ 1272     0 init
+ 1273     0 init
+ 1275     0 ueventd
+ 1611  1036 logd
+ 1612  1000 servicemanager
+ 1613  1000 hwservicemanager
+ 1614  1000 vndservicemanager
+ 1616     0 vold
+ 1631     0 [jbd2/vdc-8]
+ 1632     0 [ext4-rsv-conver]
+ 1671  9999 android.hardware.keymaster@3.0-service
+ 1683     0 apexd
+ 1715     0 createns
+ 1736     0 netd
+ 1737     0 zygote64
+ 1738     0 zygote
+ 1742  1000 android.hidl.allocator@1.0-service
+ 1743  1000 android.system.suspend@1.0-service
+ 1744     0 healthd
+ 1745  1041 android.hardware.audio@2.0-service
+ 1746  1041 android.hardware.broadcastradio@1.1-service
+ 1747  1047 android.hardware.camera.provider@2.4-service
+ 1750  1013 android.hardware.cas@1.1-service
+ 1751  1000 android.hardware.configstore@1.1-service
+ 1752  1013 android.hardware.drm@1.0-service
+ 1753  1013 android.hardware.drm@1.2-service.clearkey
+ 1754  1013 android.hardware.drm@1.2-service.widevine
+ 1755  1000 android.hardware.gatekeeper@1.0-service
+ 1757  1021 android.hardware.gnss@1.0-service
+ 1759  1000 android.hardware.graphics.allocator@2.0-service
+ 1762  1000 android.hardware.graphics.composer@2.1-service
+ 1763  1000 android.hardware.health@2.0-service.goldfish
+ 1765  1000 android.hardware.power@1.1-service.ranchu
+ 1770  1000 android.hardware.sensors@1.0-service
+ 1773  1000 android.hardware.thermal@2.0-service.mock
+ 1774  1010 android.hardware.wifi@1.0-service
+ 1778     0 qemu-props
+ 1780  9999 ashmemd
+ 1783  1041 audioserver
+ 1786  1072 gpuservice
+ 1788  1069 lmkd
+ 1789  1000 surfaceflinger
+ 1803     0 netmgr
+ 1809  1036 logcat
+ 1811     0 [psimon]
+ 1815  2000 sh
+ 1816     0 wifi_forwarder
+ 1818  2000 adbd
+ 1822  9999 traced
+ 1824  9999 traced_probes
+ 1831  1047 cameraserver
+ 1832  1019 drmserver
+ 1835  1000 idmap2d
+ 1837  1067 incidentd
+ 1838     0 installd
+ 1842  1017 keystore
+ 1845  1020 mdnsd
+ 1847  1013 mediadrmserver
+ 1849  1040 media.extractor
+ 1851  1013 media.metrics
+ 1853  1013 mediaserver
+ 1856  1066 statsd
+ 1859     0 storaged
+ 1865  1010 wificond
+ 1867  1046 media.codec
+ 1870  1001 rild
+ 1872  1046 media.swcodec
+ 1873  1000 gatekeeperd
+ 1874  1058 tombstoned
+ 1880  1000 android.hardware.biometrics.fingerprint@2.1-service
+ 1885  1010 hostapd_nohidl
+ 1901     0 iptables-restore
+ 1903     0 ip6tables-restore
+ 1907     0 dhcpclient
+ 1910  1070 llkd
+ 2044  1000 system_server
+ 2225 10110 com.android.systemui
+ 2231  1010 wpa_supplicant
+ 2309  1053 webview_zygote
+ 2382  1073 com.google.android.networkstack
+ 2409  1001 com.android.phone
+ 2456 10070 com.google.android.ext.services
+ 2512 10131 com.google.android.inputmethod.latin
+ 2546 10108 com.google.android.apps.nexuslauncher
+ 2858  1068 com.android.se
+ 2886  1001 com.android.ims.rcsservice
+ 2927  1000 com.android.emulator.multidisplay
+ 3070 10087 com.android.smspush
+ 3297 10056 android.process.media
+ 3386 10107 com.android.dialer
+ 3572 10061 com.android.providers.calendar
+ 3670 10103 com.google.android.configupdater
+ 3712 10120 com.google.android.ims
+ 3842 10111 com.google.android.projection.gearhead:shared
+ 3934 10054 android.process.acore
+ 3996  1000 com.android.keychain
+ 4032     0 [kworker/u9:0]
+ 4269     0 [kworker/2:1]
+ 4635     0 [kworker/3:0]
+ 4877     0 [kworker/2:0]
+ 4966     0 [kworker/1:0]
+ 5126     0 [kworker/0:2]
+ 5240     0 [kworker/3:1]
+ 5340 10143 com.google.android.deskclock
+ 5387     0 [kworker/1:1]
+ 6261     0 [kworker/u9:1]
+ 6565 10146 com.example.logtest
+ 7235     0 [kworker/u8:2]
+ 7527  2000 logcat
+ 7554     0 [kworker/u8:0]
+ 7802     0 [kworker/u8:1]
+ 8068  2000 sh
+ 8081  2000 ps
+@@pslegacy
+USER           PID  PPID     VSZ    RSS WCHAN            ADDR S NAME                       
+root             1     0   33220   9416 0                   0 S init
+root             2     0       0      0 0                   0 S [kthreadd]
+root             4     2       0      0 0                   0 I [kworker/0:0H]
+root             6     2       0      0 0                   0 I [mm_percpu_wq]
+root             7     2       0      0 0                   0 S [ksoftirqd/0]
+root             8     2       0      0 0                   0 I [rcu_preempt]
+root             9     2       0      0 0                   0 I [rcu_sched]
+root            10     2       0      0 0                   0 I [rcu_bh]
+root            11     2       0      0 0                   0 S [migration/0]
+root            12     2       0      0 0                   0 S [watchdog/0]
+root            13     2       0      0 0                   0 S [cpuhp/0]
+root            14     2       0      0 0                   0 S [cpuhp/1]
+root            15     2       0      0 0                   0 S [watchdog/1]
+root            16     2       0      0 0                   0 S [migration/1]
+root            17     2       0      0 0                   0 S [ksoftirqd/1]
+root            19     2       0      0 0                   0 I [kworker/1:0H]
+root            20     2       0      0 0                   0 S [cpuhp/2]
+root            21     2       0      0 0                   0 S [watchdog/2]
+root            22     2       0      0 0                   0 S [migration/2]
+root            23     2       0      0 0                   0 S [ksoftirqd/2]
+root            25     2       0      0 0                   0 I [kworker/2:0H]
+root            26     2       0      0 0                   0 S [cpuhp/3]
+root            27     2       0      0 0                   0 S [watchdog/3]
+root            28     2       0      0 0                   0 S [migration/3]
+root            29     2       0      0 0                   0 S [ksoftirqd/3]
+root            31     2       0      0 0                   0 I [kworker/3:0H]
+root            32     2       0      0 0                   0 I [netns]
+root            43     2       0      0 0                   0 I [kworker/0:1]
+root           314     2       0      0 0                   0 S [khungtaskd]
+root           344     2       0      0 0                   0 S [oom_reaper]
+root           347     2       0      0 0                   0 I [writeback]
+root           353     2       0      0 0                   0 S [kcompactd0]
+root           354     2       0      0 0                   0 S [ksmd]
+root           355     2       0      0 0                   0 S [khugepaged]
+root           356     2       0      0 0                   0 I [crypto]
+root           358     2       0      0 0                   0 I [kblockd]
+root           487     2       0      0 0                   0 I [md]
+root           500     2       0      0 0                   0 I [cfg80211]
+root           532     2       0      0 0                   0 S [kauditd]
+root           538     2       0      0 0                   0 S [kswapd0]
+root           784     2       0      0 0                   0 S [hwrng]
+root           840     2       0      0 0                   0 I [kworker/2:1H]
+root           841     2       0      0 0                   0 I [kworker/0:1H]
+root           856     2       0      0 0                   0 I [kworker/3:1H]
+root           970     2       0      0 0                   0 I [dm_bufio_cache]
+root          1047     2       0      0 0                   0 S [ion_system_heap]
+root          1082     2       0      0 0                   0 I [ipv6_addrconf]
+root          1242     2       0      0 0                   0 I [kdmflush]
+root          1243     2       0      0 0                   0 I [bioset]
+root          1248     2       0      0 0                   0 I [kdmflush]
+root          1249     2       0      0 0                   0 I [bioset]
+root          1256     2       0      0 0                   0 I [kdmflush]
+root          1257     2       0      0 0                   0 I [bioset]
+root          1258     2       0      0 0                   0 I [kverityd]
+root          1259     2       0      0 0                   0 I [bioset]
+root          1260     2       0      0 0                   0 I [bioset]
+root          1261     2       0      0 0                   0 I [bioset]
+root          1267     2       0      0 0                   0 I [kworker/1:1H]
+root          1268     2       0      0 0                   0 I [ext4-rsv-conver]
+root          1271     2       0      0 0                   0 I [ext4-rsv-conver]
+root          1272     1   18332   5592 0                   0 S init
+root          1273     1   17820   5564 0                   0 S init
+root          1275     1   17820   9764 0                   0 S ueventd
+logd          1611     1   30952  13788 0                   0 S logd
+system        1612     1   14128   7280 0                   0 S servicemanager
+system        1613     1   21772   9012 0                   0 S hwservicemanager
+system        1614     1   14824   2560 0                   0 S vndservicemanager
+root          1616     1   30500  13240 0                   0 S vold
+root          1631     2       0      0 0                   0 S [jbd2/vdc-8]
+root          1632     2       0      0 0                   0 I [ext4-rsv-conver]
+nobody        1671     1   17988   5412 0                   0 S android.hardware.keymaster@3.0-service
+root          1683     1   25632   6648 0                   0 S apexd
+root          1715     1   12576      4 0                   0 S createns
+root          1736     1   41956  15212 0                   0 S netd
+root          1737     1 3710820 156112 0                   0 S zygote64
+root          1738     1 1734840 144120 0                   0 S zygote
+system        1742     1   16584   4468 0                   0 S android.hidl.allocator@1.0-service
+system        1743     1   24848  10412 0                   0 S android.system.suspend@1.0-service
+root          1744     1   14996   8372 0                   0 S healthd
+audioserver   1745     1   35684  14100 0                   0 S android.hardware.audio@2.0-service
+audioserver   1746     1   21552   9184 0                   0 S android.hardware.broadcastradio@1.1-service
+cameraserver  1747     1   33216  13632 0                   0 S android.hardware.camera.provider@2.4-service
+media         1750     1   17660   5748 0                   0 S android.hardware.cas@1.1-service
+system        1751     1   23316  13492 0                   0 S android.hardware.configstore@1.1-service
+media         1752     1   23860   8444 0                   0 S android.hardware.drm@1.0-service
+media         1753     1   25808  15320 0                   0 S android.hardware.drm@1.2-service.clearkey
+media         1754     1   23236   8704 0                   0 S android.hardware.drm@1.2-service.widevine
+system        1755     1   17744   9992 0                   0 S android.hardware.gatekeeper@1.0-service
+gps           1757     1   23744  14496 0                   0 S android.hardware.gnss@1.0-service
+system        1759     1   39544  23152 0                   0 S android.hardware.graphics.allocator@2.0-service
+system        1762     1   79640  25612 0                   0 S android.hardware.graphics.composer@2.1-service
+system        1763     1   15964   9272 0                   0 S android.hardware.health@2.0-service.goldfish
+system        1765     1   15804   9228 0                   0 S android.hardware.power@1.1-service.ranchu
+system        1770     1   20988  13272 0                   0 S android.hardware.sensors@1.0-service
+system        1773     1   15900   9092 0                   0 S android.hardware.thermal@2.0-service.mock
+wifi          1774     1   24564  16100 0                   0 S android.hardware.wifi@1.0-service
+root          1778     1   12964   6892 0                   0 S qemu-props
+nobody        1780     1   14164   8040 0                   0 S ashmemd
+audioserver   1783     1   70604  32864 0                   0 S audioserver
+gpu_service   1786     1   21984  13720 0                   0 S gpuservice
+lmkd          1788     1   12840   6684 0                   0 S lmkd
+system        1789     1  168088  38740 0                   0 S surfaceflinger
+root          1803     1   13232   6932 0                   0 S netmgr
+logd          1809     1   12900   7228 0                   0 S logcat
+root          1811     2       0      0 0                   0 S [psimon]
+root          1816     1   14648   7468 0                   0 S wifi_forwarder
+shell         1818     1   62148  12684 0                   0 S adbd
+nobody        1822     1   14352   7860 0                   0 S traced
+nobody        1824     1   14352   7836 0                   0 S traced_probes
+cameraserver  1831     1 2150632  25364 0                   0 S cameraserver
+drm           1832     1   33100  12932 0                   0 S drmserver
+system        1835     1   29604  17332 0                   0 S idmap2d
+incidentd     1837     1   22056  13916 0                   0 S incidentd
+root          1838     1   24632  13928 0                   0 S installd
+keystore      1842     1   26036  16736 0                   0 S keystore
+mdnsr         1845     1    6300   4700 0                   0 S mdnsd
+media         1847     1   20940   7568 0                   0 S mediadrmserver
+mediaex       1849     1 4297113724 28552 0                 0 S media.extractor
+media         1851     1   38868  20772 0                   0 S media.metrics
+media         1853     1   76992  25520 0                   0 S mediaserver
+statsd        1856     1   29436  15324 0                   0 S statsd
+root          1859     1   24772  12984 0                   0 S storaged
+wifi          1865     1   17220   9452 0                   0 S wificond
+mediacodec    1867     1   51788  19004 0                   0 S media.codec
+radio         1870     1   30412  15584 0                   0 S rild
+mediacodec    1872     1 4294997960 19872 0                 0 S media.swcodec
+system        1873     1   19864  10688 0                   0 S gatekeeperd
+tombstoned    1874     1   12332   6472 0                   0 S tombstoned
+system        1880     1   16916   9380 0                   0 S android.hardware.biometrics.fingerprint@2.1-service
+wifi          1885     1   16004   9104 0                   0 S hostapd_nohidl
+root          1901  1736   12192   6976 0                   0 S iptables-restore
+root          1903  1736   12204   6704 0                   0 S ip6tables-restore
+root          1907     1   12596   6912 0                   0 S dhcpclient
+llkd          1910     1   12288   6584 0                   0 S llkd
+system        2044  1737 4195384 285156 0                   0 S system_server
+u0_a110       2225  1737 4052284 225812 0                   0 S com.android.systemui
+wifi          2231     1   24076  15196 0                   0 S wpa_supplicant
+webview_zygote 2309 1738 1736832  59924 0                   0 S webview_zygote
+network_stack 2382  1737 3852368 113680 0                   0 S com.google.android.networkstack
+radio         2409  1737 3908660 137532 0                   0 S com.android.phone
+u0_a70        2456  1737 3879212 133572 0                   0 S com.google.android.ext.services
+u0_a131       2512  1737 3910704 162528 0                   0 S com.google.android.inputmethod.latin
+u0_a108       2546  1737 3906828 153496 0                   0 S com.google.android.apps.nexuslauncher
+secure_element 2858 1737 3848496  92828 0                   0 S com.android.se
+radio         2886  1737 3849088  99076 0                   0 S com.android.ims.rcsservice
+system        2927  1737 3847176  98292 0                   0 S com.android.emulator.multidisplay
+u0_a87        3070  1737 3816420  82760 0                   0 S com.android.smspush
+u0_a56        3297  1737 3832164 119108 0                   0 S android.process.media
+u0_a107       3386  1737 3842520 116344 0                   0 S com.android.dialer
+u0_a61        3572  1737 3819228  95284 0                   0 S com.android.providers.calendar
+u0_a103       3670  1737 3821640  99340 0                   0 S com.google.android.configupdater
+u0_a120       3712  1738 1888156 114604 0                   0 S com.google.android.ims
+u0_a111       3842  1737 3844704 122212 0                   0 S com.google.android.projection.gearhead:shared
+u0_a54        3934  1737 3834932 113044 0                   0 S android.process.acore
+system        3996  1737 3817056  91420 0                   0 S com.android.keychain
+root          4032     2       0      0 0                   0 I [kworker/u9:0]
+root          4269     2       0      0 0                   0 I [kworker/2:1]
+root          4635     2       0      0 0                   0 I [kworker/3:0]
+root          4877     2       0      0 0                   0 I [kworker/2:0]
+root          4966     2       0      0 0                   0 I [kworker/1:0]
+root          5126     2       0      0 0                   0 R [kworker/0:2]
+root          5240     2       0      0 0                   0 I [kworker/3:1]
+u0_a143       5340  1737 3839724 117840 0                   0 S com.google.android.deskclock
+root          5387     2       0      0 0                   0 I [kworker/1:1]
+root          6261     2       0      0 0                   0 I [kworker/u9:1]
+u0_a146       6565  1737 3875936 123912 0                   0 S com.example.logtest
+root          7235     2       0      0 0                   0 I [kworker/u8:2]
+shell         7527  1818   12672   7008 __skb_wait_for_more_packets 0 S logcat
+root          7554     2       0      0 0                   0 I [kworker/u8:0]
+root          7802     2       0      0 0                   0 I [kworker/u8:1]
+shell         8068  1818   11724   7204 SyS_rt_sigsuspend   0 S sh
+shell         8082  8068   14596   7256 0                   0 R ps
+shell         8083  8068   14596   7472 pipe_read           0 S head
+@@pm
+package:com.android.cts.priv.ctsshim uid:10058
+package:com.google.android.youtube uid:10144
+package:com.android.internal.display.cutout.emulation.corner uid:10031
+package:com.google.android.ext.services uid:10070
+package:com.android.internal.display.cutout.emulation.double uid:10025
+package:com.android.providers.telephony uid:1001
+package:com.android.dynsystem uid:1000
+package:com.google.android.googlequicksearchbox uid:10122
+package:com.android.providers.calendar uid:10061
+package:com.android.providers.media uid:10056
+package:com.android.theme.icon.square uid:10001
+package:com.google.android.onetimeinitializer uid:10113
+package:com.google.android.ext.shared uid:10099
+package:com.android.internal.systemui.navbar.gestural_wide_back uid:10040
+package:com.android.theme.color.cinnamon uid:10032
+package:com.android.theme.icon_pack.rounded.systemui uid:10034
+package:com.android.systemui.emulation.pixel_2_xl uid:10033
+package:com.android.systemui.emulation.pixel_3_xl uid:10048
+package:com.android.systemui.emulation.pixel_4_xl uid:10021
+package:com.android.documentsui uid:10065
+package:com.android.externalstorage uid:10071
+package:com.google.android.apps.enterprise.dmagent uid:10126
+package:com.android.htmlviewer uid:10098
+package:com.android.companiondevicemanager uid:10080
+package:com.android.mms.service uid:1001
+package:com.android.providers.downloads uid:10056
+package:com.google.android.apps.messaging uid:10132
+package:com.google.android.soundpicker uid:10127
+package:com.android.theme.icon_pack.rounded.android uid:10027
+package:com.breel.wallpapers18 uid:10141
+package:com.android.theme.icon_pack.circular.themepicker uid:10041
+package:com.google.android.configupdater uid:10103
+package:com.android.internal.emulation.pixel_4a uid:10004
+package:com.google.android.overlay.googlewebview uid:10039
+package:com.android.timezone.updater uid:10066
+package:com.android.providers.downloads.ui uid:10056
+package:com.android.vending uid:10089
+package:com.android.pacprocessor uid:10093
+package:com.android.simappdialog uid:10086
+package:com.android.internal.display.cutout.emulation.tall uid:10018
+@@cmdpackage
+package:com.android.cts.priv.ctsshim uid:10058
+package:com.google.android.youtube uid:10144
+package:com.android.internal.display.cutout.emulation.corner uid:10031
+package:com.google.android.ext.services uid:10070
+package:com.android.internal.display.cutout.emulation.double uid:10025
+package:com.android.providers.telephony uid:1001
+package:com.android.dynsystem uid:1000
+package:com.google.android.googlequicksearchbox uid:10122
+package:com.android.providers.calendar uid:10061
+package:com.android.providers.media uid:10056
+package:com.android.theme.icon.square uid:10001
+package:com.google.android.onetimeinitializer uid:10113
+package:com.google.android.ext.shared uid:10099
+package:com.android.internal.systemui.navbar.gestural_wide_back uid:10040
+package:com.android.theme.color.cinnamon uid:10032
+package:com.android.theme.icon_pack.rounded.systemui uid:10034
+package:com.android.systemui.emulation.pixel_2_xl uid:10033
+package:com.android.systemui.emulation.pixel_3_xl uid:10048
+package:com.android.systemui.emulation.pixel_4_xl uid:10021
+package:com.android.documentsui uid:10065
+package:com.android.externalstorage uid:10071
+package:com.google.android.apps.enterprise.dmagent uid:10126
+package:com.android.htmlviewer uid:10098
+package:com.android.companiondevicemanager uid:10080
+package:com.android.mms.service uid:1001
+package:com.android.providers.downloads uid:10056
+package:com.google.android.apps.messaging uid:10132
+package:com.google.android.soundpicker uid:10127
+package:com.android.theme.icon_pack.rounded.android uid:10027
+package:com.breel.wallpapers18 uid:10141
+package:com.android.theme.icon_pack.circular.themepicker uid:10041
+package:com.google.android.configupdater uid:10103
+package:com.android.internal.emulation.pixel_4a uid:10004
+package:com.google.android.overlay.googlewebview uid:10039
+package:com.android.timezone.updater uid:10066
+package:com.android.providers.downloads.ui uid:10056
+package:com.android.vending uid:10089
+package:com.android.pacprocessor uid:10093
+package:com.android.simappdialog uid:10086
+package:com.android.internal.display.cutout.emulation.tall uid:10018
+@@dropbox
+Drop box contents: 407 entries
+Max entries: 1000
+Low priority rate limit period: 2000 ms
+Low priority tags: {data_app_wtf, keymaster, system_server_wtf, system_app_strictmode, system_app_wtf, system_server_strictmode, data_app_strictmode, netstats}
+
+@@date
+1791614561.930701114
++0800
+@@bootid
+ccb368e7-f2c9-484e-83b8-8533bde26262
+@@tags
+30008 am_anr (User|1|5),(pid|1|5),(Package Name|3),(Flags|1|5),(reason|3)
+30009 am_activity_launch_time (User|1|5),(Token|1|5),(Component Name|3),(time|2|3)
+30011 am_proc_died (User|1|5),(PID|1|5),(Process Name|3),(OomAdj|1|5),(ProcState|1|5)
+30014 am_proc_start (User|1|5),(PID|1|5),(UID|1|5),(Process Name|3),(Type|3),(Component|3)
+30021 am_on_paused_called (User|1|5),(Component Name|3),(Reason|3)
+30022 am_on_resume_called (User|1|5),(Component Name|3),(Reason|3)
+30023 am_kill (User|1|5),(PID|1|5),(Process Name|3),(OomAdj|1|5),(Reason|3)
+30039 am_crash (User|1|5),(PID|1|5),(Process Name|3),(Flags|1|5),(Exception|3),(Message|3),(File|3),(Line|1|5)
+30049 am_on_stop_called (User|1|5),(Component Name|3),(Reason|3)
+30057 am_on_create_called (User|1|5),(Component Name|3),(Reason|3)
+30058 am_on_restart_called (User|1|5),(Component Name|3),(Reason|3)
+30059 am_on_start_called (User|1|5),(Component Name|3),(Reason|3)
+30060 am_on_destroy_called (User|1|5),(Component Name|3),(Reason|3)
+30062 am_on_activity_result_called (User|1|5),(Component Name|3),(Reason|3)
+30064 am_on_top_resumed_gained_called (User|1|5),(Component Name|3),(Reason|3)
+30065 am_on_top_resumed_lost_called (User|1|5),(Component Name|3),(Reason|3)
+@@am
+  start-activity [-D] [-N] [-W] [-P <FILE>] [--start-profiler <FILE>]
+      -W: wait for launch to complete
+  start-service [--user <USER_ID> | current] <INTENT>
+@@end

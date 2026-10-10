@@ -1,0 +1,90 @@
+{
+  "serial": "emulator-5556",
+  "adb": "1.0.41 (platform-tools 37.0.1-15733141)",
+  "track_devices": "ok (first frame: 1 device(s))",
+  "sdk": 29,
+  "release": "10",
+  "fingerprint": "google/sdk_gphone_x86_64/generic_x86_64:10/QSR1.211112.011/13135432:userdebug/dev-keys",
+  "abi": "x86_64",
+  "checks": [
+    {
+      "name": "logcat format",
+      "status": "ok",
+      "detail": "43/43 lines parsed, uid column present",
+      "used_for": "recording (logcat -v threadtime -v epoch -v uid -v usec -v printable)"
+    },
+    {
+      "name": "log buffers",
+      "status": "ok",
+      "detail": "main=2 MiB system=2 MiB crash=2 MiB events=2 MiB",
+      "used_for": "recording -b main,system,crash,events"
+    },
+    {
+      "name": "logcat -T <epoch>",
+      "status": "ok",
+      "detail": "accepted",
+      "used_for": "resuming after a restart without duplicates"
+    },
+    {
+      "name": "logcat --uid",
+      "status": "info",
+      "detail": "unavailable on this build (API 29 has no --uid)",
+      "used_for": "not used (filtering is host-side)"
+    },
+    {
+      "name": "lifecycle events",
+      "status": "ok",
+      "detail": "am_on_*_called (API ≤ 29 format, no callback durations)",
+      "used_for": "launch timeline (onCreate/onStart/onResume)"
+    },
+    {
+      "name": "activity/process events",
+      "status": "ok",
+      "detail": "am_activity_launch_time am_proc_start am_proc_died am_kill am_crash am_anr",
+      "used_for": "COLD/WARM/HOT, process table, crashes, ANRs"
+    },
+    {
+      "name": "am_crash fields",
+      "status": "info",
+      "detail": "declared (User|1|5),(PID|1|5),…",
+      "used_for": "crash grouping (pid chosen by value, both orders handled)"
+    },
+    {
+      "name": "ps -A -o PID,UID,NAME",
+      "status": "ok",
+      "detail": "98 processes parsed",
+      "used_for": "pid → process name (30 s snapshots)"
+    },
+    {
+      "name": "pm list packages -U",
+      "status": "ok",
+      "detail": "40 packages with uid (first 40 lines)",
+      "used_for": "uid → package (crash/launch attribution, package: filter)"
+    },
+    {
+      "name": "dumpsys dropbox",
+      "status": "ok",
+      "detail": "Drop box contents: 407 entries",
+      "used_for": "ANR traces, tombstones, crashes from before recording"
+    },
+    {
+      "name": "date +%s.%N / +%z",
+      "status": "ok",
+      "detail": "1791614554.623607170 +0800",
+      "used_for": "device clock offset, time zone"
+    },
+    {
+      "name": "boot_id",
+      "status": "ok",
+      "detail": "ccb368e7-f2c9-484e-83b8-8533bde26262",
+      "used_for": "reboot detection / sessions"
+    },
+    {
+      "name": "am start -W",
+      "status": "ok",
+      "detail": "listed in `am` help",
+      "used_for": "report --am-start only (not executed by the probe)"
+    }
+  ],
+  "summary": "SUPPORTED: API 29 (Android 10): 11 ok, 2 info"
+}

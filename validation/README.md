@@ -148,3 +148,29 @@ emulator -avd api29 -port 5556 -no-window -no-audio -no-boot-anim -gpu swiftshad
 ## report 子命令（v0.2.0）
 
 `android-log-mcp report` 的打码端到端验证在 `report-e2e/`（`scripts/e2e-report.sh`）：在 emulator-5556 上注入 16 种假密钥（含域名），打包后全部打码，日志头完整，报告可以离线加载。
+
+## 兼容性探测（compat）
+
+`compat/api29-emulator-5556/` 是在 emulator-5556（Android 10 / API 29，x86_64，TCG）上运行 `scripts/compat-probe.sh emulator-5556 validation/compat/api29-emulator-5556` 的输出（2026-10-10 14:42 +08:00，platform-tools 37.0.1）：13 项里 11 项 ok，2 项是参考信息（`logcat --uid` 不存在，本工具也不用；`am_crash` 的声明字段顺序），结论 `SUPPORTED`。
+
+| 文件 | 内容 |
+|---|---|
+| `compat.txt` | 人读的结论：每一项的状态、细节、用途 |
+| `compat.json` | 同一结果的 JSON |
+| `probe-raw.txt` | 设备上探测脚本的原始输出（`android-log-mcp compat --raw`），也作为单元测试 fixture（`server/internal/testdata/compat/`） |
+| `host.txt` | 主机、工具版本、Node、adb 版本 |
+
+### 在其他设备 / API 版本上运行，并把结果发回来
+
+探测是只读的：只执行 `getprop`、`logcat -d`、`logcat -g`、`ps`、`pm list packages`、`dumpsys dropbox` 和 `am` 的帮助输出，不清日志、不启动 App、不改设置。
+
+1. 连接设备（真机需要打开 USB 调试并授权），用 `adb devices` 确认它处于 `device` 状态。
+2. 运行探测，二选一：
+   - 有本仓库和 Go：`scripts/compat-probe.sh <SERIAL> compat-out/`
+   - 只有 Node：`npx -y android-log-mcp compat --serial <SERIAL>`（`compat` 从下一个版本起包含在 npm 包里），加 `--json` 或 `--raw` 可以保存完整结果
+3. 看最后一行：`SUPPORTED`、`SUPPORTED (degraded)`（列出降级的项目）或 `NOT SUPPORTED`（列出缺少的必需功能，此时退出码为 1）。
+4. 把结果发回来：
+   - 只发探测结果：把 `compat-out/` 里的 `compat.txt`、`compat.json`、`host.txt` 附到 issue 里。`probe-raw.txt` 含有最近 20 行日志和已安装应用列表，分享前请先看一下。
+   - 连同日志一起：让 android-log-mcp 录制一会儿（由 MCP 客户端启动，或 `android-log-mcp call logcat_status '{}'`），然后用 `android-log-mcp report --serial <SERIAL> --since 30m --note @compat-out/compat.txt -o compat-report.zip` 打包。note 和日志都会打码，`device.json` 里有 fingerprint 和 SDK 版本。检查 zip 内容后附到 issue。
+
+有了别的 API 版本的 `probe-raw.txt`，可以把它放进 `server/internal/testdata/compat/`，并在 `server/internal/compat/compat_test.go` 里加一行，作为该版本的回归 fixture。

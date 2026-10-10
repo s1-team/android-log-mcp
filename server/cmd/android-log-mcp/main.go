@@ -39,6 +39,7 @@ usage:
   android-log-mcp [--home DIR] report [flags]   pack logs + diagnostics into a redacted zip
                                                (android-log-mcp report -h for flags)
   android-log-mcp --home R/store --offline ...  browse an unzipped report (no adb, no recording)
+  android-log-mcp compat [--serial S] [--json]  probe a device for the features this tool needs (read-only)
 
 `, mcpserver.Version)
 		flag.PrintDefaults()
@@ -59,6 +60,11 @@ usage:
 	if flag.NArg() > 0 && flag.Arg(0) == "report" {
 		// reads the data directory only; must not start a recorder
 		code := runReport(ctx, *home, flag.Args()[1:])
+		cancel()
+		os.Exit(code)
+	}
+	if flag.NArg() > 0 && flag.Arg(0) == "compat" {
+		code := runCompat(ctx, flag.Args()[1:])
 		cancel()
 		os.Exit(code)
 	}

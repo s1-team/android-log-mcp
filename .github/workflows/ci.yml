@@ -48,3 +48,56 @@ jobs:
           cd "$d" && npm init -y >/dev/null
           npm install --no-audit --no-fund "$GITHUB_WORKSPACE"/npm/dist/tarballs/android-log-mcp-linux-x64-*.tgz "$GITHUB_WORKSPACE"/npm/dist/tarballs/android-log-mcp-[0-9]*.tgz
           ./node_modules/.bin/android-log-mcp --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-tarballs
+          path: npm/dist/tarballs/*.tgz
+          retention-days: 7
+
+  # The npm launcher across Node versions (engines: node >=16) and host OSes:
+  # install the packed tarballs, run `npx android-log-mcp --version` and an
+  # MCP stdio handshake (initialize, tools/list, logcat_status) with --offline.
+  npx-compat:
+    needs: npm-pack
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, node: "16", plat: linux-x64 }
+          - { os: ubuntu-latest, node: "18", plat: linux-x64 }
+          - { os: ubuntu-latest, node: "20", plat: linux-x64 }
+          - { os: ubuntu-latest, node: "22", plat: linux-x64 }
+          - { os: ubuntu-latest, node: "lts/*", plat: linux-x64 }
+          - { os: ubuntu-latest, node: "current", plat: linux-x64 }
+          - { os: macos-latest, node: "22", plat: darwin-arm64 }
+          - { os: windows-latest, node: "22", plat: win32-x64 }
+    name: npx (${{ matrix.os }}, node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: npm/test
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-tarballs
+          path: tarballs
+      - name: install packed packages
+        run: |
+          node --version && npm --version
+          mkdir smoke && cd smoke && npm init -y >/dev/null
+          npm install --no-audit --no-fund ../tarballs/android-log-mcp-${{ matrix.plat }}-*.tgz ../tarballs/android-log-mcp-[0-9]*.tgz
+      - name: npx --version
+        working-directory: smoke
+        run: npx android-log-mcp --version
+      - name: MCP stdio handshake
+        working-directory: smoke
+        env:
+          ANDROID_LOG_MCP_HOME: ${{ runner.temp }}/alm-home
+        run: node ../npm/test/mcp_smoke.js npx android-log-mcp --offline

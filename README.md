@@ -13,7 +13,7 @@
 
 ## 快速开始（npx）
 
-前提：Node.js ≥ 16（只用来下载和启动），adb（Android SDK platform-tools）。不需要 Go。
+前提：Node.js ≥ 16（只用来下载和启动），adb（Android SDK platform-tools）。不需要 Go。各版本的验证情况见「兼容性」。
 
 ```bash
 npx -y android-log-mcp            # 以 MCP stdio 服务器方式运行（由 MCP 客户端启动，不要手动交互）
@@ -106,6 +106,14 @@ tag:A | tag:B   (tag:A | level:error) & package:com.foo
 # 先录制 5 秒（可用 ANDROID_LOG_MCP_CALL_WAIT=20s 调整），然后调用一次工具并打印结果
 npx -y android-log-mcp call logcat_search '{"filter":"level:error","limit":20}'
 ```
+
+### 兼容性探测（`compat`）
+
+```bash
+android-log-mcp compat [--serial S] [--json | --raw]
+```
+
+只读地检查设备是否具备本工具依赖的 logcat / ps / pm / dumpsys 功能，并用录制时的解析器评估结果。退出码：0 = 支持（可能降级），1 = 缺少必需功能，2 = 用法或 adb 错误。详见「兼容性」。
 
 ### 诊断包（`report`）
 
@@ -238,6 +246,48 @@ android-log-mcp --home r/store --offline call logcat_crashes '{"package":"com.fo
 - **存储格式**：JSONL 没有压缩。Windows 上的文件锁只是尽力而为（O_EXCL 锁文件加过期判断），未在 Windows 上测试。
 - **设备时钟估算**：设备与主机的时钟偏移用 `date +%s` 估算，精度约为 1 秒加一次 adb 往返的时间，只用于"现在"和相对时间的换算。日志时间戳本身直接来自设备。
 
+## 兼容性
+
+分两层：**已验证** 是真的跑过的组合；**设计支持、未验证** 是代码按 AOSP 行为做了处理（多数有单元测试），但还没在对应环境上运行过。
+
+### 已验证
+
+| 方面 | 已验证的组合 | 怎么验证的 |
+|---|---|---|
+| Node / npx | Node 20（本机 `npx -y android-log-mcp`）；Node 16.20 本机跑启动器和 MCP 握手；CI 每次提交在 ubuntu 上跑 Node 16 / 18 / 20 / 22 / 当前 LTS / current，在 macOS、Windows 上跑 Node 22 | CI 的 `npx-compat` job：安装打包好的 npm tarball，执行 `npx android-log-mcp --version`，再通过 stdio 做 MCP 握手（initialize → tools/list → logcat_status，`--offline`）（`npm/test/mcp_smoke.js`） |
+| 主机 OS / 架构 | linux x64：完整运行（后台录制、端到端验证）。linux x64、macOS（arm64）、Windows x64：单元测试和回归测试（`go test ./...`），以及上面的 npx 冒烟测试 | `.github/workflows/ci.yml` |
+| Android | API 29（Android 10，x86_64 模拟器，TCG 软件模拟）：端到端验证 + `compat` 探测 13 项全部通过 | `validation/mcp-v2/`、`validation/report-e2e/`、`validation/compat/api29-emulator-5556/` |
+| adb | platform-tools 37.0.1（adb 1.0.41），`track-devices` 正常 | 同上 |
+
+### 设计支持、尚未验证
+
+| 方面 | 设计范围 | 说明 |
+|---|---|---|
+| Node | `engines: node >=16`（启动器只用 `child_process.spawn` 和 `require.resolve`） | Node 14 及以下没测过，不支持 |
+| 主机 OS / 架构 | npm 平台包：linux / darwin / win32 × x64 / arm64 | darwin x64、linux arm64、win32 arm64 的二进制只是交叉编译出来，从没运行过；macOS 和 Windows 上从没接过真机或模拟器录制（Windows 的文件锁是尽力而为，见「已知限制」） |
+| Android API | **下限 API 24（Android 7.0）**：录制依赖 logcat 的 `-v uid` / `-v epoch` / `-v usec` / `-v printable` 和 `crash` buffer | 只在 API 29 上实际运行过。API 26 以下没有 `ps -A -o` 时用旧版 `ps`；没有 `pm list packages -U` 时用 `cmd package list packages -U`，再不行就只按进程名归属。这些分支有单元测试，没有实机验证 |
+| API 30 – 35 | 生命周期事件 `wm_on_*_called`（带耗时）、`am_crash` 字段顺序 `[user,pid,…]`、`logcat --uid` | 单元测试覆盖了两种事件格式和两种字段顺序（`server/internal/analysis/apilevels_test.go`、`server/internal/compat`）。本机没有 KVM，跑不了 API 30+ 的模拟器，所以没有实测 |
+| adb | 支持 `track-devices` 的 platform-tools | 不支持时每 2 秒轮询 `adb devices`，未实测 |
+
+各 API 版本的差异和本工具的处理：
+
+| 差异 | API 29 | API 30+ | 处理 |
+|---|---|---|---|
+| `logcat --uid` | 没有 | 较新版本有 | 不使用：所有过滤都在主机端完成 |
+| 多个 `--pid` | 只认一个 | — | 不使用 |
+| Activity 生命周期事件 | `am_on_*_called [user,class,reason]`，没有耗时 | `wm_on_*_called [token,class,reason,耗时]` | 两种都解析；没有耗时时启动时间线会注明 |
+| `am_crash` 字段顺序 | 实际输出 `[pid,user,…]`（设备上的 event-log-tags 却声明为 `[user,pid,…]`） | AOSP 声明为 `[user,pid,…]` | 按数值判断哪个是 pid，两种顺序都有测试 |
+| `Displayed` 的 tag | `ActivityTaskManager` | `ActivityTaskManager` | 也接受旧版的 `ActivityManager` |
+
+想在别的设备或 API 版本上确认，可以运行兼容性探测（只读：`getprop`、`logcat -d/-g`、`ps`、`pm list`、`dumpsys dropbox` 和帮助输出，不清日志、不启动 App）：
+
+```bash
+android-log-mcp compat --serial <SERIAL>        # 下一个版本起也可以用 npx -y android-log-mcp compat
+scripts/compat-probe.sh <SERIAL> out/            # 从源码构建并把结果写进 out/
+```
+
+它会用录制时同样的解析器检查每一项，输出 `SUPPORTED` / `SUPPORTED (degraded)` / `NOT SUPPORTED`。欢迎把结果发回来，方法见 `validation/README.md`。
+
 ## 已验证与未验证
 
 - **已验证**：
@@ -250,7 +300,7 @@ android-log-mcp --home r/store --offline call logcat_crashes '{"package":"com.fo
   - WARM 启动：v1 和 v2 实测都没能构造出来。
   - adb 不支持 `track-devices` 时退化为轮询。
   - 多设备同时录制。
-  - Windows 和 macOS。
+  - 在 Windows 和 macOS 上连设备录制（CI 只跑单元测试和 npx 冒烟测试，见「兼容性」）。
 
 ## 仓库结构
 
@@ -258,7 +308,7 @@ android-log-mcp --home r/store --offline call logcat_crashes '{"package":"com.fo
 |---|---|
 | `server/` | Go 模块 `github.com/s1crab/android-log-mcp/server`，包括源码、单元测试和回归测试 fixture（`internal/testdata/api29`） |
 | `npm/` | npm 启动器和包模板。用 `scripts/build-npm.sh [版本] [--pack]` 交叉编译并组装所有包 |
-| `scripts/` | `build-npm.sh`（打 npm 包）、`e2e-report.sh`（在真机 / 模拟器上验证 `report` 的打码） |
+| `scripts/` | `build-npm.sh`（打 npm 包）、`e2e-report.sh`（在真机 / 模拟器上验证 `report` 的打码）、`compat-probe.sh`（设备兼容性探测） |
 | `validation/` | 在 API 29 模拟器上的实测记录：结论、触发脚本、测试 App 源码、MCP 工具的实际输出（v1 在 `mcp/`，v2 在 `mcp-v2/`） |
 | `docs/` | 调研和设计文档 |
 | `.github/workflows/` | CI（测试）和 release（打 `v*` tag 时发布到 npm） |

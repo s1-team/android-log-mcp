@@ -113,3 +113,13 @@ func TestResumeTime(t *testing.T) {
 		t.Error(a)
 	}
 }
+
+// logprint prints the AID name instead of the number when it is ≤ 5 chars.
+func TestShortUIDNames(t *testing.T) {
+	for name, uid := range map[string]int{"root": 0, "radio": 1001, "llkd": 1070, "lmkd": 1069, "shell": 2000} {
+		l := ParseLine("         1791614446.168224  "+name+"  1910  1910 W livelock: sample 3.490s", time.UTC, 2026)
+		if !l.OK || l.UID != uid {
+			t.Errorf("%s: ok=%v uid=%d", name, l.OK, l.UID)
+		}
+	}
+}
