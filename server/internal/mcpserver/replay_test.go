@@ -57,9 +57,37 @@ func fixtureFile(t *testing.T, name string) string {
 	return string(b)
 }
 
+// replayDir is like t.TempDir, but its removal retries for up to 10 s.
+// Every store in it is closed by then (the cleanup runs after the
+// Manager's), yet on the Windows runners a freshly written segment is
+// sometimes still held by another process (presumably the virus scanner)
+// longer than t.TempDir's 2 s retry ("being used by another process").
+func replayDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "replay-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			err := os.RemoveAll(dir)
+			if err == nil {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Errorf("removing %s: %v", dir, err)
+				return
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	})
+	return dir
+}
+
 func newReplay(t *testing.T, boot string) *replayEnv {
 	t.Helper()
-	e := &replayEnv{t: t, base: t.TempDir()}
+	e := &replayEnv{t: t, base: replayDir(t)}
 	st, err := store.Open(e.base, fxSerial, store.Config{})
 	if err != nil || !st.IsWriter() {
 		t.Fatalf("open: %v", err)
