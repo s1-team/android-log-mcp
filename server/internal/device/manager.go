@@ -69,6 +69,7 @@ type Manager struct {
 	sess      *trackSession
 	wanted    map[string]*want    // Lazy: devices to record, by ID
 	idents    map[string]Identity // resolved online devices, by ID
+	trackedAt time.Time           // last Track call (TrackGrace)
 	wantMu    sync.Mutex          // serializes Want / Unwant / tracking start and stop
 }
 

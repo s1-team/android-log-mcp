@@ -364,3 +364,21 @@ func TestParseDate(t *testing.T) {
 		}
 	}
 }
+
+// Tracking started by a call that recorded nothing (here: two devices,
+// none named) stops after TrackGrace: the manager is idle again and no
+// adb child runs.
+func TestTrackingWithoutDeviceStops(t *testing.T) {
+	old := TrackGrace
+	TrackGrace = 300 * time.Millisecond
+	t.Cleanup(func() { TrackGrace = old })
+	e := fakeEnv(t)
+	addDevices(t, e, 5, "FAKEA", "FAKEB")
+	m := lazyManager(t, time.Minute)
+	m.Track(0)
+	if !m.Tracking() {
+		t.Fatal("not tracking")
+	}
+	waitFor(t, "tracking stops", 10*time.Second, func() bool { return m.Idle() && !m.Tracking() })
+	waitFor(t, "no adb child", 10*time.Second, func() bool { return !e.AnyChildRunning() })
+}

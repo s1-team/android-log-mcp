@@ -58,11 +58,12 @@ type Service struct {
 	mstop context.CancelFunc
 	tools *mcpserver.Tools
 
-	clients   int
-	exitGrace time.Duration // ExitGrace at Start
-	exitTick  time.Duration
-	idleSince time.Time // no clients, no pin, nothing recorded since (lifeLoop)
-	carry     device.WantState
+	clients     int
+	liveClients int           // clients that keep the service alive (keepsAlive)
+	exitGrace   time.Duration // ExitGrace at Start
+	exitTick    time.Duration
+	idleSince   time.Time // no clients, no pin, nothing recorded since (lifeLoop)
+	carry       device.WantState
 
 	pinMu    sync.Mutex
 	pins     *PinFile // nil: record.json is unusable (pinsErr)
@@ -289,13 +290,21 @@ func (s *Service) Info() Info {
 	return i
 }
 
+// keepsAlive: connections of these clients keep the service running
+// (§6); short status queries (`service status`, `root`, `record` state,
+// role "cli") do not, so polling them cannot keep an unused service alive.
+func keepsAlive(h *Hello) bool { return h.Role != "cli" }
+
 func (s *Service) onConn(c *ipc.Conn, open bool) {
 	if open {
 		return
 	}
-	if _, ok := c.Value.(*Hello); ok {
+	if h, ok := c.Value.(*Hello); ok {
 		s.mu.Lock()
 		s.clients--
+		if keepsAlive(h) {
+			s.liveClients--
+		}
 		s.mu.Unlock()
 	}
 }
@@ -311,7 +320,10 @@ func (s *Service) handle(ctx context.Context, c *ipc.Conn, op string, body json.
 			c.Value = &h
 			s.mu.Lock()
 			s.clients++
-			s.idleSince = time.Time{}
+			if keepsAlive(&h) {
+				s.liveClients++
+				s.idleSince = time.Time{}
+			}
 			s.mu.Unlock()
 		}
 		rec, _ := s.recordingText()

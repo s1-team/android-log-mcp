@@ -39,8 +39,15 @@ func (m *Manager) Track(timeout time.Duration) {
 		return
 	}
 	m.startTracking()
+	m.mu.Lock()
+	m.trackedAt = time.Now()
+	m.mu.Unlock()
 	m.WaitReady(timeout)
 }
+
+// TrackGrace: device tracking started by a call that recorded nothing (no
+// device, several devices, an error) stops this long after that call.
+var TrackGrace = 30 * time.Second
 
 // OnlineIDs returns the device IDs of the online devices whose identity
 // is resolved, with their adb serial, sorted by ID.
@@ -354,6 +361,17 @@ func (m *Manager) CheckIdle(now time.Time) {
 			reason = "its pin ended"
 		}
 		m.Unwant(id, reason)
+	}
+	// tracking without any recorded device (e.g. a call that found no
+	// device or several) stops after TrackGrace
+	m.wantMu.Lock()
+	defer m.wantMu.Unlock()
+	m.mu.Lock()
+	idle := len(m.wanted) == 0 && m.sess != nil && now.Sub(m.trackedAt) >= TrackGrace
+	m.mu.Unlock()
+	if idle {
+		m.stopTracking()
+		m.activity()
 	}
 }
 

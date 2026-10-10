@@ -110,7 +110,7 @@ func (s *Service) checkExit(now time.Time) (string, bool) {
 // busyReason is why the service stays ("" = nothing keeps it).
 func (s *Service) busyReason(now time.Time) string {
 	s.mu.Lock()
-	n := s.clients
+	n := s.liveClients
 	m := s.m
 	s.mu.Unlock()
 	switch {

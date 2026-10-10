@@ -282,3 +282,25 @@ func TestPinKeepsServiceAlive(t *testing.T) {
 		t.Fatal("did not stop after the pin ended")
 	}
 }
+
+// Polling `service status` (role "cli") does not keep an unused service
+// alive.
+func TestStatusPollingDoesNotKeepAlive(t *testing.T) {
+	t.Setenv(LingerEnv, "0")
+	shortExit(t, time.Second)
+	ctrl := testControl(t)
+	s := startTest(t, ctrl, "0.5.0")
+	for end := time.Now().Add(10 * time.Second); time.Now().Before(end); time.Sleep(200 * time.Millisecond) {
+		select {
+		case <-s.Done():
+			return
+		default:
+		}
+		if c, err := Dial(context.Background(), ctrl, "0.5.0", "cli"); err == nil {
+			var i Info
+			c.Do(context.Background(), "status", nil, &i)
+			c.Close()
+		}
+	}
+	t.Fatal("status polling kept the service alive")
+}
