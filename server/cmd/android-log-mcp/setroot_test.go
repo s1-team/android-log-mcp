@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/s1crab/android-log-mcp/server/internal/service"
 	"github.com/s1crab/android-log-mcp/server/internal/store"
@@ -25,7 +27,7 @@ func setRoot(t *testing.T, env []string, args ...string) (setRootOut, string, in
 	t.Helper()
 	out, errOut, code := cliEnv(t, env, append(append([]string{"set-root"}, args...), "--json")...)
 	var r setRootOut
-	if code == 0 {
+	if code == 0 || code == 3 {
 		if err := json.Unmarshal([]byte(out), &r); err != nil {
 			t.Fatalf("set-root %v: %v\n%s", args, err, out)
 		}
@@ -122,20 +124,44 @@ func TestSetRoot(t *testing.T) {
 
 	// through the service, back to the default root, deleting a
 	r, errOut, code = setRoot(t, env, ctrl, "--delete-old")
-	if code != 0 || r.ServicePID != pid || r.NewRoot != resolved(t, ctrl) || !r.OldRootRemoved {
+	if runtime.GOOS == "windows" {
+		// the running service binary (a/bin/…) cannot be deleted on
+		// Windows: switched, reported (exit 3), retried at the next start
+		if code != 3 || r.ServicePID != pid || r.NewRoot != resolved(t, ctrl) || r.OldRootRemoved || len(r.Remained) != 1 || filepath.Base(r.Remained[0]) != "bin" {
+			t.Fatalf("service set-root back (windows): %d %+v\n%s", code, r, errOut)
+		}
+	} else if code != 0 || r.ServicePID != pid || r.NewRoot != resolved(t, ctrl) || !r.OldRootRemoved {
 		t.Fatalf("service set-root back: %d %+v\n%s", code, r, errOut)
-	}
-	if _, err := os.Stat(a); !os.IsNotExist(err) {
-		t.Fatalf("old root still there: %v", err)
 	}
 	if p2, sroot := serviceRoot(t, env); p2 != pid || sroot != resolved(t, ctrl) {
 		t.Fatalf("after switch: service %d root %q", p2, sroot)
 	}
-	if _, err := os.Stat(filepath.Join(ctrl, "config.json")); !os.IsNotExist(err) {
-		t.Fatalf("config.json for the default root: %v", err)
-	}
 	if out, e, c := cliEnv(t, env, "call", "logcat_status"); c != 0 || !strings.Contains(out, "root: "+resolved(t, ctrl)) {
 		t.Fatalf("status after switch: %d %s %s", c, out, e)
+	}
+	if runtime.GOOS == "windows" {
+		// the next service start removes the leftovers
+		if _, e, c := cliEnv(t, env, "service", "stop"); c != 0 {
+			t.Fatalf("stop: %s", e)
+		}
+		if _, e, c := cliEnv(t, env, "call", "logcat_status"); c != 0 {
+			t.Fatalf("call: %d %s", c, e)
+		}
+		pid, _ = serviceRoot(t, env)
+		deadline := time.Now().Add(20 * time.Second)
+		for time.Now().Before(deadline) {
+			if _, err := os.Stat(filepath.Join(a, "bin")); os.IsNotExist(err) {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	if _, err := os.Stat(a); !os.IsNotExist(err) {
+		t.Fatalf("old root still there: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(ctrl, "config.json")); !os.IsNotExist(err) {
+		b, _ := os.ReadFile(filepath.Join(ctrl, "config.json"))
+		t.Fatalf("config.json for the default root without leftovers: %v %s", err, b)
 	}
 
 	// config.lock held elsewhere: a clear timeout, nothing changes
