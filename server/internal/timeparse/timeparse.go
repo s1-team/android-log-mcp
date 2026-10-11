@@ -61,3 +61,34 @@ func parseRel(s string) (time.Duration, bool) {
 	}
 	return 0, false
 }
+
+// IsRelative: s counts back from device now ("now", "30m", "1h30m").
+func IsRelative(s string) bool {
+	s = strings.TrimSpace(s)
+	if strings.EqualFold(s, "now") {
+		return true
+	}
+	_, ok := parseRel(s)
+	return ok
+}
+
+// NeedsNow: s depends on device now: relative, or a time of day on the
+// device's today ("15:00").
+func NeedsNow(s string) bool {
+	if IsRelative(s) {
+		return true
+	}
+	s = strings.TrimSpace(s)
+	for _, f := range []string{"15:04:05.999999999", "15:04"} {
+		if _, err := time.Parse(f, s); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// HostPrefixed: s asks for host time ("host:5m", "host:2026-10-10 15:00").
+func HostPrefixed(s string) bool {
+	s = strings.TrimSpace(s)
+	return len(s) >= 5 && strings.EqualFold(s[:5], "host:")
+}

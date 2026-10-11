@@ -11,7 +11,6 @@ import (
 	"github.com/s1crab/android-log-mcp/server/internal/device"
 	"github.com/s1crab/android-log-mcp/server/internal/model"
 	"github.com/s1crab/android-log-mcp/server/internal/procs"
-	"github.com/s1crab/android-log-mcp/server/internal/timeparse"
 )
 
 // crashPkgMatch: own maps a process name to its package (procs.NameOwner),
@@ -47,22 +46,11 @@ func (t *Tools) crashes(ctx context.Context, a crashArgs) (out string, err error
 	}()
 	d.Store.Refresh()
 	loc := d.Loc()
-	now := d.Now()
-	var fromNs, toNs int64
-	if a.From != "" {
-		tm, err := timeparse.Parse("from", a.From, now)
-		if err != nil {
-			return "", errf("%v", err)
-		}
-		fromNs = tm.UnixNano()
+	ci, fromNs, toNs, err := window(d, a.From, a.To, 0)
+	if err != nil {
+		return "", err
 	}
-	if a.To != "" {
-		tm, err := timeparse.Parse("to", a.To, now)
-		if err != nil {
-			return "", errf("%v", err)
-		}
-		toNs = tm.UnixNano()
-	}
+	now := ci.Now
 	all := d.Crashes()
 	if a.ID != "" {
 		for _, c := range all {
@@ -102,7 +90,7 @@ func (t *Tools) crashes(ctx context.Context, a crashArgs) (out string, err error
 		scope = "package " + a.Package
 	}
 	if len(sel) == 1 {
-		fmt.Fprintf(&b, "device %s · %s · %s · 1 match → full detail\n", d.Serial, tzLabel(loc, d.TZName(), now), scope)
+		fmt.Fprintf(&b, "device %s · device time %s · %s · %s · 1 match → full detail\n", d.Serial, tzLabel(loc, d.TZName(), now), clockLine(ci), scope)
 		c := sel[0]
 		if full := d.CrashFull(c.ID)[0]; full != nil {
 			c = full
@@ -134,7 +122,7 @@ func (t *Tools) crashes(ctx context.Context, a crashArgs) (out string, err error
 		}
 		g.items = append(g.items, c)
 	}
-	fmt.Fprintf(&b, "device %s · %s · %s · %d crash groups (%d events) in recorded history\n", d.Serial, tzLabel(loc, d.TZName(), now), scope, len(groups), len(sel))
+	fmt.Fprintf(&b, "device %s · device time %s · %s · %s · %d crash groups (%d events) in recorded history\n", d.Serial, tzLabel(loc, d.TZName(), now), clockLine(ci), scope, len(groups), len(sel))
 	if st := d.Store.Stats(); st.OldestNs != 0 {
 		fmt.Fprintf(&b, "history: logcat from %s; DropBox adds older entries when available (status: %s)\n", dateTime(st.OldestNs, loc), dropboxSummary(d))
 	}
@@ -174,7 +162,11 @@ func (t *Tools) crashes(ctx context.Context, a crashArgs) (out string, err error
 					also = append(also, fmt.Sprintf("…%d more", len(g.items)-6))
 					break
 				}
-				also = append(also, fmt.Sprintf("%s (%s)", clock(o.TimeNs, loc)[:8], o.ID))
+				at := clock(o.TimeNs, loc)[:8]
+				if dateOf(o.TimeNs, loc) != dateOf(c.TimeNs, loc) {
+					at = dateTime(o.TimeNs, loc) // another day (or a device clock jump)
+				}
+				also = append(also, fmt.Sprintf("%s (%s)", at, o.ID))
 			}
 			fmt.Fprintf(&b, "     same signature also at %s\n", strings.Join(also, ", "))
 		}

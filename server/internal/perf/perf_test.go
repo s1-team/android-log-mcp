@@ -151,9 +151,17 @@ var outputScenarios = []scenario{
 
 // normalize removes what depends on the machine or the moment (temp
 // paths, host-clock durations) so the size is comparable.
+// The clock line (device now, host now, clock offset; issue #48) follows
+// host now: its digits are zeroed, its size kept.
 func normalize(out, base string) string {
-	return strings.ReplaceAll(out, base, "<root>")
+	out = strings.ReplaceAll(out, base, "<root>")
+	return reClock.ReplaceAllStringFunc(out, func(m string) string { return reDigit.ReplaceAllString(m, "0") })
 }
+
+var (
+	reClock = regexp.MustCompile(`device now [^\n]*?· clock offset (?:\(device − host\) )?\S+`)
+	reDigit = regexp.MustCompile(`[0-9]`)
+)
 
 func callOK(tb testing.TB, t *mcpserver.Tools, tool, args string) string {
 	tb.Helper()

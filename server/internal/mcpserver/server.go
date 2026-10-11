@@ -22,7 +22,7 @@ const instructions = `Android logcat recorder. Recording starts on use: the firs
 Typical flows: crashes/ANRs → logcat_crashes. Startup time → logcat_app_launches. Anything else → logcat_search (use view="summary" first for wide ranges).
 To capture a reproduction: logcat_status → take ` + "`cursor`" + ` → user reproduces → logcat_search(after=cursor, wait_ms=20000). If logcat_status says "backfill in progress", call logcat_status again before using a cursor.
 To keep recording without calls (e.g. a long reproduction), call logcat_status(record_for="30m"); record_for="0" stops.
-All times are device-local; responses state the device timezone.`
+All times in parameters and lines are device time (the Android device's clock, in its timezone); responses show device now, host now and the clock offset, and mark device clock jumps.`
 
 // Tools implements the tool logic over a device manager. It runs in the
 // background service; MCP processes are thin clients that forward

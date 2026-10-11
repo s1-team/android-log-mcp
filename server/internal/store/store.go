@@ -270,6 +270,7 @@ func (s *Store) Meta() Meta {
 	m.Sessions = append([]Session(nil), m.Sessions...)
 	m.Gaps = append([]Gap(nil), m.Gaps...)
 	m.Holes = append([]SeqRange(nil), m.Holes...)
+	m.ClockJumps = append([]ClockJump(nil), m.ClockJumps...)
 	return m
 }
 
@@ -918,6 +919,93 @@ func (s *Store) Wait(ctx context.Context, afterSeq uint64, timeout time.Duration
 // ascending or descending. fn returns false to stop. Records older than the
 // memory window are read from disk.
 func (s *Store) Scan(after, before uint64, desc bool, fn func(*model.Record) bool) {
+	s.ScanTime(after, before, desc, 0, 0, fn)
+}
+
+// AddClockJump records a device clock jump (writer only). A jump at the
+// same Seq as the newest recorded one (the same jump seen again, e.g. a
+// clock reading before the first line after it) is merged: the first
+// report wins, a "possible" one is upgraded.
+// sameJump: a line-based delta (which includes the gap between the two
+// lines) describes the measured one: within 60 s + 10 %. Several jumps
+// while disconnected add up to a measured delta that no single one
+// matches; it then stays at the session's first line.
+func sameJump(measured, lines int64) bool {
+	d := lines - measured
+	if d < 0 {
+		d = -d
+	}
+	if measured < 0 {
+		measured = -measured
+	}
+	return d <= ClockJumpThreshold+measured/10
+}
+
+// measuredRefineSeqs: how far after a "measured" clock jump (a clock
+// read at reconnect, placed at the session's first line) a line-based
+// report of the same jump may move it.
+const measuredRefineSeqs = 1 << 20
+
+func (s *Store) AddClockJump(j ClockJump) {
+	s.UpdateMeta(func(m *Meta) {
+		if n := len(m.ClockJumps); n > 0 {
+			last := &m.ClockJumps[n-1]
+			if last.Seq >= j.Seq {
+				if last.Source == "possible" && j.Source != "possible" && last.Seq == j.Seq {
+					*last = j
+				}
+				return
+			}
+			// a clock reading names the next seq, but lines logged before
+			// the jump may still have been queued: the line-based report
+			// of the same jump a little later gives the exact seq
+			// (a replay of up to measuredRefineSeqs lines); the clock
+			// reading's delta stays, the source becomes the line-based one
+			if last.Source == "measured" && j.Source != "measured" && j.Seq-last.Seq <= measuredRefineSeqs && (last.DeltaNs < 0) == (j.DeltaNs < 0) && sameJump(last.DeltaNs, j.DeltaNs) {
+				last.Seq, last.Source = j.Seq, j.Source
+				if j.BeforeNs != 0 {
+					last.BeforeNs, last.AfterNs = j.BeforeNs, j.AfterNs
+				}
+				return
+			}
+		}
+		m.ClockJumps = append(m.ClockJumps, j)
+		if len(m.ClockJumps) > maxClockJumps {
+			m.ClockJumps = append([]ClockJump(nil), m.ClockJumps[len(m.ClockJumps)-maxClockJumps:]...)
+		}
+	})
+}
+
+// ClockJumps returns the recorded device clock jumps whose lines are still
+// stored, oldest first.
+func (s *Store) ClockJumps() []ClockJump {
+	m := s.Meta()
+	first := s.FirstSeq()
+	var out []ClockJump
+	for _, j := range m.ClockJumps {
+		if j.Seq >= first && j.Seq <= s.LastSeq()+1 {
+			out = append(out, j)
+		}
+	}
+	return out
+}
+
+// ScanTime is Scan restricted to records whose device time is in
+// [fromNs, toNs) (0: unbounded side), in the same seq order (issue #21).
+// History blocks whose time range lies wholly outside the window are not
+// read. It never stops on record order: device time is not monotonic in
+// stored order (the clock can be set back), so every record in the window
+// is visited however it is stored (issue #48).
+func (s *Store) ScanTime(after, before uint64, desc bool, fromNs, toNs int64, fn func(*model.Record) bool) {
+	if fromNs != 0 || toNs != 0 {
+		inner := fn
+		fn = func(r *model.Record) bool {
+			if (fromNs != 0 && r.TimeNs < fromNs) || (toNs != 0 && r.TimeNs >= toNs) {
+				return true
+			}
+			return inner(r)
+		}
+	}
 	s.touch()
 	s.mu.RLock()
 	loaded := s.loaded
@@ -999,7 +1087,7 @@ func (s *Store) Scan(after, before uint64, desc bool, fn func(*model.Record) boo
 			}
 			var bl []block
 			for _, b := range ix.blocks {
-				if b.first < hi && b.last >= lo {
+				if b.first < hi && b.last >= lo && !b.outside(fromNs, toNs) {
 					bl = append(bl, b)
 				}
 			}

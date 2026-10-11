@@ -124,7 +124,7 @@ func TestFirstCallBackfills(t *testing.T) {
 func TestStatusSeveralDevicesStartsNone(t *testing.T) {
 	l := newLazy(t, 2, "FAKEA", "FAKEB")
 	out, isErr := l.call(t, "logcat_status", `{}`)
-	if isErr || strings.Contains(out, "cursor (now") || !strings.Contains(out, "2 devices are connected; pass device=one of: FAKEA, FAKEB") || !strings.Contains(out, "No device was started") {
+	if isErr || strings.Contains(out, "cursor (newest line") || !strings.Contains(out, "2 devices are connected; pass device=one of: FAKEA, FAKEB") || !strings.Contains(out, "No device was started") {
 		t.Fatalf("status:\n%s", out)
 	}
 	if l.m.Wanted("FAKEA") || l.m.Wanted("FAKEB") || len(l.e.CallsMatching("logcat -b")) != 0 {
@@ -134,7 +134,7 @@ func TestStatusSeveralDevicesStartsNone(t *testing.T) {
 		t.Fatal("search without device= succeeded with two devices")
 	}
 	out, isErr = l.call(t, "logcat_status", `{"device":"FAKEB"}`)
-	if isErr || !strings.Contains(out, "cursor (now, FAKEB)") {
+	if isErr || !strings.Contains(out, "cursor (newest line, FAKEB)") {
 		t.Fatalf("status FAKEB:\n%s", out)
 	}
 	if l.m.Wanted("FAKEA") || !l.m.Wanted("FAKEB") {
@@ -151,7 +151,7 @@ func TestStatusNoCursorDuringBackfill(t *testing.T) {
 	t.Cleanup(func() { device.CatchUpWait = old })
 	l.e.SetDelay("FAKEA", 100*time.Millisecond) // ~4 s dump
 	out, _ := l.call(t, "logcat_status", `{}`)
-	if strings.Contains(out, "cursor (now") || !strings.Contains(out, "backfill in progress (") || !strings.Contains(out, "call logcat_status again") {
+	if strings.Contains(out, "cursor (newest line") || !strings.Contains(out, "backfill in progress (") || !strings.Contains(out, "call logcat_status again") {
 		t.Fatalf("status during backfill:\n%s", out)
 	}
 	out, _ = l.call(t, "logcat_search", `{}`)
@@ -161,7 +161,7 @@ func TestStatusNoCursorDuringBackfill(t *testing.T) {
 	deadline := time.Now().Add(20 * time.Second)
 	for {
 		out, _ = l.call(t, "logcat_status", `{}`)
-		if strings.Contains(out, "cursor (now, FAKEA)") {
+		if strings.Contains(out, "cursor (newest line, FAKEA)") {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -248,14 +248,14 @@ func TestSlowIdentity(t *testing.T) {
 	device.CatchUpWait = 300 * time.Millisecond
 	t.Cleanup(func() { device.CatchUpWait = old })
 	out, isErr := l.call(t, "logcat_status", `{}`)
-	if isErr || !strings.Contains(out, "adb lists FAKEA but reading its identity has not finished yet") || strings.Contains(out, "cursor (now") {
+	if isErr || !strings.Contains(out, "adb lists FAKEA but reading its identity has not finished yet") || strings.Contains(out, "cursor (newest line") {
 		t.Fatalf("status:\n%s", out)
 	}
 	if out, isErr := l.call(t, "logcat_search", `{}`); !isErr || !strings.Contains(out, "call again") {
 		t.Fatalf("search (error %v):\n%s", isErr, out)
 	}
 	device.CatchUpWait = 10 * time.Second
-	if out, _ := l.call(t, "logcat_status", `{}`); !strings.Contains(out, "cursor (now, FAKEA)") {
+	if out, _ := l.call(t, "logcat_status", `{}`); !strings.Contains(out, "cursor (newest line, FAKEA)") {
 		t.Fatalf("status after identification:\n%s", out)
 	}
 }

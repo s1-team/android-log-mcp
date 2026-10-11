@@ -444,9 +444,13 @@ func logcat(e Env, serial string, args []string, crlf bool) int {
 	for end := time.Now().Add(10 * time.Minute); time.Now().Before(end); {
 		lines := bufferLines(e, serial)
 		for ; sent < len(lines); sent++ {
+			// like logd: -T <time> picks the start, the first line at
+			// or after it in buffer order; every line after it follows,
+			// whatever its time (a clock set back while streaming)
 			if from > 0 && lineTime(lines[sent]) < from {
 				continue
 			}
+			from = 0
 			if _, err := w.WriteString(lines[sent] + eol); err != nil {
 				return 1
 			}

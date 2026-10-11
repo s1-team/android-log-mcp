@@ -8,7 +8,6 @@ import (
 
 	"github.com/s1crab/android-log-mcp/server/internal/analysis"
 	"github.com/s1crab/android-log-mcp/server/internal/model"
-	"github.com/s1crab/android-log-mcp/server/internal/timeparse"
 )
 
 func launchRelevant(r *model.Record) bool { return analysis.LaunchTag(r) }
@@ -32,30 +31,21 @@ func (t *Tools) launches(ctx context.Context, a launchArgs) (out string, err err
 	}()
 	d.Store.Refresh()
 	loc := d.Loc()
-	now := d.Now()
-	fromNs := now.Add(-30 * time.Minute).UnixNano()
-	var toNs int64
-	if a.From != "" {
-		tm, err := timeparse.Parse("from", a.From, now)
-		if err != nil {
-			return "", errf("%v", err)
-		}
-		fromNs = tm.UnixNano()
+	ci, fromNs, toNs, err := window(d, a.From, a.To, 30*time.Minute)
+	if err != nil {
+		return "", err
 	}
-	if a.To != "" {
-		tm, err := timeparse.Parse("to", a.To, now)
-		if err != nil {
-			return "", errf("%v", err)
-		}
-		toNs = tm.UnixNano()
-	}
+	now := ci.Now
 	var recs []*model.Record
 	start := time.Now()
 	stopped := false
-	d.Store.Scan(0, 0, true, func(r *model.Record) bool {
-		if r.TimeNs < fromNs-timeSlackNs {
-			return false
-		}
+	scanTo := int64(0)
+	if toNs != 0 {
+		scanTo = toNs + analysis.DisplayedSlackNs
+	}
+	// every record in the window, however it is stored (device clock
+	// changes): no early stop on record order (issue #48)
+	d.Store.ScanTime(0, 0, true, fromNs, scanTo, func(r *model.Record) bool {
 		if time.Since(start) > scanBudget {
 			stopped = true
 			return false
@@ -87,7 +77,7 @@ func (t *Tools) launches(ctx context.Context, a launchArgs) (out string, err err
 	if a.Package != "" {
 		scope = "package " + a.Package
 	}
-	fmt.Fprintf(&b, "device %s · %s · %s · %d launches since %s\n", d.Serial, tzLabel(loc, d.TZName(), now), scope, len(ls), dateTime(fromNs, loc))
+	fmt.Fprintf(&b, "device %s · device time %s · %s · %s · %d launches since %s\n", d.Serial, tzLabel(loc, d.TZName(), now), clockLine(ci), scope, len(ls), dateTime(fromNs, loc))
 	if len(ls) == 0 {
 		b.WriteString("no launch requests (ActivityTaskManager \"START u0 … cmp=<pkg>/…\") found in range.\n")
 		if st := d.Store.Stats(); st.OldestNs > fromNs {

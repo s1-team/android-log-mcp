@@ -484,9 +484,9 @@ func TestReplayFilterEcho(t *testing.T) {
 	e := newReplay(t, fxBoot1)
 	e.file("remote.logcat.txt")
 	e.ok("logcat_search", `{"filter":"tag=:LogTest tag=:MyRepo","from":"2026-10-10 03:07:00"}`,
-		`filter parsed as: (tag == "LogTest" OR tag == "MyRepo") AND time in [`)
+		`filter parsed as: (tag == "LogTest" OR tag == "MyRepo") AND device time in [`)
 	e.ok("logcat_search", `{"filter":"tag=:LogTest | message:remote level:I","from":"2026-10-10 03:07:00"}`,
-		`filter parsed as: (tag == "LogTest" OR message contains "remote") AND level >= INFO AND time in [`)
+		`filter parsed as: (tag == "LogTest" OR message contains "remote") AND level >= INFO AND device time in [`)
 }
 
 // Live regression (v2 e2e): the recorder's first ps snapshot is taken while the

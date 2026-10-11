@@ -17,7 +17,7 @@ import (
 // logcat_status returns no cursor before the catch-up.
 func TestCallDuringIdleStop(t *testing.T) {
 	l := newLazy(t, 3, "FAKEA")
-	if out, isErr := l.call(t, "logcat_status", `{"device":"FAKEA"}`); isErr || !strings.Contains(out, "cursor (now") {
+	if out, isErr := l.call(t, "logcat_status", `{"device":"FAKEA"}`); isErr || !strings.Contains(out, "cursor (newest line") {
 		t.Fatalf("first status:\n%s", out)
 	}
 	device.ReleasePause.Set(1500 * time.Millisecond)
@@ -49,7 +49,7 @@ func TestCallDuringIdleStop(t *testing.T) {
 	}
 	if statusErr {
 		t.Errorf("status: %s", status)
-	} else if !strings.Contains(status, "cursor (now") && !strings.Contains(status, "no cursor until the backfill") {
+	} else if !strings.Contains(status, "cursor (newest line") && !strings.Contains(status, "no cursor until the backfill") {
 		t.Errorf("status during the idle stop:\n%s", status)
 	}
 	waitUntil(t, "owned and recording", 30*time.Second, func() bool {
@@ -78,7 +78,7 @@ func TestCallDuringIdleStop(t *testing.T) {
 
 func cursorOf(status string) string {
 	for _, l := range strings.Split(status, "\n") {
-		if _, c, ok := strings.Cut(l, "cursor (now, FAKEA): "); ok {
+		if _, c, ok := strings.Cut(l, "cursor (newest line, FAKEA): "); ok {
 			return strings.TrimSpace(c)
 		}
 	}

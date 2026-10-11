@@ -52,7 +52,7 @@ func toolDefs() []toolDef {
 			name:  "logcat_status",
 			title: "Logcat recorder status",
 			desc: "Starts recording the device, or extends it with record_for (max 24h; \"0\" stops). " +
-				"Then reports adb/device/recording state and a `cursor` marking \"now\" (pass it as `after` to logcat_search to see only what happens next, e.g. while the user reproduces a bug); call it first if unsure which device is connected.\n" +
+				"Then reports adb/device/recording state and a `cursor` marking the newest stored line (pass it as `after` to logcat_search to see only what happens next, e.g. while the user reproduces a bug); call it first if unsure which device is connected.\n" +
 				"Recording starts on use: the first log tool call for a device backfills what is still in its log buffer, waiting up to 10 s. If the response says backfill in progress, call logcat_status again before using a cursor (no cursor is returned until the backfill has caught up).\n" +
 				"Each device stops recording after a while without log tool calls (shown in the response); record_for keeps it recording until a deadline regardless of calls.\n" +
 				"With several connected devices and no `device`, nothing is started: pass device=<id>.\n" +
@@ -78,15 +78,16 @@ func toolDefs() []toolDef {
 				"Paging: response gives `before`/`after` cursors. To wait for new lines (e.g. while the user reproduces), pass `after` plus `wait_ms` (≤25000).\n" +
 				"The first call for a device starts recording it and backfills its log buffer (waits up to 10 s); a \"backfill in progress\" note means results may be incomplete: call again.\n" +
 				"Java stacks in lines are short by default: each exception and Caused by keeps its first 3 frames (\"↳ K more frames\"), and a stack already shown in the response is \"↳ same K frames as <time>\"; stack=\"full\" shows every frame.\n" +
-				"Use view=\"summary\" first for broad or unknown time ranges (counts by level/tag/package, top repeated messages).",
+				"Use view=\"summary\" first for broad or unknown ranges (counts by level/tag/package, top repeated messages).\n" +
+				"Clocks: lines are in arrival order and every time-valued param and line uses device time. If the device clock was changed (clock jump), device times jump there: the output says so (`clock:` / `clock_jump:` lines with matches on each side); the default (no from/to) shows the newest lines by arrival whatever their device time.",
 			schema: `{"type":"object","properties":{
 "device":{"type":"string","description":"adb serial. Omit when only one device has logs."},
 "filter":{"type":"string","description":"Android Studio Logcat query, e.g. ` + "`tag=:OkHttp level:warn -message:heartbeat`" + `. Optional."},
 "package":{"type":"string","description":"Exact application id; matches lines from ALL its processes (com.foo, com.foo:remote), including processes that have since died."},
 "tags":{"type":"array","items":{"type":"string"},"maxItems":20,"description":"Exact tag names, ORed together, e.g. [\"OkHttp\",\"MyRepo\"]."},
 "min_level":{"type":"string","enum":["verbose","debug","info","warn","error","fatal"],"description":"Minimum priority."},
-"from":{"type":"string","description":"Start time, inclusive. Device-local ` + "`2026-10-10 01:20:00`" + ` or ` + "`01:20:00`" + ` (= device's today), ISO-8601 with offset, or relative like ` + "`30m`, `2h`" + ` (= device now minus that)."},
-"to":{"type":"string","description":"End time, exclusive. Same formats as ` + "`from`" + `. Default: now."},
+"from":{"type":"string","description":"Start, inclusive, in device time (the Android device's clock, as printed in lines): ` + "`2026-10-10 01:20:00`" + ` or ` + "`01:20:00`" + ` (= the device's today), ISO-8601 with offset, or relative like ` + "`30m`, `2h`" + ` (= device now minus that; a relative window ends at device now + 2 s). Host time (host:…) is not supported."},
+"to":{"type":"string","description":"End, exclusive, in device time. Same formats as ` + "`from`" + `. Default: no end (relative from: device now + 2 s)."},
 "view":{"type":"string","enum":["lines","summary"],"default":"lines"},
 "limit":{"type":"integer","minimum":1,"maximum":1000,"default":50,"description":"Max matching lines to return (output is also capped at ~30k chars). For an overview of a range, view=\"summary\" is about 2k chars."},
 "stack":{"type":"string","enum":["short","full"],"default":"short","description":"How Java stacks inside a line are shown: short = each exception and Caused by with its first 3 frames, a repeated stack shown once, at most 2,000 chars per line; full = every frame (up to 8,000 chars per line)."},
@@ -106,8 +107,8 @@ func toolDefs() []toolDef {
 "device":{"type":"string","description":"adb serial. Omit when only one device has logs."},
 "package":{"type":"string","description":"Exact application id. Omit for all apps."},
 "kinds":{"type":"array","items":{"type":"string","enum":["java","native","anr"]},"description":"Default: all three."},
-"from":{"type":"string","description":"Same formats as logcat_search.from. Default: everything recorded."},
-"to":{"type":"string","description":"Same formats as logcat_search.to."},
+"from":{"type":"string","description":"Device time; same formats as logcat_search.from. Default: everything recorded."},
+"to":{"type":"string","description":"Device time; same formats as logcat_search.to."},
 "id":{"type":"string","description":"Crash id from a previous list (e.g. cr3, anr1) to get full detail."},
 "limit":{"type":"integer","minimum":1,"maximum":50,"default":10}
 },"additionalProperties":false}`,
@@ -121,8 +122,8 @@ func toolDefs() []toolDef {
 			schema: `{"type":"object","properties":{
 "device":{"type":"string","description":"adb serial. Omit when only one device has logs."},
 "package":{"type":"string","description":"Exact application id. Omit for all apps."},
-"from":{"type":"string","description":"Default: last 30 minutes. Same formats as logcat_search.from."},
-"to":{"type":"string","description":"Same formats as logcat_search.to."},
+"from":{"type":"string","description":"Device time. Default: 30m (device now minus 30 minutes, up to device now + 2 s). Same formats as logcat_search.from."},
+"to":{"type":"string","description":"Device time; same formats as logcat_search.to."},
 "limit":{"type":"integer","minimum":1,"maximum":20,"default":5}
 },"additionalProperties":false}`,
 		},

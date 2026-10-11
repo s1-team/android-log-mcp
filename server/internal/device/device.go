@@ -42,8 +42,11 @@ type Device struct {
 	lastErr      string
 	loc          *time.Location
 	tzName       string
-	offset       time.Duration // device clock - host clock
-	offsetAt     time.Time     // when offset was measured (host time)
+	lc           LiveClock // clock offset: connect date read + live lines (issue #48)
+	clockSaved   time.Time // host time of the offset last written to meta
+	autoTime     string    // settings global auto_time ("" unknown), read lazily
+	autoStale    bool      // a clock jump / auto_time change was logged since
+	autoErr      string    // why the last auto_time read failed
 	bootID       string
 	pipe         *Pipeline // current boot session (writer only)
 	cancel       context.CancelFunc
@@ -110,8 +113,10 @@ func newDevice(adb *ADB, st *store.Store, serial string) *Device {
 		d.addr = serial
 	}
 	d.applyTZ(m.TZ, m.TZOffset)
-	d.offset = time.Duration(m.ClockOffsetNs)
-	d.offsetAt = time.Unix(0, m.ClockHostNs)
+	if m.ClockHostNs > 0 {
+		d.lc.Set(m.ClockOffsetNs, time.Unix(0, m.ClockHostNs), "date")
+	}
+	d.autoTime = m.AutoTime
 	d.bootID = m.LastBootID
 	return d
 }
@@ -178,47 +183,6 @@ func (d *Device) TZName() string {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	return d.tzName
-}
-
-// Now estimates the device clock.
-// The offset is re-measured every 30 s by the recorder (emulators under
-// software emulation drift by minutes); followers use the recorder's newer
-// measurement from meta.json.
-func (d *Device) Now() time.Time {
-	d.mu.RLock()
-	off, at, loc := d.offset, d.offsetAt, d.loc
-	d.mu.RUnlock()
-	if d.Store != nil {
-		if m := d.Store.Meta(); m.ClockHostNs > at.UnixNano() {
-			off = time.Duration(m.ClockOffsetNs)
-		}
-	}
-	return time.Now().Add(off).In(loc)
-}
-
-// measureClock re-reads the device clock (`date +%s.%N`, midpoint of the adb round trip).
-func (d *Device) measureClock(ctx context.Context) {
-	t0 := time.Now()
-	out, err := d.adb.Shell(ctx, d.Addr(), 15*time.Second, "date +%s.%N")
-	t1 := time.Now()
-	if err != nil {
-		return
-	}
-	f, err := strconv.ParseFloat(strings.TrimSpace(out), 64)
-	if err != nil || f < 1e9 {
-		return
-	}
-	sec := int64(f)
-	dev := time.Unix(sec, int64((f-float64(sec))*1e9))
-	mid := t0.Add(t1.Sub(t0) / 2)
-	off := dev.Sub(mid)
-	d.mu.Lock()
-	d.offset, d.offsetAt = off, mid
-	d.mu.Unlock()
-	d.Store.UpdateMeta(func(m *store.Meta) {
-		m.ClockOffsetNs, m.ClockHostNs = int64(off), mid.UnixNano()
-		m.LastSeenHostNs = time.Now().UnixNano() // writer heartbeat (also when the device is quiet)
-	})
 }
 
 // Status snapshot.
@@ -461,9 +425,8 @@ func (d *Device) probe(ctx context.Context) error {
 			// date +%s truncates: add 0.5 s to center the estimate.
 			est = now.Add(500 * time.Millisecond)
 		}
-		off := est.Sub(mid)
+		d.observeDate(est.Sub(mid), mid)
 		d.mu.Lock()
-		d.offset, d.offsetAt = off, mid
 		d.devNowNs, d.devNowCoarse = now.UnixNano(), coarse
 		d.mu.Unlock()
 	} else {
@@ -473,11 +436,9 @@ func (d *Device) probe(ctx context.Context) error {
 	}
 	d.mu.Lock()
 	d.bootID = pr["boot_id"]
-	off := d.offset
 	d.mu.Unlock()
 	d.Store.UpdateMeta(func(m *store.Meta) {
-		m.Model, m.Release, m.SDK, m.TZ, m.TZOffset, m.ClockOffsetNs = pr["ro.product.model"], pr["ro.build.version.release"], pr["ro.build.version.sdk"], tz, zone, int64(off)
-		m.ClockHostNs = time.Now().UnixNano()
+		m.Model, m.Release, m.SDK, m.TZ, m.TZOffset = pr["ro.product.model"], pr["ro.build.version.release"], pr["ro.build.version.sdk"], tz, zone
 	})
 	return nil
 }
@@ -634,6 +595,8 @@ func (d *Device) recordOnce(ctx context.Context) error {
 	pipe := NewPipeline(d.Store, boot, loc)
 	pipe.NeedDropbox = d.requestDropbox
 	pipe.OnUnknownUID = func(uid int) { d.maybeRefreshPackages(ctx, uid) }
+	pipe.Clock = &d.lc
+	pipe.OnClockEvent = d.onClockEvent
 	// lines logged before the probe are history: their processes are
 	// mostly gone, and psLoop seeds the table once caught up anyway
 	liveFrom := devNow
@@ -744,17 +707,38 @@ func (d *Device) recordOnce(ctx context.Context) error {
 			m.Gaps = kept
 		})
 	}
+	off0, off0ok := d.clockOffset() // the connect clock read
+	if tEnd == 0 && terr == nil {
+		pipe.Live = true // empty buffer: every line is live
+	}
+	agree := 0
 	accept := func(r *model.Record) {
 		if r == nil {
 			return
 		}
-		atEnd := tEnd != 0 && r.TimeNs >= tEnd
-		if rbSet != nil {
-			// after a clock rollback times are not monotonic: the line at
-			// T_end is the one with that time (T_end has ms precision)
-			atEnd = tEnd != 0 && r.TimeNs/1e6 == tEnd/1e6
+		atEnd := tEnd != 0 && replayEnd(r, tEnd, time.Now(), off0, off0ok)
+		if atEnd {
+			// the line at T_end is the last replayed one: lines after it
+			// arrive as they are logged, so their arrival host time can
+			// set the clock offset (issue #48)
+			defer func() { pipe.Live = true }()
+		} else if tEnd == 0 && terr != nil && !pipe.Live && off0ok {
+			// T_end unknown: live once two consecutive lines agree with
+			// the connect clock read
+			if lineAgrees(r, time.Now(), off0) {
+				agree++
+				if agree >= 2 {
+					defer func() { pipe.Live = true }()
+				}
+			} else {
+				agree = 0
+			}
 		}
-		if dedupNs != 0 && r.TimeNs <= dedupNs {
+		// de-duplication against stored lines applies to the replayed
+		// part only: once live, a line dated before the last stored one
+		// is new (the device clock was set back; issue #48)
+		replaying := !pipe.Live
+		if replaying && dedupNs != 0 && r.TimeNs <= dedupNs {
 			overlap = true
 			if r.TimeNs < dedupNs || dedup[recHash(r)] {
 				if atEnd {
@@ -763,7 +747,7 @@ func (d *Device) recordOnce(ctx context.Context) error {
 				return
 			}
 		}
-		if rbSet != nil && rbSet[recHash(r)] {
+		if replaying && rbSet != nil && rbSet[recHash(r)] {
 			overlap = true
 			d.rollbackSkipped.Add(1)
 			if atEnd {
@@ -885,7 +869,10 @@ func (d *Device) maybeSeedPS(ctx context.Context) {
 // full ps snapshot also closes processes that died without a lifecycle line.
 func (d *Device) psLoop(ctx context.Context, pipe *Pipeline) {
 	for ctx.Err() == nil && d.pipeline() == pipe {
-		d.measureClock(ctx)
+		if d.Store.IsWriter() { // writer heartbeat, also when the device is quiet
+			d.Store.UpdateMeta(func(m *store.Meta) { m.LastSeenHostNs = time.Now().UnixNano() })
+		}
+		d.saveClock(false)
 		d.seedPS(ctx, pipe)
 		sleep(ctx, 30*time.Second)
 	}
@@ -1194,7 +1181,7 @@ func parseDate(s string) (time.Time, bool, bool) {
 	s = strings.TrimSpace(s)
 	secS, frac, hasFrac := strings.Cut(s, ".")
 	sec, err := strconv.ParseInt(secS, 10, 64)
-	if err != nil || sec < 1e8 {
+	if err != nil || sec <= 0 { // a device clock reset to 1970 is a valid reading (#48)
 		return time.Time{}, false, false
 	}
 	if hasFrac && frac != "" && strings.Trim(frac, "0123456789") == "" {
@@ -1210,4 +1197,24 @@ func (d *Device) started() bool {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	return d.owned && d.cancel != nil
+}
+
+// replayEnd: r is the line at T_end, the last buffered line by arrival when
+// the stream started (#30 catch-up). Matched by its exact ms device time,
+// not by "device time ≥ T_end": after a clock set back, replayed lines can
+// be dated far after T_end (issue #48). A line at or after T_end whose
+// arrival agrees with the connect clock read also ends the replay (T_end
+// line evicted, or ms precision lost).
+func replayEnd(r *model.Record, tEnd int64, arrived time.Time, off0 int64, ok bool) bool {
+	if r.TimeNs/1e6 == tEnd/1e6 {
+		return true
+	}
+	return r.TimeNs >= tEnd && ok && lineAgrees(r, arrived, off0)
+}
+
+// lineAgrees: r's device time against its arrival host time is within the
+// jump threshold of the clock offset off.
+func lineAgrees(r *model.Record, arrived time.Time, off int64) bool {
+	d := r.TimeNs - arrived.UnixNano() - off
+	return d <= store.ClockJumpThreshold && d >= -store.ClockJumpThreshold
 }
