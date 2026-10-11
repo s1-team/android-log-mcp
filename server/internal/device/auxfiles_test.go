@@ -189,10 +189,10 @@ func TestCompactAuxFollowsConfiguredRetention(t *testing.T) {
 // bring old crashes back as new ones.
 func TestApplyDropboxSkipsEntriesOutsideRetention(t *testing.T) {
 	loc := time.UTC
-	entry := func(ts string) string {
-		return "========================================\n" + ts + " data_app_crash (text, 100 bytes)\nProcess: com.example.app\nPID: 42\n\njava.lang.RuntimeException: boom\n\tat com.example.app.Main.run(Main.java:1)\n"
+	entry := func(ts, pid string) string {
+		return "========================================\n" + ts + " data_app_crash (text, 100 bytes)\nProcess: com.example.app\nPID: " + pid + "\n\njava.lang.RuntimeException: boom\n\tat com.example.app.Main.run(Main.java:1)\n"
 	}
-	out := "Drop box contents: 2 entries\n" + entry("2026-10-07 10:00:00") + "\n" + entry("2026-10-10 09:00:00")
+	out := "Drop box contents: 2 entries\n" + entry("2026-10-07 10:00:00", "42") + "\n" + entry("2026-10-10 09:00:00", "43")
 	newest := time.Date(2026, 10, 10, 12, 0, 0, 0, loc).UnixNano()
 	for _, tc := range []struct {
 		maxAge time.Duration

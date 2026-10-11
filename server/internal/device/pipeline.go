@@ -3,6 +3,7 @@ package device
 import (
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -315,20 +316,31 @@ func (p *Pipeline) ApplyDropbox(out string) {
 		if e.TimeNs != 0 && e.TimeNs < cutoff {
 			continue
 		}
+		// Keyed by content when the body names the crashed pid (a pid
+		// crashes once, so the body is unique): DropBox re-times entries
+		// dated after device now when the clock was set back, and a time
+		// key would import the entry again (issue #63). Time keys of
+		// older versions are still honoured.
 		key := e.Tag + "|" + strconv.FormatInt(e.TimeNs, 10)
 		if seen[key] {
 			continue
 		}
+		if e.Note == "" && namesPid(e.Body) {
+			key = dropboxBodyKey(e)
+			if seen[key] {
+				continue
+			}
+		}
 		// match against the summaries; for an existing crash, merge into
 		// its full version (MatchDropbox copies the match and keeps its
 		// traces / DropBox text)
-		c, isNew := analysis.MatchDropbox(CrashSummaries(p.Store), e)
+		c, isNew := analysis.MatchDropboxBoot(CrashSummaries(p.Store), e, p.Boot)
 		if c != nil && !isNew {
 			full := CrashFull(p.Store, c.ID)[0]
 			if full == nil {
 				continue
 			}
-			c, isNew = analysis.MatchDropbox([]*analysis.Crash{full}, e)
+			c, isNew = analysis.MatchDropboxBoot([]*analysis.Crash{full}, e, p.Boot)
 		}
 		p.Store.AppendAux("dropbox_seen", seenLine{Key: key, HostNs: time.Now().UnixNano()})
 		if c == nil {
@@ -476,4 +488,19 @@ func firstSource(c *analysis.Crash) string {
 		return ""
 	}
 	return c.Sources[0]
+}
+
+// dropboxBodyKey is the dropbox_seen key of an entry with contents:
+// "tag|b:<FNV-64a of the body, hex>". Stable when DropBox re-times the
+// entry (issue #63).
+func dropboxBodyKey(e analysis.DropboxEntry) string {
+	h := fnv.New64a()
+	h.Write([]byte(e.Body))
+	return e.Tag + "|b:" + strconv.FormatUint(h.Sum64(), 16)
+}
+
+// namesPid reports whether a DropBox body names the crashed pid ("PID: n"
+// in crash and ANR headers, "pid: n," in tombstones).
+func namesPid(body string) bool {
+	return strings.Contains(body, "\nPID: ") || strings.HasPrefix(body, "PID: ") || strings.Contains(body, "pid: ")
 }
