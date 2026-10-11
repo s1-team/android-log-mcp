@@ -156,6 +156,7 @@ Use view="summary" first for broad or unknown time ranges (counts by level/tag/p
 device emulator-5554 · times are device-local Asia/Shanghai (+08:00) · date 2026-10-10
 filter parsed as: package == com.foo AND (tag = "OkHttp" OR tag = "MyRepo") AND level >= DEBUG AND time in [01:20:00, 01:30:00)
 matched 1,284 lines; showing newest 200 (01:27:41.002–01:29:58.731)
+count: total=1284 count_exact=true
 format: time level pid/tid process tag: message
 01:27:41.002 D 23011/23090 com.foo OkHttp: --> GET https://api.foo.com/v1/feed
 01:27:41.315 D 23011/23090 com.foo OkHttp: <-- 200 https://api.foo.com/v1/feed (312ms)
@@ -437,6 +438,7 @@ agent 可以借此发现自己写的 `message:foo message:bar` 实际被解释�
   - 每次响应的硬预算是 30,000 字符，留出 Claude Code 50,000 字符转存阈值以下的余量，大约 8–10k token。
   - limit 默认 200。超出时按 2.2 的截断格式输出。
   - 可以考虑给 Claude Code 声明 `anthropic/maxResultSizeChars`，**[未知]** 是否值得做。
+- **Match counts (issue #20).** `logcat_search` stops counting 100 ms after its page (`limit`) is full. The total is then a lower bound, and the text says which span was counted and how to get an exact count: `matched ≥14,043 lines (counted the newest 21 min only, since 23:32:09; older history not counted — narrow with from/to, e.g. from="1h", for an exact count)`. Without a filter or time window, the exact total comes from the store's record range (`Store.Count`: the in-memory window plus the per-block line counts of the segment index), without decoding records. Every lines response has one machine-readable line, `count: total=N count_exact=true|false [counted_from|counted_to="<device-local time>"]`, so agents need not parse the prose. The top-tags line says when it covers only the counted matches (or only the page). These fields are a text line rather than MCP `structuredContent`, because Claude Code passes only `structuredContent` to the model when both are present, which would drop the log lines (see §7 Q2).
 - **超时**：只有 `wait_ms` 会阻塞，上限 25 秒。其他查询目标是 1 秒内返回（内存索引加分段扫描）。冷查询扫描大段历史时，返回已扫描的部分，并给出 `continue: before=<cursor>`，不做长时间阻塞。
 - **时区**：
   - 所有输出用设备本地时间，表头写 `tz <IANA> (+hh:mm)`。时区来源是 `getprop persist.sys.timezone`，具体命令 **[需实机]**。
@@ -455,6 +457,7 @@ agent 可以借此发现自己写的 `message:foo message:bar` 实际被解释�
    - 建议：v1 不做，或者用启动参数 `--enable-actions` 打开，默认关闭。
 2. **structuredContent 和 outputSchema**：各 MCP 宿主把 text 还是 structuredContent 交给模型，**[未知]**，需要按 MCP 宿主实测。规范要求返回 structuredContent 时 SHOULD 同时给出 JSON 文本，可能导致 token 翻倍。
    - 建议：v1 只返回文本。v1.1 在 status、crashes、launches 这几个小结果上评测加 structuredContent 的效果。
+   - Finding (2026-10, #20): Claude Code forwards only `structuredContent` to the model when a result has both (anthropics/claude-code#9962, #55677). Machine-readable fields therefore go into a fixed text line (`count: …`), not `structuredContent`.
 3. **自动记录所有设备**还是只记录一台。前者对 agent 最简单，但资源占用随设备数线性增长；上限 4 台是拍脑袋定的。
 4. **严格报错是否需要一个“AS 兼容的宽松模式”开关**。agent 场景下建议不提供。
 5. **默认 limit**（200 条、30k 字符）和**是否默认折叠重复行**，应通过评测确定。Anthropic 建议做 eval：拿真实任务比较调用次数、token 和成功率。
