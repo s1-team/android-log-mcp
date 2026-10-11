@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-11
+
 ### Fixed
 
 - Stopping the recording of a device (idle stop, end of a pin, `record --stop`) or stopping the service no longer leaves adb processes behind ([#24](https://github.com/s1crab/android-log-mcp/issues/24)). It cancels the device's background work (process table, packages, buffer span, DropBox fetches, device tracking, identity probes) and waits for it, at most 5 s, before the store is closed. Work still running then is named in the service log, and its adb processes are killed with their child processes (never the adb server). A cancelled adb call also stops waiting for output pipes that a child process of adb still holds open. A DropBox fetch can now be cancelled, and a fetch interrupted by a stop runs in the next recording session.
@@ -152,7 +154,8 @@ Upgrade notes: [README › Upgrading › To 0.4.0](https://github.com/s1crab/and
 - First release: an MCP stdio server giving AI agents read-only access to Android logcat, with background recording of every connected device, the tools `logcat_status`, `logcat_search` (Android Studio filter syntax with strict errors), `logcat_crashes` and `logcat_app_launches`, and the `call` debug subcommand.
 - npm packaging: a Node launcher plus per-platform binary packages (linux / darwin / win32 × x64 / arm64), CI and release workflows.
 
-[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/s1crab/android-log-mcp/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/s1crab/android-log-mcp/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/s1crab/android-log-mcp/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/s1crab/android-log-mcp/compare/v0.3.0...v0.4.0
