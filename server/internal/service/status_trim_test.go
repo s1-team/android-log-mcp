@@ -11,9 +11,10 @@ import (
 // they change and always with verbose=true; each connection is tracked on its
 // own; `service status` always shows them (#23).
 func TestStatusStaticLinesPerConnection(t *testing.T) {
-	t.Setenv(LingerEnv, "")
+	t.Parallel()
+	linger := &lingerVal{}
 	ctrl := testControl(t)
-	s := startTest(t, ctrl, "0.5.0")
+	s := startTest(t, ctrl, "0.5.0", linger.opt)
 	dial := func() *Conn {
 		c, err := Dial(context.Background(), ctrl, "0.5.0", "mcp")
 		if err != nil {
@@ -76,7 +77,7 @@ func TestStatusStaticLinesPerConnection(t *testing.T) {
 	trimmed("other connection, second call", status(b, `{}`))
 
 	// a changed line shows the whole block again, once
-	t.Setenv(LingerEnv, "30m")
+	linger.Set("30m")
 	out := status(a, `{}`)
 	full("linger changed", out)
 	if !strings.Contains(out, "linger: per device, after its last log tool call: 30m0s") {

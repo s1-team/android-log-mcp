@@ -30,6 +30,7 @@ func consoleProbe() (int, bool) {
 // call the service makes) must have no visible console window: 0.4.0 used
 // DETACHED_PROCESS, so every adb child of the service opened a new window.
 func TestDetachedServiceHasNoVisibleConsole(t *testing.T) {
+	t.Parallel()
 	out := filepath.Join(t.TempDir(), "probe.txt")
 	cmd := procattr.Hide(exec.Command(os.Args[0], "-test.run="+probeRun))
 	cmd.Env = append(os.Environ(), "ALM_CONSOLE_PROBE="+out, "ALM_CONSOLE_PROBE_CHILD=1")

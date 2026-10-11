@@ -12,9 +12,9 @@ import (
 )
 
 func TestFirstStatusAfterHandoffStartsDevice(t *testing.T) {
-	e := installFake(t, "FAKEA")
+	e, withADB := installFake(t, "FAKEA")
 	ctrl := testControl(t)
-	old := startTest(t, ctrl, "0.4.0")
+	old := startTest(t, ctrl, "0.4.0", withADB)
 	c, err := Dial(context.Background(), ctrl, "0.4.0", "mcp")
 	if err != nil {
 		t.Fatal(err)
@@ -32,11 +32,7 @@ func TestFirstStatusAfterHandoffStartsDevice(t *testing.T) {
 	old.Stop("replaced")
 	<-old.Done()
 	e.SetIdentDelay("FAKEA", 3*time.Second)
-	s, err := Start(Options{Control: ctrl, Version: "0.4.1", Drain: time.Second, CatchUpWait: 300 * time.Millisecond})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { s.Stop("test end") })
+	s := startTest(t, ctrl, "0.4.1", withADB, func(o *Options) { o.CatchUpWait = 300 * time.Millisecond })
 	c2, err := Dial(context.Background(), ctrl, "0.4.1", "mcp")
 	if err != nil {
 		t.Fatal(err)
