@@ -53,7 +53,7 @@ jobs:
   emulator:
     needs: plan
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
@@ -117,10 +117,14 @@ jobs:
           disable-animations: false
           script: echo "boot snapshot saved"
       # The checks never fail this step (results.tsv decides below), so a
-      # failure here is the emulator itself: boot it once more.
+      # failure here is the emulator itself: boot it once more. A run takes
+      # about 8 minutes; the step timeout covers an emulator that never exits
+      # after a failed boot (seen once: services missing after a snapshot
+      # boot, then a 43-minute hang on shutdown).
       - name: Run the validation
         id: run1
         continue-on-error: true
+        timeout-minutes: 18
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api }}
@@ -130,21 +134,27 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-save
           disable-animations: true
           script: bash scripts/emulator-ci.sh emulator-5554 "$OUT" || echo "some checks failed (see results.tsv)"
-      - name: Run the validation (emulator retry)
-        if: steps.run1.outcome == 'failure'
+      - name: Stop a leftover emulator
+        if: steps.run1.outcome != 'success'
+        run: |
+          adb kill-server 2>/dev/null || true
+          pkill -9 -f qemu-system 2>/dev/null || true
+      - name: Run the validation (emulator retry, cold boot)
+        if: steps.run1.outcome != 'success'
+        timeout-minutes: 18
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api }}
           target: ${{ matrix.target }}
           arch: x86_64
           force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-save
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-save -no-snapshot-load
           disable-animations: true
           script: rm -rf "$OUT" && bash scripts/emulator-ci.sh emulator-5554 "$OUT" || echo "some checks failed (see results.tsv)"
       - name: Results
         if: always()
         run: |
-          echo "emulator boot retried: ${{ steps.run1.outcome == 'failure' }}" | tee "$OUT/meta.txt" 2>/dev/null || true
+          echo "emulator boot retried: ${{ steps.run1.outcome != 'success' }}" | tee "$OUT/meta.txt" 2>/dev/null || true
           test -s "$OUT/results.tsv" || { echo "::error::no results (the emulator did not run the checks)"; exit 1; }
           cat "$OUT/results.tsv"
           ! grep -q $'\tfail' "$OUT/results.tsv"
