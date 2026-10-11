@@ -7,12 +7,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/s1crab/android-log-mcp/server/internal/layout"
 )
 
 func TestInstallCommand(t *testing.T) {
-	out, errOut, code := cli(t, nil, "install", "--json")
+	t.Parallel()
+	// its own home: install is not idempotent across -count runs in one test home
+	env := isoEnv(t)
+	out, errOut, code := cli(t, env, "install", "--json")
 	var r struct {
 		Path, Version string
 		Updated       bool
@@ -20,7 +21,7 @@ func TestInstallCommand(t *testing.T) {
 	if code != 0 || json.Unmarshal([]byte(out), &r) != nil || !r.Updated {
 		t.Fatalf("install: %d %q %q", code, out, errOut)
 	}
-	if filepath.Dir(filepath.Dir(r.Path)) != layout.DefaultDir() || filepath.Base(filepath.Dir(r.Path)) != "exe" {
+	if filepath.Dir(filepath.Dir(r.Path)) != controlDirOf(env) || filepath.Base(filepath.Dir(r.Path)) != "exe" {
 		t.Fatalf("installed to %s, want <control dir>/exe/", r.Path)
 	}
 	// the copy is a working binary of the same version
@@ -30,15 +31,15 @@ func TestInstallCommand(t *testing.T) {
 	if err != nil || strings.TrimSpace(string(got)) != r.Version {
 		t.Fatalf("%s --version: %q %v, want %s", r.Path, got, err, r.Version)
 	}
-	out, errOut, code = cli(t, nil, "install")
+	out, errOut, code = cli(t, env, "install")
 	if code != 0 || strings.TrimSpace(out) != r.Path || !strings.Contains(errOut, "already up to date") || !strings.Contains(errOut, `"command":`) {
 		t.Fatalf("second install: %d %q %q", code, out, errOut)
 	}
-	out, _, _ = cli(t, nil, "root", "--json")
+	out, _, _ = cli(t, env, "root", "--json")
 	if !strings.Contains(out, `"exe"`) {
 		t.Fatalf("root --json does not show the installed exe: %s", out)
 	}
-	if _, _, code := cli(t, nil, "install", "extra"); code != 2 {
+	if _, _, code := cli(t, env, "install", "extra"); code != 2 {
 		t.Fatalf("install extra: code %d", code)
 	}
 }

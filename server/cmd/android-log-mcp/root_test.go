@@ -30,6 +30,7 @@ func cli(t *testing.T, env []string, args ...string) (string, string, int) {
 }
 
 func TestRemovedHomeIsAnError(t *testing.T) {
+	// serial: uses the package-wide test home (testhome), shared with the other serial tests
 	for _, c := range []struct {
 		env  []string
 		args []string
@@ -46,6 +47,7 @@ func TestRemovedHomeIsAnError(t *testing.T) {
 }
 
 func TestRootCommand(t *testing.T) {
+	// serial: uses the package-wide test home (testhome), shared with the other serial tests
 	out, _, code := cli(t, nil, "root")
 	if code != 0 || strings.TrimSpace(out) != layout.DefaultDir() {
 		t.Fatalf("root: %d %q", code, out)

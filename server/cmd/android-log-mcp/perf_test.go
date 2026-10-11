@@ -143,6 +143,7 @@ func perfBuffer(t *testing.T, e fakeadb.Env, serial string, size int) int {
 }
 
 func TestPerfProcess(t *testing.T) {
+	// serial: measures timings and must not share the CPU with other tests
 	dir := os.Getenv(perf.EnvOut)
 	if dir == "" {
 		t.Skip("set " + perf.EnvOut + "=<dir> (scripts/perf.sh)")
