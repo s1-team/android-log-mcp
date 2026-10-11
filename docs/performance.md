@@ -103,7 +103,7 @@ Recorded 2026-10-11 on the dev box: linux/amd64, Intel Xeon, 8 vCPUs shared with
 
 | Query | ms |
 |---|---:|
-| `logcat_status {}` / `{package}` | 0.1 / 33 |
+| `logcat_status {}` / `{package}` | 0.1 / 14 (was 33: crash list from the crash index, #22) |
 | `logcat_search {}` (exact total from the record range, #20) | 0.9 (was ≈ 1,515) |
 | `logcat_search {package}`, `tag=:`, `min_level`, negation (count stops 100 ms after the page is full, #20) | ≈ 106–112 (was ≈ 1,515) |
 | `logcat_search` regex (sparse matches: filling the page takes most of the time) | 1,191 (was ≈ 1,515) |
@@ -111,14 +111,15 @@ Recorded 2026-10-11 on the dev box: linux/amd64, Intel Xeon, 8 vCPUs shared with
 | `logcat_search` 5-minute window at the oldest end (cold / warm) | 1,819 / 1,714 |
 | `logcat_search` full scan, no match (cold / warm) | 2,879 / 2,836 (completes, at the edge of the 2.5 s scan budget) |
 | `logcat_search {view: summary, from: 1h}` | 69 |
-| `logcat_crashes {}` / detail of the oldest crash (cold) | 17 / 105 |
+| `logcat_crashes {}` / detail of the oldest crash (warm / cold) | 0.7 / 0.2 / 86 (was 17 / 17 / 103: crash index, #22) |
 | `logcat_app_launches {package}` 30 min / 24 h | 0.8 / 1,797 |
 
 | Throughput / disk | Value |
 |---|---:|
-| Ingest over the one-day history | 47k lines/s |
+| Ingest over the one-day history | 448k lines/s (was 47k: each crash re-read `crashes.jsonl`, fixed in #22) |
 | Ingest per line, fresh store (micro-benchmark) | 3.0 µs, 6.2 allocs, 869 B |
-| Ingest per line, averaged over the one-day history | 29 allocs, 8,113 B |
+| Ingest per line, averaged over the one-day history | 7 allocs, 797 B (was 29 allocs, 8,113 B) |
+| Recording one crash with 2,000 stored / crash list of 2,020 (#22) | 0.24 ms, 35 KB / 0.004 ms (was 41 ms, 18 MB / 45 ms) |
 | `Store.Scan` cold / warm / cold + filter | 211k–261k / 285k / 266k records/s (noisy box) |
 | Disk | 222 bytes per input line (raw logcat text: 168), 260 per record |
 
@@ -127,7 +128,7 @@ Recorded 2026-10-11 on the dev box: linux/amd64, Intel Xeon, 8 vCPUs shared with
 1. ~~**Searches cost about 1.5 s once the history is large.**~~ Fixed in #20. The scan used to keep counting matches for up to 1.5 s after the page was full and then reported a lower bound (`matched ≥430,079 lines`). Now a search without a filter or time window takes its exact total from the stored record range (`Store.Count`, 0.9 ms on the one-day history), and a filtered search stops counting 100 ms after the page is full (≈ 110 ms) and says which span the lower bound covers (`count: … count_exact=false counted_from=…`). The perf metric `query.<name>.count_exact` records whether each count is exact; `search_default` must stay exact.
 2. **`age:` and old windows do not bound the scan.** `age:5m` is evaluated per record, but it does not stop the newest-first scan the way `from` does (1.7 s). A 5-minute window at the old end scans the whole newer history first (1.8 s). A time → seq lookup over the block index would make both proportional to the window.
 3. **Full-history scans are at the edge of the 2.5 s scan budget.** JSON decoding limits the scan to about 210k–260k records/s, so one call can cover at most about 600k records. A no-match search over the synthetic day still completes, in about 2.8–3.0 s: about 2.1 s of scanning, and the zero-result hints take the rest. On a busier day, or a slower machine, the same search returns "scan stopped … incomplete".
-4. **Ingest slows down as crashes accumulate.** `Pipeline.EmitCrash` calls `LoadCrashes`, which re-reads and JSON-decodes the whole `crashes.jsonl`, for every crash. That is O(crashes²). On the synthetic day (several hundred crashes and ANRs) it takes 80 % of the ingest CPU: 47k lines/s and 8.1 KB allocated per line, against about 330k lines/s (3.0 µs per line) and 0.9 KB per line on a fresh store. An in-memory crash index would fix it. `logcat_crashes` itself allocates 1.5 MB per call on the fixture for the same reason.
+4. ~~**Ingest slows down as crashes accumulate.**~~ Fixed in #22. `Pipeline.EmitCrash` called `LoadCrashes`, which re-read and JSON-decoded the whole `crashes.jsonl` twice for every crash (O(crashes²)); on the synthetic day that was 80 % of the ingest CPU (47k lines/s, 8.1 KB per line). A shared per-device crash index (summaries plus the file offset of each crash's newest version, incremental reads, rebuilt after compaction) makes ingest 448k lines/s and 0.8 KB per line, and `logcat_crashes {}` 0.7 ms instead of 17 ms. New metrics: `ingest.crash_emit_ms_at_2000` (0.24 ms, was 41 ms), `allocs.crash_emit_at_2000.bytes` (35 KB, was 18 MB; grows with the crash history if ingest re-reads the file again) and `query.crash_list_at_2000.ms`.
 5. ~~**The default `logcat_search` output is about 6.9k tokens.**~~ Fixed in #23: the default `limit` is 50 (was 200; the 30k budget stopped it at about 175 lines), Java stacks are short by default (`stack="short"`: 3 frames per exception and `Caused by`, a repeated stack shown once) and a truncated page points at `view="summary"`. `logcat_search {}` is 8.4k chars (≈2.1k tokens) instead of 27.5k; ten warnings with the same 30-frame stack take 3.8k instead of 27.5k. With a page of 50, a filtered search fills it sooner, so more counts are lower bounds (`query.search_age.count_exact` 1 → 0) and it returns faster.
 6. **The summary view allocates about 3.9 MB / 41k allocations per call on 6.4k records** (template normalisation per record). It is fine at this size, but it scales linearly with the range.
 
@@ -161,5 +162,5 @@ Recorded 2026-10-11 on the dev box: linux/amd64, Intel Xeon, 8 vCPUs shared with
   1. （#20 已修复）历史一大，不带时间范围的搜索都要约 1.5 s。现在不带过滤条件时，总数直接从记录范围精确得出（约 1 ms）；带过滤条件时，页满后只再计数 100 ms（约 110 ms），并注明计数范围；
   2. `age:` 和旧时间窗不会让扫描提前结束；
   3. 全量扫描约每秒 25 万条，扫完一天的历史已接近 2.5 s 的扫描预算；
-  4. 每次发现崩溃都会重读整个 `crashes.jsonl`，复杂度 O(n²)，崩溃一多，写入速度降到约七分之一；
+  4. ~~每次发现崩溃都会重读整个 `crashes.jsonl`，复杂度 O(n²)~~ 已在 #22 修复：每台设备一个共享崩溃索引，一天历史的写入速度从 47k 行/秒升到 448k 行/秒；
   5. ~~默认搜索输出约 6.9k token~~：#23 已改（默认 50 行、堆栈默认折叠），约 2.1k token。

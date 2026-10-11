@@ -955,7 +955,14 @@ func (d *Device) maybeRefreshPackages(ctx context.Context, uid int) {
 func (d *Device) Packages() map[int][]string { return LoadPackages(d.Store) }
 
 // Crashes loads all crashes (last version of each ID wins), newest first.
-func (d *Device) Crashes() []*analysis.Crash { return LoadCrashes(d.Store) }
+// Crashes returns crash summaries (newest version of each, newest first;
+// no stack, traces or DropBox text). Shared: do not modify. Use CrashFull
+// for the full crash.
+func (d *Device) Crashes() []*analysis.Crash { return CrashSummaries(d.Store) }
+
+// CrashFull decodes the newest version of the given crashes in full (nil
+// for ids that are not stored).
+func (d *Device) CrashFull(ids ...string) []*analysis.Crash { return CrashFull(d.Store, ids...) }
 
 // Procs loads process lifetimes (last version of each entry wins).
 func (d *Device) Procs() []procs.Proc { return LoadProcs(d.Store) }

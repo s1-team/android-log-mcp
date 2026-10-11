@@ -67,6 +67,9 @@ func (t *Tools) crashes(ctx context.Context, a crashArgs) (out string, err error
 	if a.ID != "" {
 		for _, c := range all {
 			if strings.EqualFold(c.ID, strings.TrimSpace(a.ID)) {
+				if full := d.CrashFull(c.ID)[0]; full != nil {
+					c = full
+				}
 				return t.crashDetail(d, c, all), nil
 			}
 		}
@@ -100,7 +103,11 @@ func (t *Tools) crashes(ctx context.Context, a crashArgs) (out string, err error
 	}
 	if len(sel) == 1 {
 		fmt.Fprintf(&b, "device %s · %s · %s · 1 match → full detail\n", d.Serial, tzLabel(loc, d.TZName(), now), scope)
-		b.WriteString(t.crashDetail(d, sel[0], all))
+		c := sel[0]
+		if full := d.CrashFull(c.ID)[0]; full != nil {
+			c = full
+		}
+		b.WriteString(t.crashDetail(d, c, all))
 		return b.String(), nil
 	}
 	// group by signature
@@ -139,13 +146,26 @@ func (t *Tools) crashes(ctx context.Context, a crashArgs) (out string, err error
 		b.WriteString(".\n")
 		return b.String(), nil
 	}
+	// the list shows stacks / ANR traces of the shown groups only: decode
+	// just those in full (issue #22)
+	var heads []string
+	for i, g := range groups {
+		if i >= a.Limit {
+			break
+		}
+		heads = append(heads, g.items[0].ID)
+	}
+	fulls := d.CrashFull(heads...)
 	shown := 0
 	for _, g := range groups {
 		if shown >= a.Limit {
 			break
 		}
-		shown++
 		c := g.items[0]
+		if f := fulls[shown]; f != nil {
+			c = f
+		}
+		shown++
 		b.WriteString(crashListEntry(c, loc))
 		if len(g.items) > 1 {
 			var also []string
