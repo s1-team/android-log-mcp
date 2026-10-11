@@ -154,7 +154,7 @@ The `exe/` directory holds one binary (about 11 MB), plus renamed copies only wh
 | Tool | Purpose | Main parameters |
 |---|---|---|
 | `logcat_status` | Starts recording the device (or keeps it recording until now + `record_for`, at most `24h`; `"0"` stops). Devices, recording and backfill state, history range and gaps, the service process (pid, version, root, linger, pins), and a "now" cursor; with `package`, install state and running device processes. The lines that rarely change (`root`, `linger`, `lifetime`, `service log`, `adb`, `store`) are shown on the first call of a session and again when they change; `verbose=true` always shows them | `device` `package` `record_for` `verbose` |
-| `logcat_search` | Search logs. `view="lines"` (default) returns lines; `view="summary"` returns counts by level, tag and device process, repeated messages, crash count and latest errors | `filter` `package` `tags` `min_level` `from` `to` `limit` `context` `before` `after` `wait_ms` |
+| `logcat_search` | Search logs. `view="lines"` (default) returns the newest `limit` lines (default 50); `view="summary"` returns counts by level, tag and device process, repeated messages, crash count and latest errors. Java stacks inside a line are short by default (`stack="short"`): each exception and `Caused by` keeps its first 3 frames, the rest is `↳ K more frames`, a stack already shown in the response is `↳ same K frames as <time>`, and a line holding a stack is at most 2,000 chars; `stack="full"` shows every frame | `filter` `package` `tags` `min_level` `from` `to` `limit` `context` `before` `after` `wait_ms` `stack` |
 | `logcat_crashes` | Crashes and ANRs grouped by signature. With a single match or an `id`: full details (stack or tombstone, the pid's last 40 lines before the crash; for ANRs the main-thread trace and lock holders) | `package` `kinds` (java/native/anr) `from` `to` `id` `limit` |
 | `logcat_app_launches` | Launch timeline (COLD/WARM/HOT/UNKNOWN), last 30 min by default. Each `+N ms` is when a line was logged relative to the launch request; TTID / TTFD on their own line with their source (`Displayed` or `*_activity_launch_time`) | `package` `from` `to` `limit` |
 
@@ -366,6 +366,10 @@ Values are replaced by `[REDACTED:<type>#n]`. The same original value gets the s
 ## Upgrading
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
+
+### Unreleased (breaking)
+
+- **`logcat_search` returns 50 lines by default** instead of 200, and **Java stacks are short by default**: each exception and `Caused by` keeps its first 3 frames, and a stack already shown in the same response becomes `↳ same K frames as <time>` ([#23](https://github.com/s1crab/android-log-mcp/issues/23)). To get the previous output, pass `limit: 200` and `stack: "full"`. `logcat_crashes(id=…)` still shows a crash's whole stack.
 
 ### To 0.5.0 (breaking)
 

@@ -11,10 +11,11 @@ import (
 )
 
 const (
-	outputBudget   = 30000 // chars per response
-	maxMsgChars    = 2000
-	maxStackChars  = 8000
-	identicalLabel = "↳"
+	outputBudget    = 30000 // chars per response
+	maxMsgChars     = 2000  // per line
+	maxStackChars   = 8000  // per line holding a stack, stack="full"
+	shortStackChars = 2000  // per line holding a stack, stack="short" (#23)
+	identicalLabel  = "↳"
 )
 
 func tzLabel(loc *time.Location, name string, at time.Time) string {
@@ -82,21 +83,41 @@ func looksLikeStack(msg string) bool {
 	return strings.Contains(msg, "\n\tat ") || strings.Contains(msg, "\n    at ") || strings.Contains(msg, "\n  at ")
 }
 
-// formatRecord renders one record in the compact line format.
-// indent is prepended to the first line (context lines use two spaces).
+// formatRecord renders one record in the compact line format, with the
+// whole message (stack="full"). indent is prepended to the first line
+// (context lines use two spaces).
 func formatRecord(r *model.Record, loc *time.Location, indent string) string {
-	msg := r.Msg
+	return formatLine(r, loc, indent, capMsg(r.Msg))
+}
+
+// capMsg applies the per-line cap. The cap is the same for every query, so
+// the marker says that narrowing does not help.
+func capMsg(msg string) string {
 	limit := maxMsgChars
+	what := "lines are cut"
 	if looksLikeStack(msg) {
 		limit = maxStackChars
+		what = "stacks are cut"
 	}
-	if len(msg) > limit {
-		cut := limit
-		for cut > 0 && !utf8Start(msg[cut]) {
-			cut--
-		}
-		msg = msg[:cut] + fmt.Sprintf("…[+%d chars; narrow with filter pid:%d and from/to around this time to see it whole]", len(r.Msg)-cut, r.PID)
+	if len(msg) <= limit {
+		return msg
 	}
+	cut := cutAt(msg, limit)
+	return msg[:cut] + fmt.Sprintf("…[+%s chars; %s at %s chars in every query, narrowing does not show more]", commas(len(msg)-cut), what, commas(limit))
+}
+
+// cutAt is the largest UTF-8 boundary <= n.
+func cutAt(s string, n int) int {
+	if n >= len(s) {
+		return len(s)
+	}
+	for n > 0 && !utf8Start(s[n]) {
+		n--
+	}
+	return n
+}
+
+func formatLine(r *model.Record, loc *time.Location, indent, msg string) string {
 	msg = strings.ReplaceAll(msg, "\n", "\n"+indent+"    ")
 	return fmt.Sprintf("%s%s %s %d/%d %s %s: %s", indent, clock(r.TimeNs, loc), levelLetter(r.Level), r.PID, r.TID, procLabel(r), r.Tag, msg)
 }
@@ -106,7 +127,13 @@ func utf8Start(b byte) bool { return b&0xC0 != 0x80 }
 // lineWriter accumulates output lines, collapsing identical neighbours and
 // inserting date separators.
 type lineWriter struct {
-	loc      *time.Location
+	loc *time.Location
+	// short: stacks as in stack="short" (#23); seen (non-nil to enable)
+	// maps the frames of each stack printed so far to its time
+	short    bool
+	seen     map[string]int64
+	stats    stackStats
+	cache    map[*model.Record]shortRes // shortStack results, shared by the writers of one response
 	lines    []string
 	lastDate string
 	prev     *model.Record
@@ -146,7 +173,45 @@ func (w *lineWriter) add(r *model.Record, ctx bool) {
 	} else {
 		w.prev = r
 	}
-	w.lines = append(w.lines, formatRecord(r, w.loc, indent))
+	w.lines = append(w.lines, w.format(r, indent))
+}
+
+type shortRes struct {
+	msg     string
+	hidden  int
+	changed bool
+}
+
+// format renders r; with short, a stack is shortened (shortStack) or, if
+// the same frames were already printed in this response, replaced by a
+// reference to them.
+func (w *lineWriter) format(r *model.Record, indent string) string {
+	if !w.short || !looksLikeStack(r.Msg) {
+		return formatRecord(r, w.loc, indent)
+	}
+	key := stackKey(r.Msg)
+	if at, ok := w.seen[key]; ok && key != "" {
+		msg, hidden := sameStack(r.Msg, at, w.loc)
+		w.stats.shortened++
+		w.stats.hidden += hidden
+		return formatLine(r, w.loc, indent, msg)
+	}
+	res, ok := w.cache[r]
+	if !ok {
+		res.msg, res.hidden, res.changed = shortStack(r.Msg)
+		if w.cache != nil {
+			w.cache[r] = res
+		}
+	}
+	msg, hidden := res.msg, res.hidden
+	if res.changed {
+		w.stats.shortened++
+		w.stats.hidden += hidden
+	}
+	if w.seen != nil && key != "" {
+		w.seen[key] = r.TimeNs
+	}
+	return formatLine(r, w.loc, indent, msg)
 }
 
 func (w *lineWriter) size() int {

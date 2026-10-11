@@ -73,17 +73,17 @@ Recorded 2026-10-11 on the dev box: linux/amd64, Intel Xeon, 8 vCPUs shared with
 | Scenario | Bytes | ≈ tokens |
 |---|---:|---:|
 | `initialize` (instructions) | 1,068 | 267 |
-| `tools/list` (4 tools) | 8,729 | 2,182 |
-| `logcat_status {}` | 567 | 142 |
-| `logcat_status {package}` | 1,155 | 289 |
-| `logcat_search {}` (newest 200) | 27,471 | 6,868 |
-| `logcat_search {package}` | 28,011 | 7,003 |
-| `logcat_search {min_level: error}` | 18,737 | 4,684 |
-| `logcat_search {filter: tag=:ActivityManager, limit: 20}` | 5,307 | 1,327 |
-| `logcat_search {view: summary}` | 2,119 | 530 |
-| `logcat_search` no match (hints) | 409 | 102 |
-| `logcat_crashes {}` (7 groups) | 2,923 | 731 |
-| `logcat_crashes {id}` (Java crash detail) | 6,326 | 1,582 |
+| `tools/list` (4 tools) | 9,763 | 2,440 |
+| `logcat_status {}` | 567 | 141 |
+| `logcat_status {package}` | 1,155 | 288 |
+| `logcat_search {}` (newest 50; was 27,471 with 200, #23) | 8,435 | 2,108 |
+| `logcat_search {package}` | 9,404 | 2,351 |
+| `logcat_search {min_level: error}` | 9,069 | 2,267 |
+| `logcat_search {filter: tag=:ActivityManager, limit: 20}` | 5,397 | 1,349 |
+| `logcat_search {view: summary}` | 2,119 | 529 |
+| `logcat_search` no match (hints) | 441 | 110 |
+| `logcat_crashes {}` (7 groups) | 2,923 | 730 |
+| `logcat_crashes {id}` (Java crash detail) | 6,326 | 1,581 |
 | `logcat_app_launches {package}` (5 launches) | 4,277 | 1,069 |
 
 **Startup, first call, memory**
@@ -128,7 +128,7 @@ Recorded 2026-10-11 on the dev box: linux/amd64, Intel Xeon, 8 vCPUs shared with
 2. **`age:` and old windows do not bound the scan.** `age:5m` is evaluated per record, but it does not stop the newest-first scan the way `from` does (1.7 s). A 5-minute window at the old end scans the whole newer history first (1.8 s). A time → seq lookup over the block index would make both proportional to the window.
 3. **Full-history scans are at the edge of the 2.5 s scan budget.** JSON decoding limits the scan to about 210k–260k records/s, so one call can cover at most about 600k records. A no-match search over the synthetic day still completes, in about 2.8–3.0 s: about 2.1 s of scanning, and the zero-result hints take the rest. On a busier day, or a slower machine, the same search returns "scan stopped … incomplete".
 4. **Ingest slows down as crashes accumulate.** `Pipeline.EmitCrash` calls `LoadCrashes`, which re-reads and JSON-decodes the whole `crashes.jsonl`, for every crash. That is O(crashes²). On the synthetic day (several hundred crashes and ANRs) it takes 80 % of the ingest CPU: 47k lines/s and 8.1 KB allocated per line, against about 330k lines/s (3.0 µs per line) and 0.9 KB per line on a fresh store. An in-memory crash index would fix it. `logcat_crashes` itself allocates 1.5 MB per call on the fixture for the same reason.
-5. **The default `logcat_search` output is about 6.9k tokens.** The 30,000-char budget is nearly used up by the newest 200 lines. That is within limits, but agents calling `logcat_search {}` repeatedly pay about 7k tokens each time. A smaller default limit, or summary-first guidance, is worth an eval (design-v3 §7 Q5).
+5. ~~**The default `logcat_search` output is about 6.9k tokens.**~~ Fixed in #23: the default `limit` is 50 (was 200; the 30k budget stopped it at about 175 lines), Java stacks are short by default (`stack="short"`: 3 frames per exception and `Caused by`, a repeated stack shown once) and a truncated page points at `view="summary"`. `logcat_search {}` is 8.4k chars (≈2.1k tokens) instead of 27.5k; ten warnings with the same 30-frame stack take 3.8k instead of 27.5k. With a page of 50, a filtered search fills it sooner, so more counts are lower bounds (`query.search_age.count_exact` 1 → 0) and it returns faster.
 6. **The summary view allocates about 3.9 MB / 41k allocations per call on 6.4k records** (template normalisation per record). It is fine at this size, but it scales linearly with the range.
 
 ---
@@ -162,4 +162,4 @@ Recorded 2026-10-11 on the dev box: linux/amd64, Intel Xeon, 8 vCPUs shared with
   2. `age:` 和旧时间窗不会让扫描提前结束；
   3. 全量扫描约每秒 25 万条，扫完一天的历史已接近 2.5 s 的扫描预算；
   4. 每次发现崩溃都会重读整个 `crashes.jsonl`，复杂度 O(n²)，崩溃一多，写入速度降到约七分之一；
-  5. 默认搜索输出约 6.9k token。
+  5. ~~默认搜索输出约 6.9k token~~：#23 已改（默认 50 行、堆栈默认折叠），约 2.1k token。

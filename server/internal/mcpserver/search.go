@@ -19,7 +19,7 @@ const (
 	timeSlackNs   = int64(5 * time.Minute) // logcat output is time-ordered except for small reorderings
 	scanBudget    = 2500 * time.Millisecond
 	maxWaitMs     = 25000
-	defaultLimit  = 200
+	defaultLimit  = 50 // #23: was 200
 	contextScanMx = 20000
 )
 
@@ -328,6 +328,12 @@ func (t *Tools) search(ctx context.Context, a searchArgs) (out string, err error
 	if a.View != "lines" && a.View != "summary" {
 		return "", errf("view must be \"lines\" or \"summary\" (got %q)", a.View)
 	}
+	if a.Stack == "" {
+		a.Stack = "short"
+	}
+	if a.Stack != "short" && a.Stack != "full" {
+		return "", errf("stack must be \"short\" or \"full\" (got %q)", a.Stack)
+	}
 	if a.WaitMs > 0 && a.After == "" {
 		return "", errf("wait_ms needs an after cursor: call logcat_status to get `cursor`, then logcat_search(after=<cursor>, wait_ms=%d)", a.WaitMs)
 	}
@@ -430,12 +436,18 @@ func (q *query) withContext(shown []*model.Record, n int) ([]*model.Record, map[
 func (t *Tools) renderLines(q *query, res *scanResult, a searchArgs, desc, waited bool) string {
 	var b strings.Builder
 	// choose shown matches within the output budget
+	short := a.Stack != "full"
+	cache := map[*model.Record]shortRes{}
+	est := &lineWriter{loc: q.loc, short: short, cache: cache}
+	if short {
+		est.seen = map[string]int64{} // a repeated stack costs a reference line here too
+	}
 	matches := res.matches
 	budget := outputBudget - 2500
 	shown := 0
 	size := 0
 	for _, r := range matches { // scan order: desc = newest first, asc = oldest first
-		l := len(formatRecord(r, q.loc, "")) + 1
+		l := len(est.format(r, "")) + 1
 		if a.Context > 0 {
 			l *= 1 + min(a.Context, 4) // rough estimate
 		}
@@ -445,6 +457,7 @@ func (t *Tools) renderLines(q *query, res *scanResult, a searchArgs, desc, waite
 		size += l
 		shown++
 	}
+	capped := shown < len(matches)
 	sel := append([]*model.Record(nil), matches[:shown]...)
 	if desc {
 		for i, j := 0, len(sel)-1; i < j; i, j = i+1, j-1 {
@@ -452,17 +465,49 @@ func (t *Tools) renderLines(q *query, res *scanResult, a searchArgs, desc, waite
 		}
 	}
 	lines, isMatch := q.withContext(sel, a.Context)
-	w := &lineWriter{loc: q.loc}
-	for _, r := range lines {
-		w.add(r, !isMatch[r.Seq])
+	render := func(recs []*model.Record) *lineWriter {
+		w := &lineWriter{loc: q.loc, short: short, cache: cache}
+		if short {
+			w.seen = map[string]int64{}
+		}
+		for _, r := range recs {
+			w.add(r, !isMatch[r.Seq])
+		}
+		w.flushRepeat()
+		return w
 	}
-	w.flushRepeat()
+	w := render(lines)
 	// trim further if context made it too large
-	for len(w.lines) > 1 && w.size() > budget {
-		if desc {
-			w.lines = w.lines[1:]
+	trimmed := false
+	if w.size() > budget && len(w.lines) > 1 {
+		trimmed = true
+		if !short {
+			for len(w.lines) > 1 && w.size() > budget {
+				if desc {
+					w.lines = w.lines[1:]
+				} else {
+					w.lines = w.lines[:len(w.lines)-1]
+				}
+			}
 		} else {
-			w.lines = w.lines[:len(w.lines)-1]
+			// drop whole records, so that a "same frames as" reference
+			// never points at a line that was cut: the fewest that fit
+			drop := func(k int) []*model.Record {
+				if desc {
+					return lines[k:]
+				}
+				return lines[:len(lines)-k]
+			}
+			lo, hi := 1, len(lines)-1
+			for lo < hi {
+				mid := (lo + hi) / 2
+				if render(drop(mid)).size() > budget {
+					lo = mid + 1
+				} else {
+					hi = mid
+				}
+			}
+			w = render(drop(lo))
 		}
 	}
 
@@ -502,10 +547,21 @@ func (t *Tools) renderLines(q *query, res *scanResult, a searchArgs, desc, waite
 			b.WriteByte('\n')
 		}
 	}
+	if w.stats.shortened > 0 {
+		fmt.Fprintf(&b, "stacks: %d shortened (%s frames hidden) · stack=\"full\" shows every frame\n", w.stats.shortened, commas(w.stats.hidden))
+	}
+	if capped {
+		fmt.Fprintf(&b, "[output cap: only %d of the %d matches asked for fit in ~30k chars · view=\"summary\" gives an overview; or narrow from/to or the filter]\n", len(sel), len(matches))
+	}
+	if trimmed && a.Context > 0 {
+		b.WriteString("[output cap: context lines cut to fit in ~30k chars · use a smaller context or limit, or narrow from/to or the filter]\n")
+	} else if trimmed {
+		b.WriteString("[output cap: lines cut to fit in ~30k chars · view=\"summary\" gives an overview; or narrow from/to or the filter]\n")
+	}
 	rest := res.total - len(sel)
 	if desc {
 		if rest > 0 || !res.countDone {
-			fmt.Fprintf(&b, "[truncated: %s older matches not shown]\n", map[bool]string{true: commas(rest), false: "≥" + commas(rest)}[res.countDone])
+			fmt.Fprintf(&b, "[truncated: %s older matches not shown · view=\"summary\" shows what the whole range contains]\n", map[bool]string{true: commas(rest), false: "≥" + commas(rest)}[res.countDone])
 		}
 		older := res.scannedTo
 		if len(sel) > 0 {
