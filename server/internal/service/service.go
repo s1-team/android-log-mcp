@@ -82,6 +82,9 @@ type Hello struct {
 	Version string `json:"version"`
 	PID     int    `json:"pid"`
 	Role    string `json:"role"` // mcp, call, report, set-root, cli
+
+	// status remembers what logcat_status last showed on this connection
+	status *mcpserver.StatusMemo
 }
 
 // HelloReply describes the service to the client.
@@ -131,34 +134,53 @@ type Info struct {
 	Lifetime  string   `json:"lifetime,omitempty"`
 }
 
-// Text renders the info for logcat_status / `service status`.
+// Text renders the info for `service status` (and, through Lines, the
+// start of logcat_status).
 func (i Info) Text() string {
 	var b strings.Builder
+	for _, l := range i.Lines() {
+		b.WriteString(l.Text)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// Lines is Text line by line. The lines that do not change from call to call
+// (root, linger, lifetime, service log) are marked Static: logcat_status shows
+// them on the first call of a connection and again when they change (#23).
+func (i Info) Lines() []mcpserver.StatusLine {
 	mode := "background service"
 	if i.Embedded != "" {
 		mode = "in-process service (" + i.Embedded + ")"
 	}
-	fmt.Fprintf(&b, "service: %s pid %d, version %s, protocol %d, up %s, clients %d\n", mode, i.PID, i.Version, i.Proto, time.Since(i.Started).Round(time.Second), i.Clients)
-	fmt.Fprintf(&b, "root: %s\n", i.Root)
+	out := []mcpserver.StatusLine{
+		{Text: fmt.Sprintf("service: %s pid %d, version %s, protocol %d, up %s, clients %d", mode, i.PID, i.Version, i.Proto, time.Since(i.Started).Round(time.Second), i.Clients)},
+		{Text: "root: " + i.Root, Label: "root", Static: true},
+	}
 	if i.Recording != "" {
-		fmt.Fprintf(&b, "recording: %s\n", i.Recording)
+		out = append(out, mcpserver.StatusLine{Text: "recording: " + i.Recording})
 	}
 	for _, d := range i.Devices {
-		fmt.Fprintf(&b, "  %s\n", d)
+		out = append(out, mcpserver.StatusLine{Text: "  " + d})
 	}
 	for _, p := range i.Pins {
-		fmt.Fprintf(&b, "  %s\n", p)
+		out = append(out, mcpserver.StatusLine{Text: "  " + p})
 	}
 	if i.Linger != "" {
-		fmt.Fprintf(&b, "linger: %s\n", i.Linger)
+		out = append(out, mcpserver.StatusLine{Text: "linger: " + i.Linger, Label: "linger", Static: true})
 	}
 	if i.Lifetime != "" {
-		fmt.Fprintf(&b, "lifetime: %s\n", i.Lifetime)
+		// the rule is static; "staying: …" / "exiting in …" is the moment's state
+		rule := i.Lifetime
+		for _, sep := range []string{"; staying: ", "; exiting in "} {
+			rule, _, _ = strings.Cut(rule, sep)
+		}
+		out = append(out, mcpserver.StatusLine{Text: "lifetime: " + i.Lifetime, Label: "lifetime", Static: true, Key: "lifetime: " + rule})
 	}
 	if i.Log != "" {
-		fmt.Fprintf(&b, "service log: %s\n", i.Log)
+		out = append(out, mcpserver.StatusLine{Text: "service log: " + i.Log, Label: "service log", Static: true})
 	}
-	return b.String()
+	return out
 }
 
 // Start acquires the service lock, starts recording into the data root and
@@ -225,7 +247,7 @@ func (s *Service) startManager(root string) {
 	m.PinnedUntil = s.pinUntil
 	m.Start(ctx)
 	t := &mcpserver.Tools{M: m, Pins: pinner{s}}
-	t.Service = func() string { return s.Info().Text() }
+	t.Service = func() []mcpserver.StatusLine { return s.Info().Lines() }
 	s.mu.Lock()
 	s.root, s.m, s.mstop, s.tools = root, m, cancel, t
 	carry := s.carry
@@ -317,6 +339,7 @@ func (s *Service) handle(ctx context.Context, c *ipc.Conn, op string, body json.
 			return nil, err
 		}
 		if _, ok := c.Value.(*Hello); !ok {
+			h.status = &mcpserver.StatusMemo{}
 			c.Value = &h
 			s.mu.Lock()
 			s.clients++
@@ -347,7 +370,7 @@ func (s *Service) handle(ctx context.Context, c *ipc.Conn, op string, body json.
 		s.mu.Lock()
 		t := s.tools
 		s.mu.Unlock()
-		text, isErr := t.Call(ctx, a.Name, a.Args)
+		text, isErr := t.Call(mcpserver.WithStatusMemo(ctx, h.status), a.Name, a.Args)
 		return CallReply{Text: text, IsError: isErr}, nil
 	case "stop":
 		go s.Stop(fmt.Sprintf("stop requested (pid %d)", h.PID))

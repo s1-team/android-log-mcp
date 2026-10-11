@@ -189,32 +189,32 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 			}
 		}
 	}
-	var b strings.Builder
+	var head []StatusLine
 	if t.Service != nil {
-		b.WriteString(t.Service())
+		head = append(head, t.Service()...)
 	}
 	if t.M.NoADB {
-		b.WriteString("adb: not used (--offline)\n")
+		head = append(head, StatusLine{Text: "adb: not used (--offline)", Label: "adb", Static: true})
 	} else if err := t.M.ADBError(); err != nil {
-		b.WriteString("adb: NOT FOUND — " + err.Error() + "\n")
+		head = append(head, StatusLine{Text: "adb: NOT FOUND — " + err.Error()})
 	} else if adb := t.M.ADB(); adb != nil && (!t.M.Lazy || t.M.Tracking()) {
 		v, err := adb.Version(ctx)
 		if err != nil {
-			fmt.Fprintf(&b, "adb: error — %v\n", err)
+			head = append(head, StatusLine{Text: fmt.Sprintf("adb: error — %v", err)})
 		} else {
-			fmt.Fprintf(&b, "adb: ok (%s, version %s)\n", adb.Path, v)
+			head = append(head, StatusLine{Text: fmt.Sprintf("adb: ok (%s, version %s)", adb.Path, v), Label: "adb", Static: true})
 		}
 		if werr := t.M.WatchError(); werr != nil {
-			fmt.Fprintf(&b, "adb server: %v\n", werr)
+			head = append(head, StatusLine{Text: fmt.Sprintf("adb server: %v", werr)})
 		}
 	} else if adb != nil {
-		fmt.Fprintf(&b, "adb: %s (not running any adb: no device is recorded)\n", adb.Path)
+		head = append(head, StatusLine{Text: fmt.Sprintf("adb: %s (not running any adb: no device is recorded)", adb.Path), Label: "adb", Static: true})
 	}
 	if stopped != "" {
-		fmt.Fprintf(&b, "stopped: %s is no longer recorded and its pin is removed; the next log tool call for it starts it again (with backfill)\n", stopped)
+		head = append(head, StatusLine{Text: fmt.Sprintf("stopped: %s is no longer recorded and its pin is removed; the next log tool call for it starts it again (with backfill)", stopped)})
 	}
 	if pinNote != "" {
-		b.WriteString(pinNote + "\n")
+		head = append(head, StatusLine{Text: pinNote})
 	}
 	devs := t.M.Devices()
 	live := t.M.LiveStates()
@@ -232,10 +232,12 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 		}
 		devs = []*device.Device{d}
 	}
-	fmt.Fprintf(&b, "store: %s (data in %s/<device-id>)\n", t.M.Base, filepath.Base(store.DataDir(t.M.Base)))
+	head = append(head, StatusLine{Text: fmt.Sprintf("store: %s (data in %s/<device-id>)", t.M.Base, filepath.Base(store.DataDir(t.M.Base))), Label: "store", Static: true})
 	if t.M.NoADB {
-		b.WriteString("mode: offline (read-only dataset; nothing is recorded, pruned or created)\n")
+		head = append(head, StatusLine{Text: "mode: offline (read-only dataset; nothing is recorded, pruned or created)"})
 	}
+	var b strings.Builder
+	renderStatusHead(&b, head, statusMemoFrom(ctx), a.Verbose)
 	fmt.Fprintf(&b, "devices (%d):\n", len(devs))
 	known := map[string]bool{}
 	for _, d := range devs {

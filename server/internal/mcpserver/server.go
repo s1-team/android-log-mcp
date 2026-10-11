@@ -31,7 +31,7 @@ type Tools struct {
 	M *device.Manager
 	// Service, if set, describes the service process (pid, version,
 	// protocol, root …); logcat_status prints it first.
-	Service func() string
+	Service func() []StatusLine
 	// Pins, if set, implements record_for (the service's pins).
 	Pins Pins
 }
