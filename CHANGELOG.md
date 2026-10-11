@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-10-11
+
 ### Fixed
 
 - A device that disconnects and reconnects quickly no longer has two recording sessions running at once ([#30](https://github.com/s1crab/android-log-mcp/issues/30)). The new session starts only after the previous session's recorder stopped (at most 10 s) and its background work returned (at most 5 s, after which its adb children are killed together with their own child processes, never the adb server). A tool call right after the reconnect again waits for the new session's backfill: the previous session could end that wait early. If the previous session does not stop in time, the new session starts anyway, and the service log and `logcat_status` say so for that device ("recording session N started … before session N-1 had stopped: …").
@@ -159,7 +161,8 @@ Upgrade notes: [README › Upgrading › To 0.4.0](https://github.com/s1crab/and
 - First release: an MCP stdio server giving AI agents read-only access to Android logcat, with background recording of every connected device, the tools `logcat_status`, `logcat_search` (Android Studio filter syntax with strict errors), `logcat_crashes` and `logcat_app_launches`, and the `call` debug subcommand.
 - npm packaging: a Node launcher plus per-platform binary packages (linux / darwin / win32 × x64 / arm64), CI and release workflows.
 
-[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/s1crab/android-log-mcp/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/s1crab/android-log-mcp/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/s1crab/android-log-mcp/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/s1crab/android-log-mcp/compare/v0.4.0...v0.4.1
