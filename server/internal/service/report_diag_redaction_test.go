@@ -14,7 +14,7 @@ import (
 // structure (placeholders replace the secret, the rest stays readable).
 // Covers service.log, crash.log, service.json, diagnose.txt, adb-devices.txt.
 func TestReportDiagnosticsFilesRedacted(t *testing.T) {
-	installFake(t, "SERIALAAA111", "SERIALBBB222")
+	adb := fakeADBFor(t, "SERIALAAA111", "SERIALBBB222")
 	base, err := os.MkdirTemp("", "almd")
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +40,7 @@ func TestReportDiagnosticsFilesRedacted(t *testing.T) {
 	os.WriteFile(filepath.Join(LogDir(root), "crash.log"),
 		[]byte("panic serial: SERIALBBB222\n\tat /Users/macuserq/src/x.go:1\n\tat C:\\Users\\WinUserQ\\go\\x.go:2\n"), 0o644)
 	out := filepath.Join(t.TempDir(), "r.zip")
-	if _, err := BuildReport(context.Background(), root, "0.5.0", ReportArgs{Out: out, LogsOnly: true, DevicesList: true, Control: ctrl}, nil); err != nil {
+	if _, err := BuildReport(context.Background(), root, "0.5.0", ReportArgs{Out: out, LogsOnly: true, DevicesList: true, Control: ctrl}, adb); err != nil {
 		t.Fatal(err)
 	}
 	files := readZip(t, out)
