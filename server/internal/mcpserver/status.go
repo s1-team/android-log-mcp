@@ -273,6 +273,9 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 		if rb := d.RollbackNote(); rb != "" {
 			fmt.Fprintf(&b, "    note: %s\n", rb)
 		}
+		if h := d.HandoffNote(); h != "" {
+			fmt.Fprintf(&b, "    note: %s\n", h)
+		}
 		line := ""
 		if st.State == "device" {
 			line = "device time now: " + d.Now().Format("2006-01-02 15:04:05")

@@ -601,14 +601,30 @@ func (m *Manager) swap(key string, d *Device) {
 	m.devices[key] = d
 	m.mu.Unlock()
 	for _, e := range old {
-		e.stop()
+		if e.Owned() {
+			// not reached today (attach keeps an owned device), but never
+			// close a store under a running recorder: shut it down like
+			// release() does
+			e.stop()
+			done := make(chan struct{})
+			go func() { e.runWG.Wait(); close(done) }()
+			select {
+			case <-done:
+			case <-time.After(recorderStopWait.Get()):
+				log.Printf("%s: recorder did not stop within %s", e.Serial, recorderStopWait.Get())
+			}
+			e.waitBackground()
+		} else {
+			e.stop()
+		}
 		if e.Store == d.Store {
 			continue
 		}
-		go func(st *store.Store) { // tools may still hold the old device briefly
-			time.Sleep(time.Minute)
-			st.Close()
-		}(e.Store)
+		// A read-only store holds no file open between reads, and a closed
+		// one still serves them: tool calls that still hold the old device
+		// keep working, so close it now (issue #30).
+		e.Store.Close()
+		e.Store.ReleaseCaches()
 	}
 }
 

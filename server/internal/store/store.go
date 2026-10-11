@@ -698,6 +698,10 @@ func (s *Store) Flush() {
 	}
 }
 
+// Closed reports whether Close was called. A closed read-only store still
+// serves reads (they open the segment files per call).
+func (s *Store) Closed() bool { return s.closed.Load() }
+
 // Close flushes and releases the writer lock.
 func (s *Store) Close() {
 	s.Flush()

@@ -259,3 +259,38 @@ func TestSlowIdentity(t *testing.T) {
 		t.Fatalf("status after identification:\n%s", out)
 	}
 }
+
+// Issue #30: a reconnect whose previous recording session does not stop in
+// time starts recording anyway, and logcat_status says so explicitly.
+func TestStatusShowsLateHandover(t *testing.T) {
+	l := newLazy(t, 3, "FAKEA")
+	if out, isErr := l.call(t, "logcat_status", `{}`); isErr {
+		t.Fatal(out)
+	}
+	release := device.HoldSessionEndForTest("FAKEA", 1, 200*time.Millisecond)
+	defer release()
+	l.e.SetDevices(map[string]string{"FAKEA": "offline"})
+	deadline := time.Now().Add(20 * time.Second)
+	for l.m.Get("FAKEA").Status().State != "offline" {
+		if time.Now().After(deadline) {
+			t.Fatal("disconnect not seen")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	l.e.SetDevices(map[string]string{"FAKEA": "device"})
+	var out string
+	for {
+		out, _ = l.call(t, "logcat_status", `{}`)
+		if strings.Contains(out, "note: recording session 2 started at") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("logcat_status does not show the late handover:\n%s", out)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Logf("logcat_status:\n%s", out)
+	if !strings.Contains(out, "before session 1 had stopped: the recorder of session 1 did not stop within 200ms") {
+		t.Fatalf("logcat_status:\n%s", out)
+	}
+}

@@ -56,7 +56,10 @@ type Device struct {
 	dbxMu      sync.Mutex
 	crashMu    sync.Mutex // serializes ID assignment + persistence
 	disk       *store.DiskGuard
-	runWG      sync.WaitGroup  // the recorder goroutine (run)
+	runWG      sync.WaitGroup  // the recorder goroutines (run), incl. one still stopping
+	sessSeq    uint64          // number of the last recording session started
+	sessDone   chan struct{}   // closed when the last session's goroutine returned
+	handoff    string          // the last session start that did not wait for the previous one (HandoffNote)
 	bg         workers         // background work of the recording sessions (issue #24)
 	kids       children        // adb processes started under the session context
 	sideCtx    context.Context // context of the session whose side work runs (under dbxMu)
@@ -300,16 +303,31 @@ func (d *Device) setState(ctx context.Context, state string) {
 	owned := d.owned
 	d.mu.Unlock()
 	if state == "device" && !running && owned {
-		d.catchBegin() // a call right after attach waits for this session's catch-up
-		cctx, cancel := context.WithCancel(withChildren(ctx, &d.kids))
+		d.mu.Lock()
+		d.sessSeq++
+		sess, prevDone := d.sessSeq, d.sessDone
+		done := make(chan struct{})
+		d.sessDone = done
+		d.mu.Unlock()
+		d.catchStart(sess) // a call right after attach waits for this session's catch-up
+		cctx, cancel := context.WithCancel(withSession(withChildren(ctx, &d.kids), sess))
 		d.mu.Lock()
 		d.cancel = cancel
 		d.runWG.Add(1)
 		d.mu.Unlock()
 		go func() {
 			defer d.runWG.Done()
-			defer d.catchDone() // nothing is backfilling any more
-			d.run(cctx)
+			defer close(done)
+			defer d.catchDone(sess) // nothing is backfilling any more
+			defer func() {
+				if h := sessionEndHook.Load(); h != nil {
+					(*h)(d, sess)
+				}
+			}()
+			d.handOver(cctx, sess, prevDone)
+			if cctx.Err() == nil {
+				d.run(cctx)
+			}
 		}()
 	} else if state != "device" && running {
 		d.stop()
@@ -327,7 +345,82 @@ func (d *Device) stop() {
 	if c != nil {
 		c()
 	}
-	d.catchDone()
+	d.catchStop()
+}
+
+// recorderStopWait bounds the wait for a stopped recorder goroutine (the
+// last drain into the store, reaping logcat): release() and the start of
+// the next recording session (handOver).
+var recorderStopWait = newDur(10 * time.Second)
+
+// sessionEndHook (tests only) runs when a recording session's goroutine
+// is about to return, e.g. to hold a stopping recorder.
+var sessionEndHook atomic.Pointer[func(*Device, uint64)]
+
+type sessionKey struct{}
+
+// withSession marks ctx as the context of recording session sess.
+func withSession(ctx context.Context, sess uint64) context.Context {
+	return context.WithValue(ctx, sessionKey{}, sess)
+}
+
+// sessionOf is the recording session of ctx (0 outside of one).
+func sessionOf(ctx context.Context) uint64 {
+	s, _ := ctx.Value(sessionKey{}).(uint64)
+	return s
+}
+
+// handOver runs before recording session sess starts (issue #30): a quick
+// disconnect/reconnect must not overlap the previous session, whose
+// recorder may still be draining into the store and whose background work
+// may still be returning. It waits (bounded) for the previous session's
+// goroutine (prev, recorderStopWait), then for the background work (the
+// #24 wait: bgStopWait, then the adb children are killed with their
+// trees). When a wait times out, the session starts anyway; the service
+// log and logcat_status (HandoffNote) say so.
+func (d *Device) handOver(ctx context.Context, sess uint64, prev <-chan struct{}) {
+	var problems []string
+	if prev != nil {
+		w := recorderStopWait.Get()
+		t := time.NewTimer(w)
+		select {
+		case <-prev:
+		case <-t.C:
+			killed := d.kids.killAll()
+			log.Printf("%s: recording session %d: the recorder of session %d did not stop within %s; starting anyway; killed its adb processes: %s",
+				d.Serial, sess, sess-1, w, orNone(killed))
+			problems = append(problems, fmt.Sprintf("the recorder of session %d did not stop within %s (its adb children were killed)", sess-1, w))
+		}
+		t.Stop()
+	}
+	// stopped again meanwhile: the next session (or stop) waits instead
+	if ctx.Err() == nil {
+		if names := d.waitBackground(); len(names) > 0 {
+			log.Printf("%s: recording session %d: starting although background work of an earlier session did not stop within %s: %s",
+				d.Serial, sess, bgStopWait.Get(), strings.Join(names, ", "))
+			problems = append(problems, fmt.Sprintf("background work of an earlier session did not stop within %s (%s; its adb children were killed)", bgStopWait.Get(), strings.Join(names, ", ")))
+		}
+	}
+	if prev == nil && len(problems) == 0 {
+		return
+	}
+	note := ""
+	if len(problems) > 0 {
+		note = fmt.Sprintf("recording session %d started at %s (device time) before session %d had stopped: %s; both may have written this device's store briefly (see the service log)",
+			sess, d.Now().Format("2006-01-02 15:04:05"), sess-1, strings.Join(problems, "; "))
+	}
+	d.mu.Lock()
+	d.handoff = note // a clean handover clears an older note
+	d.mu.Unlock()
+}
+
+// HandoffNote describes the last recording session that started before
+// the previous one had stopped (empty if none, or a later session started
+// cleanly).
+func (d *Device) HandoffNote() string {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.handoff
 }
 
 // probe reads device properties, boot id and clock offset (read-only):
@@ -446,6 +539,7 @@ func (d *Device) pipeline() *Pipeline {
 }
 
 func (d *Device) recordOnce(ctx context.Context) error {
+	sess := sessionOf(ctx)
 	if err := d.probe(ctx); err != nil {
 		return fmt.Errorf("probe: %w", err)
 	}
@@ -457,7 +551,7 @@ func (d *Device) recordOnce(ctx context.Context) error {
 	boot := store.BootShort(bootID)
 	meta := d.Store.Meta()
 	newBoot := meta.LastBootID != bootID
-	d.catchBegin()
+	d.catchBegin(sess)
 	d.setSideWork(false)
 
 	resume := ""
@@ -525,15 +619,15 @@ func (d *Device) recordOnce(ctx context.Context) error {
 		return ctx.Err()
 	case terr != nil:
 		log.Printf("%s: measuring the end of the device buffer failed (%v); catch-up is not verified", d.Serial, terr)
-		d.catchSetEnd(0, "could not measure the end of the device buffer: "+terr.Error())
-		d.catchDone()
+		d.catchSetEnd(sess, 0, "could not measure the end of the device buffer: "+terr.Error())
+		d.catchDone(sess)
 	case tEnd == 0:
-		d.catchDone() // empty buffer
+		d.catchDone(sess) // empty buffer
 	case resume != "" && tEnd <= dedupNs:
-		d.catchSetEnd(tEnd, "")
-		d.catchDone() // nothing newer than what is stored
+		d.catchSetEnd(sess, tEnd, "")
+		d.catchDone(sess) // nothing newer than what is stored
 	default:
-		d.catchSetEnd(tEnd, "")
+		d.catchSetEnd(sess, tEnd, "")
 	}
 	var endAt uint64 // pipeline position of the first line at/after T_end
 	pipe := NewPipeline(d.Store, boot, loc)
@@ -662,7 +756,7 @@ func (d *Device) recordOnce(ctx context.Context) error {
 			overlap = true
 			if r.TimeNs < dedupNs || dedup[recHash(r)] {
 				if atEnd {
-					d.catchDone()
+					d.catchDone(sess)
 				}
 				return
 			}
@@ -671,7 +765,7 @@ func (d *Device) recordOnce(ctx context.Context) error {
 			overlap = true
 			d.rollbackSkipped.Add(1)
 			if atEnd {
-				d.catchDone()
+				d.catchDone(sess)
 			}
 			return
 		}
@@ -686,7 +780,7 @@ func (d *Device) recordOnce(ctx context.Context) error {
 		}
 		if endAt != 0 && pipe.Appended() >= endAt {
 			endAt = 0
-			d.catchDone() // the line at T_end is stored
+			d.catchDone(sess) // the line at T_end is stored
 		}
 	}
 	for {

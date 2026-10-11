@@ -135,12 +135,14 @@ func (c *children) killAll() []string {
 
 // stopBackground waits (bgStopWait) for background work that was already
 // cancelled; work still running then is logged, its adb processes are
-// killed with their trees, and it gets one more second to return.
-func stopBackground(who string, w *workers, c *children) {
+// killed with their trees, and it gets one more second to return. It
+// returns the names of the work that did not stop within bgStopWait (nil
+// when everything returned in time).
+func stopBackground(who string, w *workers, c *children) []string {
 	t := bgStopWait.Get()
 	names := w.wait(t)
 	if len(names) == 0 {
-		return
+		return nil
 	}
 	killed := c.killAll()
 	log.Printf("%s: background work did not stop within %s: %s; killed its adb processes: %s",
@@ -148,6 +150,7 @@ func stopBackground(who string, w *workers, c *children) {
 	if names := w.wait(time.Second); len(names) > 0 {
 		log.Printf("%s: background work still running: %s", who, strings.Join(names, ", "))
 	}
+	return names
 }
 
 func orNone(s []string) string {
@@ -158,4 +161,4 @@ func orNone(s []string) string {
 }
 
 // waitBackground waits for the background work of a stopped device.
-func (d *Device) waitBackground() { stopBackground(d.Serial, &d.bg, &d.kids) }
+func (d *Device) waitBackground() []string { return stopBackground(d.Serial, &d.bg, &d.kids) }
