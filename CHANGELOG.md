@@ -32,6 +32,7 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ### Fixed
 
+- `logcat_crashes` no longer shows phantom crashes after the device clock is set back ([#63](https://github.com/s1crab/android-log-mcp/issues/63)). Android's DropBox re-dates entries that are dated after device now, and such an entry was imported again as a new crash at the earlier device time. DropBox entries are now recognised by their contents, and a Java or native crash entry joins the crash with the same boot, pid and process whatever its device time.
 - DropBox crashes are imported again after a device clock change ([#53](https://github.com/s1crab/android-log-mcp/issues/53)). Entries dated more than the retention before the highest device time ever stored were skipped. After a jump back past the retention (for example a reboot with a 1970 clock), no new entry was imported, and after a +1 year jump that was undone, none was for a year. The cutoff is now device now − retention; entries already imported stay out through their `dropbox_seen` keys.
 - Reconnecting on the same boot no longer loses or duplicates lines after a device clock change ([#52](https://github.com/s1crab/android-log-mcp/issues/52)).
   - Lines logged while disconnected after the device clock was set back, dated before the newest stored line, were dropped as already stored. A clock jump measured at connect, or stored among the lines that may still be in the device buffer, now makes the service read the whole buffer instead of `logcat -T`.

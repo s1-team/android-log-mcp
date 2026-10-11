@@ -78,6 +78,16 @@ func headerField(body, key string) string {
 // crash (returned with isNew=true) when nothing matches. Returns nil if the
 // entry is not a crash/ANR tag or is useless.
 func MatchDropbox(list []*Crash, e DropboxEntry) (c *Crash, isNew bool) {
+	return MatchDropboxBoot(list, e, "")
+}
+
+// MatchDropboxBoot is MatchDropbox for an entry fetched during boot
+// session boot: a Java or native crash entry also matches a crash of that
+// boot with the same pid and process whatever their device times differ
+// by. A process instance crashes once, and DropBox re-times entries
+// dated after device now when the clock was set back (issue #63). ANRs
+// keep the time rule: a process can survive an ANR and ANR again.
+func MatchDropboxBoot(list []*Crash, e DropboxEntry, boot string) (c *Crash, isNew bool) {
 	kind := ""
 	switch {
 	case e.Tag == "SYSTEM_TOMBSTONE":
@@ -113,8 +123,8 @@ func MatchDropbox(list []*Crash, e DropboxEntry) (c *Crash, isNew bool) {
 			tomb = tomb[:MaxTombstone] + "\n…[truncated by android-log-mcp]"
 		}
 	}
-	var best *Crash
-	var bestD int64 = 1 << 62
+	var best, far *Crash
+	var bestD, farD int64 = 1 << 62, 1 << 62
 	for _, x := range list {
 		if x.Kind != kind {
 			continue
@@ -128,7 +138,13 @@ func MatchDropbox(list []*Crash, e DropboxEntry) (c *Crash, isNew bool) {
 		d := abs(x.TimeNs - e.TimeNs)
 		if d < 60e9 && d < bestD {
 			best, bestD = x, d
+		} else if d >= 60e9 && boot != "" && x.Boot == boot && kind != "anr" && pid != 0 && x.PID == pid &&
+			proc != "" && x.Process == proc && (far == nil || d < farD) {
+			far, farD = x, d
 		}
+	}
+	if best == nil {
+		best = far
 	}
 	src := "dropbox:" + e.Tag
 	if best != nil {
