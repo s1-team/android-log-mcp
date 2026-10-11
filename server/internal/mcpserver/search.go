@@ -11,6 +11,7 @@ import (
 	"github.com/s1crab/android-log-mcp/server/internal/device"
 	"github.com/s1crab/android-log-mcp/server/internal/filter"
 	"github.com/s1crab/android-log-mcp/server/internal/model"
+	procspkg "github.com/s1crab/android-log-mcp/server/internal/procs"
 	"github.com/s1crab/android-log-mcp/server/internal/store"
 	"github.com/s1crab/android-log-mcp/server/internal/timeparse"
 )
@@ -679,6 +680,7 @@ func (t *Tools) zeroHints(q *query) string {
 	}
 	tags := map[string]int{}
 	pkgs := map[string]int{}
+	own := procspkg.NameOwner(q.d.Packages()) // dotted process names (issue #41)
 	n := 0
 	q.d.Store.Scan(q.afterSeq, q.beforeSeq, true, func(r *model.Record) bool {
 		n++
@@ -687,7 +689,7 @@ func (t *Tools) zeroHints(q *query) string {
 			if p := r.Package; p != "" {
 				pkgs[p]++
 			} else if r.Process != "" {
-				pkgs[strings.SplitN(r.Process, ":", 2)[0]]++
+				pkgs[own(r.Process)]++
 			}
 		}
 		if q.fromNs != 0 && r.TimeNs < q.fromNs-timeSlackNs {
@@ -849,11 +851,12 @@ func (t *Tools) summary(q *query) string {
 	}
 	// crashes in range
 	var crs, anrs []string
+	own := procspkg.NameOwner(q.d.Packages())
 	for _, c := range q.d.Crashes() {
 		if (q.fromNs != 0 && c.TimeNs < q.fromNs) || (q.toNs != 0 && c.TimeNs >= q.toNs) || c.TimeNs < oldest || c.TimeNs > newest+int64(time.Second) {
 			continue
 		}
-		if q.pkg != "" && c.Package != q.pkg && pkgOfName(c.Process) != q.pkg {
+		if q.pkg != "" && c.Package != q.pkg && own(c.Process) != q.pkg {
 			continue
 		}
 		s := fmt.Sprintf("%s %s %s", c.ID, clock(c.TimeNs, q.loc)[:8], shortHeadline(c.Headline))
@@ -911,5 +914,3 @@ func shortHeadline(h string) string {
 	}
 	return h
 }
-
-func pkgOfName(p string) string { return strings.SplitN(p, ":", 2)[0] }

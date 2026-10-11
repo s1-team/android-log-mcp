@@ -34,6 +34,7 @@ type Pipeline struct {
 
 	OnUnknownPID func(newestNs int64) // stored lines had an unknown pid; the newest one's time
 	NeedDropbox  func(tag string)     // a crash wants DropBox evidence
+	OnUnknownUID func(uid int)        // a device process has an app uid missing from the package list
 	BeforeAppend func(first *model.Record)
 
 	accepted uint64
@@ -61,11 +62,18 @@ func NewPipeline(st *store.Store, boot string, loc *time.Location) *Pipeline {
 		}
 	}
 	p.Procs.Restore(ps)
+	// before SetPackages: entries it re-attributes are persisted (issue #41)
+	p.Procs.OnChange = func(x procs.Proc) { st.AppendAux("procs", x) }
 	if pk := LoadPackages(st); len(pk) > 0 {
 		p.Procs.SetPackages(pk)
 	}
-	p.Procs.OnChange = func(x procs.Proc) { st.AppendAux("procs", x) }
+	p.Procs.OnUnknownUID = func(uid int) {
+		if f := p.OnUnknownUID; f != nil {
+			f(uid)
+		}
+	}
 	p.Det.Emit = p.EmitCrash
+	p.Det.PackageOf = p.Procs.OwnerOf // dotted process names (issue #41)
 	p.Det.NeedDropbox = func(tag string) {
 		if p.NeedDropbox != nil {
 			p.NeedDropbox(tag)
@@ -200,6 +208,9 @@ func (p *Pipeline) ApplyDropbox(out string) {
 			if c.Boot == "" {
 				c.Boot = p.Boot
 			}
+		}
+		if c.Process != "" && (c.Package == "" || c.Package == analysis.PackageOfName(c.Process)) {
+			c.Package = p.Procs.OwnerOf(c.Process) // dotted process names (issue #41)
 		}
 		p.EmitCrash(c)
 		if isNew {

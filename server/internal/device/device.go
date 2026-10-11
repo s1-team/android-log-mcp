@@ -36,34 +36,35 @@ type Device struct {
 	owned  bool   // this process (the service) records the device
 	idNote string // why the ID was disambiguated (collision), if it was
 
-	mu         sync.RWMutex
-	state      string // adb state ("" = not attached)
-	recording  bool
-	lastErr    string
-	loc        *time.Location
-	tzName     string
-	offset     time.Duration // device clock - host clock
-	offsetAt   time.Time     // when offset was measured (host time)
-	bootID     string
-	pipe       *Pipeline // current boot session (writer only)
-	cancel     context.CancelFunc
-	lastSeen   time.Time
-	unknownPID time.Time // debounce for ps refresh
-	pkgRefresh time.Time
-	dbxPending map[string]int  // DropBox tag → dbxQueued/dbxRunning/dbxAgain (absent: idle)
-	dbxDefer   map[string]bool // tags crashes asked for before side work started
-	sideOn     bool            // side work of the current session runs (under dbxMu)
-	dbxMu      sync.Mutex
-	crashMu    sync.Mutex // serializes ID assignment + persistence
-	disk       *store.DiskGuard
-	runWG      sync.WaitGroup  // the recorder goroutines (run), incl. one still stopping
-	sessSeq    uint64          // number of the last recording session started
-	sessDone   chan struct{}   // closed when the last session's goroutine returned
-	handoff    string          // the last session start that did not wait for the previous one (HandoffNote)
-	bg         workers         // background work of the recording sessions (issue #24)
-	kids       children        // adb processes started under the session context
-	sideCtx    context.Context // context of the session whose side work runs (under dbxMu)
-	spanNs     atomic.Int64    // replay span of the device's main log buffer (measureSpan)
+	mu           sync.RWMutex
+	state        string // adb state ("" = not attached)
+	recording    bool
+	lastErr      string
+	loc          *time.Location
+	tzName       string
+	offset       time.Duration // device clock - host clock
+	offsetAt     time.Time     // when offset was measured (host time)
+	bootID       string
+	pipe         *Pipeline // current boot session (writer only)
+	cancel       context.CancelFunc
+	lastSeen     time.Time
+	unknownPID   time.Time // debounce for ps refresh
+	pkgRefreshAt time.Time // last package list read (maybeRefreshPackages)
+	pkgRefresh   time.Time
+	dbxPending   map[string]int  // DropBox tag → dbxQueued/dbxRunning/dbxAgain (absent: idle)
+	dbxDefer     map[string]bool // tags crashes asked for before side work started
+	sideOn       bool            // side work of the current session runs (under dbxMu)
+	dbxMu        sync.Mutex
+	crashMu      sync.Mutex // serializes ID assignment + persistence
+	disk         *store.DiskGuard
+	runWG        sync.WaitGroup  // the recorder goroutines (run), incl. one still stopping
+	sessSeq      uint64          // number of the last recording session started
+	sessDone     chan struct{}   // closed when the last session's goroutine returned
+	handoff      string          // the last session start that did not wait for the previous one (HandoffNote)
+	bg           workers         // background work of the recording sessions (issue #24)
+	kids         children        // adb processes started under the session context
+	sideCtx      context.Context // context of the session whose side work runs (under dbxMu)
+	spanNs       atomic.Int64    // replay span of the device's main log buffer (measureSpan)
 
 	catch           catchState   // backfill / catch-up of the current recording session
 	devNowNs        int64        // device clock read by the last probe (0 = unknown)
@@ -632,6 +633,7 @@ func (d *Device) recordOnce(ctx context.Context) error {
 	var endAt uint64 // pipeline position of the first line at/after T_end
 	pipe := NewPipeline(d.Store, boot, loc)
 	pipe.NeedDropbox = d.requestDropbox
+	pipe.OnUnknownUID = func(uid int) { d.maybeRefreshPackages(ctx, uid) }
 	// lines logged before the probe are history: their processes are
 	// mostly gone, and psLoop seeds the table once caught up anyway
 	liveFrom := devNow
@@ -898,19 +900,55 @@ func (d *Device) seedPS(ctx context.Context, pipe *Pipeline) {
 }
 
 func (d *Device) refreshPackages(ctx context.Context) {
+	d.mu.Lock()
+	d.pkgRefreshAt = time.Now()
+	d.mu.Unlock()
 	for attempt := 0; attempt < 30 && ctx.Err() == nil; attempt++ {
-		out, err := d.adb.Shell(ctx, d.Addr(), 20*time.Second, "pm list packages -U 2>/dev/null || cmd package list packages -U")
-		if err == nil {
-			if m := procs.ParsePackagesU(out); len(m) > 0 {
-				if p := d.pipeline(); p != nil {
-					p.Procs.SetPackages(m)
-				}
-				WritePackages(d.Store, m)
-				return
-			}
+		if d.readPackages(ctx) {
+			return
 		}
 		sleep(ctx, 10*time.Second) // e.g. package manager not up yet during boot
 	}
+}
+
+// readPackages reads `pm list packages -U` once and installs it.
+func (d *Device) readPackages(ctx context.Context) bool {
+	out, err := d.adb.Shell(ctx, d.Addr(), 20*time.Second, "pm list packages -U 2>/dev/null || cmd package list packages -U")
+	if err != nil {
+		return false
+	}
+	m := procs.ParsePackagesU(out)
+	if len(m) == 0 {
+		return false
+	}
+	if p := d.pipeline(); p != nil {
+		p.Procs.SetPackages(m)
+	}
+	WritePackages(d.Store, m)
+	return true
+}
+
+// packagesRefreshEvery: the package list is re-read for a device process
+// whose application uid it does not contain (an app installed after it was
+// read) at most this often (issue #41).
+var packagesRefreshEvery = newDur(60 * time.Second)
+
+// maybeRefreshPackages re-reads the package list for an unknown application
+// uid, at most once per packagesRefreshEvery, as the session's side work
+// (an idle service process runs no adb).
+func (d *Device) maybeRefreshPackages(ctx context.Context, uid int) {
+	if !d.sideWorkOn() {
+		return // sideWork reads the list once caught up
+	}
+	d.mu.Lock()
+	if !d.pkgRefreshAt.IsZero() && time.Since(d.pkgRefreshAt) < packagesRefreshEvery.Get() {
+		d.mu.Unlock()
+		return
+	}
+	d.pkgRefreshAt = time.Now()
+	d.mu.Unlock()
+	log.Printf("%s: uid %d is not in the package list; reading it again", d.Serial, uid)
+	d.bg.spawn("refreshPackages (unknown uid)", func() { d.readPackages(ctx) })
 }
 
 // Packages returns uid->packages (from this process or the shared cache file).

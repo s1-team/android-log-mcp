@@ -20,6 +20,10 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
   - On a one-day history, `logcat_search {}` takes about 1 ms instead of 1.5 s, and filtered searches whose page fills quickly about 110 ms.
 - `logcat_status` no longer repeats the lines that rarely change on every call ([#23](https://github.com/s1crab/android-log-mcp/issues/23)). `root:`, `linger:`, `lifetime:`, `service log:`, `adb:` and `store:` are shown on the first call of each MCP or CLI process's connection and again whenever one of them changes; otherwise they become one line, `unchanged since shown earlier in this session: root, linger, lifetime, service log, adb, store (logcat_status(verbose=true) shows them)`. This saves about 500 characters (about 35 %) on every later call. The `service:` line (pid, version, uptime, connected MCP and CLI processes), recording state, pins, devices, adb problems and the cursor are always shown. The new `verbose` parameter always shows every line. `android-log-mcp service status` is unchanged.
 
+### Fixed
+
+- `package=` in `logcat_search`, `logcat_crashes`, `logcat_status` and `report` now includes device processes whose name extends the package with a dot, such as `com.google.android.gms.persistent` and `com.google.android.gms.unstable` ([#41](https://github.com/s1crab/android-log-mcp/issues/41)). A device process belongs to the installed package that its name equals or, failing that, to the longest installed package that its name extends at a `.`. On a shared uid, the name decides between the uid's packages. `package=com.google` still does not match `com.google.android.gms`, and `package=com.foo` does not match `com.foobar`. Device processes that started before the package list was read are re-attributed once it is read, and an app installed later is picked up by re-reading the list (at most once a minute while a device is recorded). Data recorded before the upgrade may still show the old attribution (the process name as package) until it expires.
+
 ## [0.5.2] - 2026-10-11
 
 ### Fixed
