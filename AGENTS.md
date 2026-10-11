@@ -15,19 +15,20 @@ Read [docs/GOALS.md](docs/GOALS.md) first, and check every change against its pr
    - `GOOS=windows go vet ./...`.
 3. **Every user-facing change adds an entry under `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md)** (Keep a Changelog groups: Added / Changed / Deprecated / Removed / Fixed / Security; mark breaking changes with **Breaking** and link the issue). Internal-only changes (tests, refactoring, CI) need no entry.
    **Bug fixes are described only in the CHANGELOG**, never in the README: the README describes the current behavior and options neutrally (no "before X.Y.Z this popped up / was broken" notes). Breaking changes still get an upgrade note in the README ("Upgrading").
-4. **Commit with a reference to the issue so it closes**, for example `feat(store): … (closes #N)`.
-5. **Push to `main`** (never force-push).
-6. **Wait for CI to be fully green**, including the Windows tests and every npx-compat job. If it fails, fix forward.
+4. **Work on a feature branch, never on `main`.** `main` is branch-protected: direct pushes are rejected (admins included), history must stay linear, and nobody force-pushes. Commit with a reference to the issue, for example `feat(store): … (closes #N)` (`refs #N` on intermediate commits).
+5. **Open a pull request** from the branch with `Closes #N` in the PR body (and in the commit message), so the issue closes on merge. A squash merge uses the PR title and body as the commit message.
+6. **Wait for CI to be fully green on the PR**: the required checks are `test` (ubuntu, macos, windows) and `npm-pack`, and the branch must be up to date with `main`. The npx-compat jobs and every other job must pass too. If anything fails, fix it on the branch. If `main` moved, rebase the branch on `origin/main` and push it again (`git push --force-with-lease` on your own feature branch is fine; never on `main`).
+7. **Merge with rebase or squash** (`gh pr merge --rebase` or `--squash`; merge commits are disabled). No review approval is required, so you can merge your own PR once the checks are green. Then delete the branch.
 
 ## 3. Releases
 
 Release only after **explicit sign-off from the user or maintainer**.
 
-1. In `CHANGELOG.md`, move the `[Unreleased]` entries under a new `## [X.Y.Z] - YYYY-MM-DD` heading (leave `[Unreleased]` empty) and update the compare links at the bottom. Bump `npm/VERSION` and the default `Version` in `server/internal/mcpserver/server.go`, plus version examples in the READMEs. Commit `chore: release X.Y.Z`, push, and wait for CI to be green.
-2. Tag the green commit `vX.Y.Z` (annotated) and push the tag. `.github/workflows/release.yml` then:
+1. In `CHANGELOG.md`, move the `[Unreleased]` entries under a new `## [X.Y.Z] - YYYY-MM-DD` heading (leave `[Unreleased]` empty) and update the compare links at the bottom. Bump `npm/VERSION` and the default `Version` in `server/internal/mcpserver/server.go`, plus version examples in the READMEs. Commit `chore: release X.Y.Z` on a branch, open a PR, wait for CI to be green and merge it (§2).
+2. Tag the merged, green commit on `main` `vX.Y.Z` (annotated) and push the tag. `.github/workflows/release.yml` then:
    - checks that the tag matches `npm/VERSION` and that `CHANGELOG.md` has a non-empty `X.Y.Z` section (`scripts/changelog-section.sh X.Y.Z`), before publishing anything;
    - publishes all npm packages;
-   - creates the GitHub Release with the tarballs attached and **the `X.Y.Z` changelog section as its notes** (plus the compare link). Do not hand-edit release notes: fix the changelog on `main` and update the release with `gh release edit vX.Y.Z --notes-file <(scripts/changelog-section.sh X.Y.Z)` (a re-run of the workflow also updates the notes of an existing release, but only after the npm publish steps).
+   - creates the GitHub Release with the tarballs attached and **the `X.Y.Z` changelog section as its notes** (plus the compare link). Do not hand-edit release notes: fix the changelog on `main` (through a PR) and update the release with `gh release edit vX.Y.Z --notes-file <(scripts/changelog-section.sh X.Y.Z)` (a re-run of the workflow also updates the notes of an existing release, but only after the npm publish steps).
 3. Breaking changes also need an upgrade note in the README ("Upgrading").
 4. Verify that the npm `latest` tag points at the new version and that `npx -y android-log-mcp@X.Y.Z --version` works.
 
@@ -74,11 +75,11 @@ Repository artifacts (docs, issues, commit messages, release notes) are **Englis
 - 流程：
   1. 先开 issue；
   2. 实现并补测试（`go vet`、`go test`、改动的包加 `-race`、Windows 交叉 vet）；
-  3. 提交信息引用 issue，让它自动关闭；
-  4. push 到 main，不要 force-push；
-  5. 等 CI 全绿（包括 Windows 和 npx-compat）。
+  3. 不直接提交到 main（main 有分支保护，禁止直接 push 和 force-push）：在功能分支上提交，开 PR，PR 正文写 `Closes #N`；
+  4. 等 PR 的 CI 全绿（必需检查：三个系统的 `test` 和 `npm-pack`，分支要与 main 同步；npx-compat 等其他 job 也要通过），main 有更新就 rebase 后再推；
+  5. 用 rebase 或 squash 合并（`gh pr merge --rebase` / `--squash`，不允许 merge commit），不需要审批。
 - 发版：必须先得到用户明确同意。
-  1. 改 `npm/VERSION` 和 `server.go` 里的默认版本号；
+  1. 改 `npm/VERSION` 和 `server.go` 里的默认版本号，同样走 PR 合并；
   2. CI 绿了以后打 `vX.Y.Z` tag，`release.yml` 会发布 npm 包并创建 GitHub Release；
   3. 有面向用户的变化时，把自动生成的说明换成手写的说明（英文为主）。
 - 版本规则：1.0 之前，破坏性变更升 minor 版本，并附升级说明；1.0 之后升 major 版本。
