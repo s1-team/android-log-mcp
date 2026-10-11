@@ -105,7 +105,7 @@ func (t *Tools) noDeviceHint() string {
 	var prev []string
 	for _, d := range t.M.Devices() {
 		m := d.Store.Meta()
-		prev = append(prev, fmt.Sprintf("%s (last seen %s)", d.Serial, time.Unix(0, m.LastSeenHostNs).Format("2006-01-02 15:04:05")))
+		prev = append(prev, fmt.Sprintf("%s (last seen at host time %s)", d.Serial, hostTime(time.Unix(0, m.LastSeenHostNs))))
 	}
 	if len(prev) > 0 {
 		msg += " Previously recorded devices: " + strings.Join(prev, ", ") + " — pass device=\"<serial>\" to query stored logs."
@@ -278,23 +278,13 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 		if h := d.HandoffNote(); h != "" {
 			fmt.Fprintf(&b, "    note: %s\n", h)
 		}
+		fmt.Fprintf(&b, "    %s\n", statusClock(d, loc))
 		line := ""
-		if st.State == "device" {
-			line = "device time now: " + d.Now().Format("2006-01-02 15:04:05")
-			if off := time.Duration(m.ClockOffsetNs); off > 5*time.Second || off < -5*time.Second {
-				dir := "ahead of"
-				if off < 0 {
-					dir, off = "behind", -off
-				}
-				line += fmt.Sprintf(" (device clock is %s %s this host; re-measured every 30 s)", off.Round(time.Second), dir)
-			}
-			line += "   "
-		}
-		if m.RecordingSince != 0 { // host time → device clock
-			line += "first recorded " + time.Unix(0, m.RecordingSince+m.ClockOffsetNs).In(loc).Format("2006-01-02 15:04:05") + "   "
+		if m.RecordingSince != 0 {
+			line += "recording since host time " + hostTime(time.Unix(0, m.RecordingSince)) + "   "
 		}
 		if stats.OldestNs != 0 {
-			line += "history from " + dateTime(stats.OldestNs, loc) + " to " + dateTime(stats.NewestNs, loc)
+			line += "oldest stored line at device time " + dateTime(stats.OldestNs, loc) + ", newest stored " + dateTime(stats.NewestNs, loc)
 		}
 		if line != "" {
 			fmt.Fprintf(&b, "    %s\n", strings.TrimSpace(line))
@@ -317,7 +307,7 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 			_, ho := time.Now().In(hostLoc).Zone()
 			_, do := time.Now().In(loc).Zone()
 			if ho != do {
-				fmt.Fprintf(&b, "    note: host timezone differs (%s); all times here are device-local\n", tzLabel(hostLoc, "host", time.Now()))
+				fmt.Fprintf(&b, "    note: host timezone differs (%s); device times here use the device timezone; host times are labelled\n", tzLabel(hostLoc, "host", time.Now()))
 			}
 		}
 	}
@@ -360,7 +350,7 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 			boot = m.Sessions[len(m.Sessions)-1].Boot
 		}
 		cur := store.Cursor{Serial: d.Serial, Boot: boot, Seq: d.Store.LastSeq()}
-		fmt.Fprintf(&b, "cursor (now, %s): %s\n", d.Serial, cur)
+		fmt.Fprintf(&b, "cursor (newest line, %s): %s\n", d.Serial, cur)
 		if prog.Note != "" {
 			fmt.Fprintf(&b, "note: %s\n", prog.Note)
 		}
@@ -657,3 +647,24 @@ func lev(a, b string) int {
 }
 
 var _ = os.Getpid
+
+// statusClock: device now, host now, clock offset, auto_time and the
+// clock jumps stored (issue #48 D4).
+func statusClock(d *device.Device, loc *time.Location) string {
+	d.RefreshAutoTime(context.Background()) // only when a clock change made it stale
+	ci := d.Clock()
+	s := statusLine(ci)
+	if ci.AutoTime != "" {
+		s += " · auto_time " + ci.AutoTime
+	}
+	js := d.Store.ClockJumps()
+	if len(js) > 0 {
+		j := js[len(js)-1]
+		s += fmt.Sprintf("\n    clock jumps stored: %d; last: %s at seq %s", len(js), jumpWord(j), commas(int(j.Seq)))
+		if j.HostNs != 0 {
+			s += " (host time " + hostTime(time.Unix(0, j.HostNs)) + ")"
+		}
+		s += " · logcat_search shows them where they fall"
+	}
+	return s
+}

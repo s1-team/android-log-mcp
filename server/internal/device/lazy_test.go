@@ -383,3 +383,37 @@ func TestTrackingWithoutDeviceStops(t *testing.T) {
 	waitFor(t, "tracking stops", 10*time.Second, func() bool { return m.Idle() && !m.Tracking() })
 	waitFor(t, "no adb child", 10*time.Second, func() bool { return !e.AnyChildRunning() })
 }
+
+// After a resume (-T, de-duplication against the last stored line), the
+// device clock is set back while live: the new lines, dated before the last
+// stored one, are kept (de-duplication is for the replayed part only) and
+// the set back is recorded as a live clock jump at the first of them
+// (issue #48).
+func TestSetBackWhileLiveAfterResume(t *testing.T) {
+	e := fakeEnv(t)
+	addDevices(t, e, 5, "FAKEA")
+	m := lazyManager(t, time.Minute)
+	d := startDevice(t, m, "FAKEA")
+	waitFor(t, "backfill", 10*time.Second, func() bool { return len(messages(d.Store)) == 5 })
+	m.Unwant("FAKEA", "test")
+	waitFor(t, "fake adb children to exit", 5*time.Second, func() bool { return !e.AnyChildRunning() })
+	d = startDevice(t, m, "FAKEA")
+	if p := d.WaitCaughtUp(context.Background(), 5*time.Second); p.Pending {
+		t.Fatalf("resume: %+v", p)
+	}
+	e.Log("FAKEA", fakeadb.Line(time.Now(), 100, "LIVE", "live before the set back"))
+	waitFor(t, "live line", 5*time.Second, func() bool { return len(messages(d.Store)) == 6 })
+	back := time.Now().Add(-time.Hour)
+	e.SetDate("FAKEA", back)
+	e.Log("FAKEA", fakeadb.Line(back, 100, "LIVE", "after set back 1"))
+	e.Log("FAKEA", fakeadb.Line(back.Add(time.Millisecond), 100, "LIVE", "after set back 2"))
+	waitFor(t, "lines after the set back", 5*time.Second, func() bool { return len(messages(d.Store)) == 8 })
+	waitFor(t, "live clock jump", 5*time.Second, func() bool { return len(d.Store.ClockJumps()) == 1 })
+	j := d.Store.ClockJumps()[0]
+	if j.Source != "live" || j.Seq != 7 || j.DeltaNs > -int64(59*time.Minute) {
+		t.Fatalf("jump %+v", j)
+	}
+	if off := d.Clock().Offset; off > -59*time.Minute {
+		t.Fatalf("device now not moved back: offset %v", off)
+	}
+}

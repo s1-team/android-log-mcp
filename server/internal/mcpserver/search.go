@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,7 +18,6 @@ import (
 )
 
 const (
-	timeSlackNs   = int64(5 * time.Minute) // logcat output is time-ordered except for small reorderings
 	scanBudget    = 2500 * time.Millisecond
 	maxWaitMs     = 25000
 	defaultLimit  = 50 // #23: was 200
@@ -38,6 +38,8 @@ type query struct {
 	pkg        string
 	tags       []string
 	filterUsed bool
+	clock      device.ClockInfo // device now used for relative values
+	relUpper   bool             // toNs is device now + relSlack (relative window)
 }
 
 func (q *query) interp() string {
@@ -99,15 +101,63 @@ func pkgMatches(r *model.Record, pkg string) bool {
 	return r.Package == pkg || r.Process == pkg || strings.HasPrefix(r.Process, pkg+":")
 }
 
+// topLevelAge returns the narrowest age: term that every match must satisfy
+// (the filter itself, or a term of its top-level AND), with its source text.
+func topLevelAge(n filter.Node) (time.Duration, string, bool) {
+	switch x := n.(type) {
+	case *filter.Age:
+		return x.Dur, x.Src, true
+	case *filter.And:
+		var best time.Duration
+		src, ok := "", false
+		for _, k := range x.Kids {
+			if d, s, kok := topLevelAge(k); kok && (!ok || d < best) {
+				best, src, ok = d, s, true
+			}
+		}
+		return best, src, ok
+	}
+	return 0, "", false
+}
+
 type commonArgs struct {
 	filter, pkg, minLevel, from, to, before, after string
 	tags                                           []string
+	wait                                           bool // waiting for new lines (wait_ms): no upper bound
+}
+
+var reAgeHost = regexp.MustCompile(`(?i)(^|[\s(!-])age:\s*host:(\S*)`)
+
+// relSlack: a relative window ends at device now + relSlack (issue #48),
+// so lines dated after a clock set back are not in "the last 5 minutes".
+const relSlack = 2 * time.Second
+
+// hostRejected is the error for a host: value (issue #48 D2): queries use
+// device time only.
+func hostRejected(param, v string, ci device.ClockInfo) error {
+	if param == "age" {
+		return errf("age:host:%s: age: always counts back from device now (%s); host time is not supported", v, ci.Now.Format("2006-01-02 15:04:05"))
+	}
+	return errf("%s: host time is not supported: from/to/age: use device time (the Android device's clock, as printed in logcat lines). Device now is %s; host now is %s. For \"what happens from now on\" whatever the clocks, take the cursor from logcat_status and call logcat_search(after=<cursor>).",
+		param, ci.Now.Format("2006-01-02 15:04:05"), hostTime(ci.HostNow))
 }
 
 func (t *Tools) buildQuery(d *device.Device, a commonArgs) (*query, error) {
-	now := d.Now()
-	q := &query{d: d, loc: d.Loc(), ectx: &filter.Ctx{Now: now, Loc: d.Loc()}, pkg: a.pkg, tags: a.tags}
+	if timeparse.HostPrefixed(a.from) {
+		return nil, hostRejected("from", a.from, d.Clock())
+	}
+	if timeparse.HostPrefixed(a.to) {
+		return nil, hostRejected("to", a.to, d.Clock())
+	}
+	if m := reAgeHost.FindStringSubmatch(a.filter); m != nil {
+		return nil, hostRejected("age", m[2], d.Clock())
+	}
+	// device now comes from the stream: no device clock read per query
+	ci := d.Clock()
+	now := ci.Now
+	q := &query{d: d, loc: d.Loc(), ectx: &filter.Ctx{Now: now, Loc: d.Loc()}, pkg: a.pkg, tags: a.tags, clock: ci}
 	var kids []filter.Node
+	var root filter.Node // the parsed filter
 	if a.pkg != "" {
 		pkg := strings.TrimSpace(a.pkg)
 		q.pkg = pkg
@@ -135,6 +185,7 @@ func (t *Tools) buildQuery(d *device.Device, a commonArgs) (*query, error) {
 		}
 		if p.Root != nil {
 			q.filterUsed = true
+			root = p.Root
 			kids = append(kids, p.Root)
 			q.parts = append(q.parts, p.Root.String())
 		}
@@ -164,18 +215,38 @@ func (t *Tools) buildQuery(d *device.Device, a commonArgs) (*query, error) {
 		}
 		q.toNs = tm.UnixNano()
 	}
-	if q.fromNs != 0 && q.toNs != 0 && q.fromNs >= q.toNs {
-		return nil, errf("from (%s) is not before to (%s): the time window is empty.", dateTime(q.fromNs, q.loc), dateTime(q.toNs, q.loc))
+	// A top-level age: term also bounds the scan like from (issue #21): the
+	// later of the two wins (both must hold). The age: predicate itself
+	// stays, so results do not change; age: inside an OR is per-record only.
+	ageSrc := ""
+	if dur, src, ok := topLevelAge(root); ok {
+		if b := now.Add(-dur).UnixNano(); q.fromNs == 0 || b > q.fromNs {
+			q.fromNs, ageSrc = b, src
+		}
 	}
-	if q.fromNs != 0 || q.toNs != 0 {
-		f, to := "…", "now"
+	// relative window (age:, from="5m"): ends at device now + relSlack
+	// unless to is given or the call waits for new lines (issue #48)
+	if (ageSrc != "" || timeparse.IsRelative(a.from)) && a.to == "" && !a.wait {
+		q.toNs, q.relUpper = now.Add(relSlack).UnixNano(), true
+	}
+	if q.fromNs != 0 && q.toNs != 0 && q.fromNs >= q.toNs {
+		if ageSrc != "" {
+			return nil, errf("age:%s starts at %s, which is not before to (%s): the device-time window is empty.", ageSrc, dateTime(q.fromNs, q.loc), dateTime(q.toNs, q.loc))
+		}
+		return nil, errf("from (%s) is not before to (%s): the device-time window is empty.", dateTime(q.fromNs, q.loc), dateTime(q.toNs, q.loc))
+	}
+	// age: alone needs no window part: the filter line says "age <= …"
+	if ageOnly := ageSrc != "" && a.from == "" && (q.toNs == 0 || q.relUpper); !ageOnly && (q.fromNs != 0 || q.toNs != 0) {
+		f, to := "…", "…"
 		if q.fromNs != 0 {
 			f = dateTime(q.fromNs, q.loc)
 		}
-		if q.toNs != 0 {
+		if q.relUpper {
+			to = "device now + 2 s"
+		} else if q.toNs != 0 {
 			to = dateTime(q.toNs, q.loc)
 		}
-		q.parts = append(q.parts, fmt.Sprintf("time in [%s, %s)", f, to))
+		q.parts = append(q.parts, fmt.Sprintf("device time in [%s, %s)", f, to))
 	}
 	if a.before != "" && a.after != "" {
 		return nil, errf("pass either before or after, not both (before pages to older matches, after to newer ones).")
@@ -232,12 +303,14 @@ type scanResult struct {
 	countDone  bool            // total is exact
 	tagCount   map[string]int  // tags of the matches visited (tagN of them)
 	tagN       int
-	byRange    bool   // total counted from the store's record range (no filter), tags only of the page
-	firstNs    int64  // time of the first record scanned (desc: newest)
-	lastNs     int64  // time of the last record scanned (where counting stopped)
-	scannedTo  uint64 // asc: highest seq examined; desc: lowest seq examined
-	upper      uint64 // exclusive upper bound used
-	incomplete bool   // scan stopped by budget before covering the range
+	byRange    bool              // total counted from the store's record range (no filter), tags only of the page
+	firstNs    int64             // time of the first record scanned (desc: newest)
+	lastNs     int64             // time of the last record scanned (where counting stopped)
+	scannedTo  uint64            // asc: highest seq examined; desc: lowest seq examined
+	upper      uint64            // exclusive upper bound used
+	incomplete bool              // scan stopped by budget before covering the range
+	jumps      []store.ClockJump // clock jumps inside the scanned seq range
+	side       []int             // counted matches between consecutive jumps (len(jumps)+1)
 }
 
 // scan runs the query. desc=true collects the newest `limit` matches.
@@ -251,8 +324,15 @@ func (q *query) scan(limit int, desc bool) *scanResult {
 	start := time.Now()
 	var fullAt time.Time // when the page filled up
 	byRange := q.countByRange()
+	jr := q.jumpsIn(res.upper)
+	res.jumps, res.side = jr.jumps, jr.side
+	if len(res.jumps) > 0 {
+		byRange = false // per-side counts need every match
+	}
 	n := 0
-	st.Scan(q.afterSeq, res.upper, desc, func(r *model.Record) bool {
+	// only records in the time window, skipping history blocks wholly
+	// outside it; never an order-based early stop (issues #21, #48)
+	st.ScanTime(q.afterSeq, res.upper, desc, q.fromNs, q.toNs, func(r *model.Record) bool {
 		n++
 		res.scannedTo = r.Seq
 		if n == 1 {
@@ -271,16 +351,11 @@ func (q *query) scan(limit int, desc bool) *scanResult {
 				return false
 			}
 		}
-		if desc && q.fromNs != 0 && r.TimeNs < q.fromNs-timeSlackNs {
-			return false
-		}
-		if !desc && q.toNs != 0 && r.TimeNs >= q.toNs+timeSlackNs {
-			return false
-		}
 		if !q.inTime(r) || !q.pred.Match(r, q.ectx) {
 			return true
 		}
 		res.total++
+		res.addSide(r.Seq)
 		res.tagCount[r.Tag]++
 		res.tagN++
 		if len(res.matches) < limit {
@@ -349,7 +424,7 @@ func (t *Tools) search(ctx context.Context, a searchArgs) (out string, err error
 		}
 	}()
 	d.Store.Refresh()
-	q, err := t.buildQuery(d, commonArgs{filter: a.Filter, pkg: a.Package, minLevel: a.MinLevel, from: a.From, to: a.To, before: a.Before, after: a.After, tags: a.Tags})
+	q, err := t.buildQuery(d, commonArgs{filter: a.Filter, pkg: a.Package, minLevel: a.MinLevel, from: a.From, to: a.To, before: a.Before, after: a.After, tags: a.Tags, wait: a.WaitMs > 0})
 	if err != nil {
 		return "", err
 	}
@@ -380,9 +455,102 @@ func (t *Tools) search(ctx context.Context, a searchArgs) (out string, err error
 func (t *Tools) header(q *query, firstNs int64) string {
 	ns := firstNs
 	if ns == 0 {
-		ns = q.d.Now().UnixNano()
+		ns = q.clock.Now.UnixNano()
 	}
-	return fmt.Sprintf("device %s · times are device-local %s · date %s\n", q.d.Serial, tzLabel(q.loc, q.d.TZName(), time.Unix(0, ns)), dateOf(ns, q.loc))
+	return fmt.Sprintf("device %s · device time %s, date %s · %s\n", q.d.Serial, tzLabel(q.loc, q.d.TZName(), time.Unix(0, ns)), dateOf(ns, q.loc), clockLine(q.clock))
+}
+
+// clockNotes: the clock jumps inside the scanned range (at most 3, newest
+// first, with matches on each side) and, for a relative window, the lines
+// excluded because they are dated after device now (issue #48).
+func (t *Tools) clockNotes(b *strings.Builder, q *query, res *scanResult) {
+	// the jumps that split the matches (matches on both sides); with
+	// none, the newest jump in the range for context. At most 3, newest
+	// first.
+	n := len(res.jumps)
+	var show []int
+	sides := make([][2]int, n)
+	for i := n - 1; i >= 0; i-- {
+		for k, c := range res.side {
+			if k <= i {
+				sides[i][0] += c
+			} else {
+				sides[i][1] += c
+			}
+		}
+		if sides[i][0] > 0 && sides[i][1] > 0 {
+			show = append(show, i)
+		}
+	}
+	split := len(show)
+	if split == 0 && n > 0 {
+		show = []int{n - 1}
+	}
+	if n > 1 {
+		what := fmt.Sprintf("%d split the matches", split)
+		if split > 3 {
+			what += "; the newest 3"
+		} else if split == 0 {
+			what = "none splits the matches; the newest"
+		}
+		fmt.Fprintf(b, "clock: %d device clock jumps in the scanned range; %s:\n", n, what)
+	}
+	for k, i := range show {
+		if k == 3 {
+			break
+		}
+		before, after := sides[i][0], sides[i][1]
+		if !res.countDone {
+			before, after = -1, -1
+		}
+		fmt.Fprint(b, jumpLines(res.jumps[i], q.loc, before, after, t.cursor(q, res.jumps[i].Seq-1)))
+	}
+	if q.relUpper {
+		t.futureNote(b, q, res)
+	}
+}
+
+// futureNote counts the matches (filter only, no window) dated at or after
+// the relative window's end: lines logged before the device clock was set
+// back. Only when a set-back is stored; bounded by scanBudget.
+func (t *Tools) futureNote(b *strings.Builder, q *query, res *scanResult) {
+	back := false
+	for _, j := range q.d.Store.ClockJumps() {
+		if j.DeltaNs < 0 && j.BeforeNs >= q.toNs {
+			back = true
+		}
+	}
+	if !back {
+		return
+	}
+	start := time.Now()
+	cnt, lo, hi, partial := 0, int64(0), int64(0), false
+	q.d.Store.ScanTime(q.afterSeq, res.upper, true, q.toNs, 0, func(r *model.Record) bool {
+		if cnt&1023 == 0 && time.Since(start) > scanBudget {
+			partial = true
+			return false
+		}
+		if r.TimeNs < q.toNs || !q.pred.Match(r, q.ectx) {
+			return true
+		}
+		if cnt == 0 || r.TimeNs < lo {
+			lo = r.TimeNs
+		}
+		if r.TimeNs > hi {
+			hi = r.TimeNs
+		}
+		cnt++
+		return true
+	})
+	if cnt == 0 {
+		return
+	}
+	c := commas(cnt)
+	if partial {
+		c = "≥" + c
+	}
+	fmt.Fprintf(b, "clock: %s matching lines are dated after device now (logged before the device clock was set back), device time %s – %s; not in this relative window · from=%q to=%q shows them\n",
+		c, dateTime(lo, q.loc), dateTime(hi, q.loc), dateTime(lo, q.loc), dateTime(hi+int64(time.Second), q.loc))
 }
 
 func (t *Tools) cursor(q *query, seq uint64) string {
@@ -522,6 +690,7 @@ func (t *Tools) renderLines(q *query, res *scanResult, a searchArgs, desc, waite
 		b.WriteString("note: " + n + "\n")
 	}
 	t.rangeNotes(&b, q, sel)
+	t.clockNotes(&b, q, res)
 	totalStr := commas(res.total)
 	partial := !res.countDone
 	if partial {
@@ -642,8 +811,8 @@ func spanText(d int64) string {
 func (t *Tools) rangeNotes(b *strings.Builder, q *query, sel []*model.Record) {
 	m := q.d.Store.Meta()
 	stats := q.d.Store.Stats()
-	if q.fromNs != 0 && stats.OldestNs != 0 && q.fromNs < stats.OldestNs {
-		fmt.Fprintf(b, "note: history starts %s; earlier logs were not recorded (device buffer had rolled over or recording had not started).\n", dateTime(stats.OldestNs, q.loc))
+	if q.fromNs != 0 && stats.OldestNs != 0 && q.fromNs < stats.OldestNs && len(q.d.Store.ClockJumps()) == 0 {
+		fmt.Fprintf(b, "note: history starts at device time %s; earlier logs were not recorded (device buffer had rolled over or recording had not started).\n", dateTime(stats.OldestNs, q.loc))
 	}
 	lo, hi := q.fromNs, q.toNs
 	if len(sel) > 0 {
@@ -676,13 +845,13 @@ func (t *Tools) zeroHints(q *query) string {
 		return "hint: nothing recorded for this device yet (recording starts automatically when it is connected).\n"
 	}
 	if q.toNs != 0 && stats.OldestNs != 0 && q.toNs <= stats.OldestNs {
-		fmt.Fprintf(&b, "hint: the time window ends before history starts (%s).\n", dateTime(stats.OldestNs, q.loc))
+		fmt.Fprintf(&b, "hint: the device-time window ends before the oldest stored line (device time %s).\n", dateTime(stats.OldestNs, q.loc))
 	}
 	tags := map[string]int{}
 	pkgs := map[string]int{}
 	own := procspkg.NameOwner(q.d.Packages()) // dotted process names (issue #41)
 	n := 0
-	q.d.Store.Scan(q.afterSeq, q.beforeSeq, true, func(r *model.Record) bool {
+	q.d.Store.ScanTime(q.afterSeq, q.beforeSeq, true, q.fromNs, q.toNs, func(r *model.Record) bool {
 		n++
 		if q.inTime(r) {
 			tags[r.Tag]++
@@ -691,9 +860,6 @@ func (t *Tools) zeroHints(q *query) string {
 			} else if r.Process != "" {
 				pkgs[own(r.Process)]++
 			}
-		}
-		if q.fromNs != 0 && r.TimeNs < q.fromNs-timeSlackNs {
-			return false
 		}
 		return n < 300000
 	})
@@ -786,23 +952,25 @@ func (t *Tools) summary(q *query) string {
 	start := time.Now()
 	incomplete := false
 	n := 0
-	q.d.Store.Scan(q.afterSeq, q.beforeSeq, true, func(r *model.Record) bool {
+	res := q.jumpsIn(q.beforeSeq)
+	q.d.Store.ScanTime(q.afterSeq, q.beforeSeq, true, q.fromNs, q.toNs, func(r *model.Record) bool {
 		n++
 		if n&4095 == 0 && time.Since(start) > scanBudget {
 			incomplete = true
-			return false
-		}
-		if q.fromNs != 0 && r.TimeNs < q.fromNs-timeSlackNs {
 			return false
 		}
 		if !q.inTime(r) || !q.pred.Match(r, q.ectx) {
 			return true
 		}
 		total++
-		if newest == 0 {
+		res.addSide(r.Seq)
+		// stored order is not time order (clock changes): true min / max
+		if newest == 0 || r.TimeNs > newest {
 			newest = r.TimeNs
 		}
-		oldest = r.TimeNs
+		if oldest == 0 || r.TimeNs < oldest {
+			oldest = r.TimeNs
+		}
 		levels[r.Level.Rank()]++
 		tags[r.Tag]++
 		procs[procLabel(r)]++
@@ -817,12 +985,14 @@ func (t *Tools) summary(q *query) string {
 	if total > 0 {
 		rng = fmt.Sprintf(" · %s–%s", dateTime(oldest, q.loc), dateTime(newest, q.loc))
 	}
-	fmt.Fprintf(&b, "device %s · %s%s\n", q.d.Serial, tzLabel(q.loc, q.d.TZName(), time.Now()), rng)
+	fmt.Fprintf(&b, "device %s · device time %s%s · %s\n", q.d.Serial, tzLabel(q.loc, q.d.TZName(), q.clock.Now), rng, clockLine(q.clock))
 	b.WriteString("filter parsed as: " + q.interp() + "\n")
 	for _, n := range q.notes {
 		b.WriteString("note: " + n + "\n")
 	}
 	t.rangeNotes(&b, q, nil)
+	res.countDone = !incomplete
+	t.clockNotes(&b, q, res)
 	if total == 0 {
 		b.WriteString("total 0 lines\n")
 		b.WriteString(t.zeroHints(q))
@@ -913,4 +1083,30 @@ func shortHeadline(h string) string {
 		h = h[:100] + "…"
 	}
 	return h
+}
+
+// jumpsIn: a scanResult holding the clock jumps inside (afterSeq, upper)
+// (upper 0: up to the newest line), ready for per-side counting.
+func (q *query) jumpsIn(upper uint64) *scanResult {
+	st := q.d.Store
+	if upper == 0 {
+		upper = st.LastSeq() + 1
+	}
+	res := &scanResult{upper: upper, countDone: true}
+	for _, j := range st.ClockJumps() {
+		if j.Seq > q.afterSeq && j.Seq < upper {
+			res.jumps = append(res.jumps, j)
+		}
+	}
+	if len(res.jumps) > 0 {
+		res.side = make([]int, len(res.jumps)+1)
+	}
+	return res
+}
+
+// addSide counts a match on its side of the clock jumps.
+func (res *scanResult) addSide(seq uint64) {
+	if res.side != nil {
+		res.side[sort.Search(len(res.jumps), func(i int) bool { return res.jumps[i].Seq > seq })]++
+	}
 }

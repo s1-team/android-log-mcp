@@ -5,6 +5,7 @@ import (
 	"container/list"
 	"encoding/json"
 	"io"
+	"math"
 	"os"
 	"strconv"
 	"time"
@@ -24,6 +25,18 @@ type block struct {
 	first, last uint64 // min / max seq in the block
 	off, end    int64
 	n           int
+	// minT / maxT: min / max device time of the block's records (issue #21).
+	// Device time is not monotonic in stored order (buffers interleave, the
+	// clock can be set back), so these are true bounds, not the times of the
+	// first and last line. A line without a readable time makes the block
+	// unbounded (math.MinInt64 / math.MaxInt64).
+	minT, maxT int64
+}
+
+// outside reports whether every record of b lies outside [fromNs, toNs)
+// (0: unbounded side).
+func (b block) outside(fromNs, toNs int64) bool {
+	return (fromNs != 0 && b.maxT < fromNs) || (toNs != 0 && b.minT >= toNs)
 }
 
 type segIndex struct {
@@ -72,6 +85,35 @@ func lineSeq(line []byte) (uint64, bool) {
 	}
 	if json.Unmarshal(line, &x) == nil && x.S > 0 {
 		return x.S, true
+	}
+	return 0, false
+}
+
+// lineTime extracts the device time ("t") of one stored line without a full
+// decode: lines start with {"s":N,"b":"<boot>","t":T,. Falls back to JSON.
+func lineTime(line []byte) (int64, bool) {
+	const key = `"t":`
+	head := line[:min(len(line), 96)]
+	if i := bytes.Index(head, []byte(key)); i > 0 && bytes.HasPrefix(line, []byte(`{"s":`)) {
+		j := i + len(key)
+		k := j
+		if k < len(line) && line[k] == '-' {
+			k++
+		}
+		for k < len(line) && line[k] >= '0' && line[k] <= '9' {
+			k++
+		}
+		if k > j && k < len(line) && (line[k] == ',' || line[k] == '}') {
+			if v, err := strconv.ParseInt(string(line[j:k]), 10, 64); err == nil {
+				return v, true
+			}
+		}
+	}
+	var x struct {
+		T *int64 `json:"t"`
+	}
+	if json.Unmarshal(line, &x) == nil && x.T != nil {
+		return *x.T, true
 	}
 	return 0, false
 }
@@ -133,11 +175,23 @@ func extendIndex(path string, ix *segIndex, blockBytes int64) {
 			line := data[:i]
 			lineEnd := start + int64(i) + 1
 			if seq, ok := lineSeq(line); ok {
-				if cur.n == 0 || seq < cur.first {
+				t, tok := lineTime(line)
+				if !tok {
+					t = math.MinInt64 // unknown: the block can never be skipped
+				}
+				if cur.n == 0 {
+					cur.first, cur.minT, cur.maxT = seq, t, t
+				}
+				if seq < cur.first {
 					cur.first = seq
 				}
 				if seq > cur.last {
 					cur.last = seq
+				}
+				if !tok {
+					cur.minT, cur.maxT = math.MinInt64, math.MaxInt64
+				} else if cur.maxT != math.MaxInt64 || cur.minT != math.MinInt64 {
+					cur.minT, cur.maxT = min(cur.minT, t), max(cur.maxT, t)
 				}
 				cur.n++
 			}

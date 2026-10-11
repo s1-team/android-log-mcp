@@ -27,6 +27,22 @@ Related words:
 - Do not call the MCP process a "thin client", "proxy" or "server" in prose; say what it does ("forwards to the service process").
 - "daemon" is only used when quoting older documents (research-v2 called the recorder a daemon); today that role is the service process.
 
+## Clocks and times (#48)
+
+Two clocks are involved: the Android device's and the host's (the machine that runs the MCP, service and CLI processes). They can differ by any amount, and the device clock can be changed at any moment (auto_time, a manual set, expiry testing).
+
+| Term | 中文 | Meaning |
+|---|---|---|
+| **device time** | 设备时间 | A time on the Android device's clock: the timestamp of a logcat line, and every time-valued tool parameter (`from`, `to`, `age:`). |
+| **host time** | 主机时间 | A time on the host's clock: file rotation, retention, compaction, "last seen", pins, the clock-jump `host=` field. Never used to select log lines. |
+| **device now** | 设备当前时间 | The device clock's current reading: host now + clock offset. **observed** while recording with an observation in the last 10 s; **estimated** from an older observation (quiet or disconnected device); **unknown** when never observed (relative values count back from the newest stored line). |
+| **host now** | 主机当前时间 | The host clock's current reading. |
+| **clock offset** | 时钟偏移 | device time − host time. Taken from one device clock read at connect, then from live lines (device time − host arrival time); never from replayed (backfilled) lines. |
+| **clock jump** | 时钟跳变 | A change of the clock offset by more than 60 s (the device clock was set). Recorded with the seq of the first line after it. |
+| **arrival order** | 到达顺序 | The order lines were recorded in (seq). Lines are stored and paged in arrival order; after a clock jump device times are not monotonic in it. |
+
+Rules: never write a bare "time" or "now" in tool descriptions, parameters, output, errors or the CHANGELOG; say device time / host time, device now / host now. One clock per parameter: all query parameters are device time; a `host:` prefix is rejected with an explanation.
+
 ## Old wording → new term (not renamed yet)
 
 Code identifiers and user-facing output were **not** changed with the glossary: renaming them is a separate decision. The list below maps what you will still see to the term to use in prose.
@@ -48,3 +64,5 @@ Code identifiers and user-facing output were **not** changed with the glossary: 
 ## 中文摘要
 
 本项目统一使用以下术语：**MCP 进程**（MCP 宿主按会话启动的 `android-log-mcp`，走 stdio，不录制，只把调用转发给后台服务进程）、**后台服务进程**（简称服务，`android-log-mcp service`，每用户一个，负责全部录制、写文件和清理）、**CLI 进程**（手动运行的 `call`、`record`、`report`、`root`、`set-root` 等）、**adb server**（Android SDK 的常驻进程，端口 5037，与 Android Studio 共用，只用不杀）、**adb 子进程**（后台服务进程启动的 `adb logcat`、`adb shell` 等，#24 负责清理）、**设备进程**（手机或模拟器上的进程，如被调试的 App、logd）、**MCP 宿主**（Codex、Cursor、Claude Code 等启动 MCP 进程的 agent 工具，不叫“MCP 客户端”）。禁止单独使用“进程 / server / daemon / client / 服务”，必须加限定。代码标识符和对外输出暂不改名，上表列出了旧说法与新术语的对应关系。
+
+时钟术语（#48）：**设备时间**（设备时钟，日志行时间戳及所有时间参数）、**主机时间**（运行进程的主机时钟，用于文件轮转、保留期等，不用于筛选日志行）、**设备当前时间**（主机当前时间 + 时钟偏移，分 observed / estimated / unknown）、**时钟偏移**、**时钟跳变**（偏移变化超过 60 秒）、**到达顺序**。禁止单独写“时间 / 现在”。

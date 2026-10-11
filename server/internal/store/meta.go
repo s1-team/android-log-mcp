@@ -32,9 +32,15 @@ type Meta struct {
 	IngestHostNs   int64     `json:"ingest_host_ns,omitempty"`     // host time the newest line was received
 	ClockOffsetNs  int64     `json:"clock_offset_ns,omitempty"`    // device - host
 	ClockHostNs    int64     `json:"clock_host_ns,omitempty"`      // host time ClockOffsetNs was measured
-	CrashSeq       int       `json:"crash_seq,omitempty"`
-	AnrSeq         int       `json:"anr_seq,omitempty"`
-	State          string    `json:"state,omitempty"` // last known adb state
+	// AutoTime is `settings get global auto_time` read with the clock
+	// ("1", "0"; empty: unknown).
+	AutoTime string `json:"auto_time,omitempty"`
+	// ClockJumps are the device clock jumps seen in the stored lines,
+	// oldest first (issue #48; bounded, pruned with the segments).
+	ClockJumps []ClockJump `json:"clock_jumps,omitempty"`
+	CrashSeq   int         `json:"crash_seq,omitempty"`
+	AnrSeq     int         `json:"anr_seq,omitempty"`
+	State      string      `json:"state,omitempty"` // last known adb state
 	// Addr is the last adb serial the device was reached at (connection
 	// address only; Serial is the stable device ID since layout v1).
 	Addr string `json:"addr,omitempty"`
@@ -53,6 +59,32 @@ type Meta struct {
 	// against. Ignored once LastTimeNs moves on.
 	ResumeDedup *ResumeDedup `json:"resume_dedup,omitempty"`
 }
+
+// ClockJump is a change of the device clock relative to the host clock
+// (device time − host time) by more than ClockJumpThreshold, or a step in
+// the device time of consecutive lines that looks like one (issue #48).
+type ClockJump struct {
+	// Seq is the first stored line after the jump; lines stay in arrival
+	// order, so device times jump between Seq-1 and Seq.
+	Seq      uint64 `json:"seq"`
+	HostNs   int64  `json:"host_ns,omitempty"`   // host time it was seen (0: unknown, e.g. backfill)
+	DeltaNs  int64  `json:"delta_ns"`            // size: + forward, − back
+	BeforeNs int64  `json:"before_ns,omitempty"` // device time before the jump (last line, or the clock reading)
+	AfterNs  int64  `json:"after_ns,omitempty"`  // device time after it
+	// Source: "measured" (device clock read), "live" (a live line's device
+	// time against the host time it arrived), "lines" (device time of a
+	// line far below the lines before it) or "possible" (device time of a
+	// line more than an hour after the previous line: a forward jump, or a
+	// long quiet period).
+	Source string `json:"source"`
+}
+
+// ClockJumpThreshold: smaller changes are drift, delivery delay or the
+// interleaving of log buffers, not a jump.
+const ClockJumpThreshold = int64(60e9)
+
+// maxClockJumps bounds Meta.ClockJumps.
+const maxClockJumps = 200
 
 // ResumeDedup: see Meta.ResumeDedup.
 type ResumeDedup struct {

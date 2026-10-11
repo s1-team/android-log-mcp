@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -36,15 +37,111 @@ type Pipeline struct {
 	OnUnknownUID func(uid int)        // a device process has an app uid missing from the package list
 	BeforeAppend func(first *model.Record)
 
+	// Clock jump detection (issue #48). Live: lines arrive as they are
+	// logged (catch-up is done), so their host arrival time is meaningful.
+	Live         bool
+	Clock        *LiveClock // live lines set the clock offset (nil: not tracked)
+	OnClockEvent func()     // a clock jump or an auto_time change was seen
+	jump         jumpState
+
 	accepted uint64
 
 	queue   []pending
 	crashMu sync.Mutex
 }
 
+// jumpState follows device time in arrival order for clock jumps.
+type jumpState struct {
+	prev, max int64 // device time of the previous line; highest since the last back jump
+	set       bool  // the previous line announced a clock set
+}
+
+// possibleJumpNs: in lines without a usable arrival time (backfill), a step
+// of the device time this large between consecutive lines is reported as
+// a possible forward jump.
+const possibleJumpNs = int64(time.Hour)
+
+// detectJumps checks stored lines (in arrival order) for device clock
+// jumps (issue #48). Live lines go to the LiveClock (two-line rule against
+// the clock offset). Replayed lines never touch the offset: a set is found
+// from the AlarmManagerService "Setting time of day to sec=N" line (exact,
+// at the next line), a step back of more than the threshold between
+// consecutive lines, or a step forward of more than possibleJumpNs
+// (a forward jump or a quiet period).
+func (p *Pipeline) detectJumps(batch []*model.Record, arrived []time.Time, live []bool) {
+	th := store.ClockJumpThreshold
+	event := false
+	for i, r := range batch {
+		js := &p.jump
+		announced := js.set
+		_, js.set = clockSetLine(r)
+		if r.Tag == "SettingsProvider" && strings.Contains(r.Msg, "settings/global/auto_time") {
+			event = true
+		}
+		var j *store.ClockJump
+		switch {
+		case live[i] && p.Clock != nil:
+			j = p.Clock.Line(r.Seq, r.TimeNs, js.prev, arrived[i], announced)
+		case js.prev == 0:
+		case announced && (r.TimeNs-js.prev > th || js.prev-r.TimeNs > th):
+			j = &store.ClockJump{Seq: r.Seq, DeltaNs: r.TimeNs - js.prev, BeforeNs: js.prev, AfterNs: r.TimeNs, Source: "set"}
+		case r.TimeNs < js.max-th:
+			// far below the lines before it: the clock was set back
+			// (buffers interleave by seconds, a backlog keeps the order)
+			j = &store.ClockJump{Seq: r.Seq, DeltaNs: r.TimeNs - js.prev, BeforeNs: js.prev, AfterNs: r.TimeNs, Source: "lines"}
+		case r.TimeNs > js.prev+possibleJumpNs:
+			j = &store.ClockJump{Seq: r.Seq, DeltaNs: r.TimeNs - js.prev, BeforeNs: js.prev, AfterNs: r.TimeNs, Source: "possible"}
+		}
+		if j != nil {
+			event = true
+			if j.DeltaNs < 0 {
+				js.max = r.TimeNs
+			}
+			if p.Store.IsWriter() {
+				p.Store.AddClockJump(*j)
+			}
+		}
+		js.prev = r.TimeNs
+		js.max = max(js.max, r.TimeNs)
+	}
+	if event && p.OnClockEvent != nil {
+		p.OnClockEvent()
+	}
+}
+
+// clockSetLine: the framework logs "Setting time of day to sec=N" right
+// before it changes the device clock (main buffer; tag AlarmManagerService
+// on API 21–33, SystemClockTime on API 34+; a trailing newline on old
+// versions), and "Current time only <ms>, advancing to build time <ms>"
+// at boot (AlarmManager / SystemClockTime). An optional anchor only:
+// `adb shell date` as root sets the clock without logging anything, so
+// jumps are detected from the lines' device times (issue #48).
+func clockSetLine(r *model.Record) (int64, bool) {
+	switch r.Tag {
+	case "AlarmManagerService", "SystemClockTime", "AlarmManager":
+	default:
+		return 0, false
+	}
+	if m := reClockSet.FindStringSubmatch(r.Msg); m != nil && r.Tag != "AlarmManager" {
+		n, err := strconv.ParseInt(m[1], 10, 64)
+		return n * 1e9, err == nil
+	}
+	if m := reClockBoot.FindStringSubmatch(r.Msg); m != nil && r.Tag != "AlarmManagerService" {
+		n, err := strconv.ParseInt(m[1], 10, 64)
+		return n * 1e6, err == nil
+	}
+	return 0, false
+}
+
+var (
+	reClockSet  = regexp.MustCompile(`^Setting time of day to sec=(-?\d+)\s*$`)
+	reClockBoot = regexp.MustCompile(`^Current time only -?\d+, advancing to build time (\d+)`)
+)
+
 type pending struct {
 	r       *model.Record
 	arrived time.Time
+	live    bool // accepted while Live
 }
 
 // NewPipeline prepares ingestion for boot (short boot id) into st.
@@ -61,6 +158,11 @@ func NewPipeline(st *store.Store, boot string, loc *time.Location) *Pipeline {
 		}
 	}
 	p.Procs.Restore(ps)
+	if m := st.Meta(); len(m.Sessions) > 0 && m.Sessions[len(m.Sessions)-1].Boot == boot {
+		if n := st.Stats().NewestNs; n != 0 {
+			p.jump.prev, p.jump.max = n, n // continue the session's timeline
+		}
+	}
 	// before SetPackages: entries it re-attributes are persisted (issue #41)
 	p.Procs.OnChange = func(x procs.Proc) { appendProc(st, x) }
 	if pk := LoadPackages(st); len(pk) > 0 {
@@ -88,7 +190,7 @@ func (p *Pipeline) Accept(r *model.Record, arrived time.Time) {
 	}
 	r.Boot = p.Boot
 	p.Procs.Observe(r)
-	p.queue = append(p.queue, pending{r, arrived})
+	p.queue = append(p.queue, pending{r, arrived, p.Live})
 	p.accepted++
 }
 
@@ -112,6 +214,8 @@ func (p *Pipeline) Drain(all bool, now time.Time) error {
 		return nil
 	}
 	batch := make([]*model.Record, n)
+	arrived := make([]time.Time, n)
+	live := make([]bool, n)
 	unknown := false
 	var unknownNs int64
 	for i := 0; i < n; i++ {
@@ -120,7 +224,7 @@ func (p *Pipeline) Drain(all bool, now time.Time) error {
 			unknown = true
 			unknownNs = max(unknownNs, r.TimeNs)
 		}
-		batch[i] = r
+		batch[i], arrived[i], live[i] = r, p.queue[i].arrived, p.queue[i].live
 	}
 	p.queue = append(p.queue[:0], p.queue[n:]...)
 	if p.BeforeAppend != nil {
@@ -129,6 +233,7 @@ func (p *Pipeline) Drain(all bool, now time.Time) error {
 	if err := p.Store.Append(batch); err != nil {
 		return err
 	}
+	p.detectJumps(batch, arrived, live)
 	for _, r := range batch {
 		p.Det.Feed(r)
 	}

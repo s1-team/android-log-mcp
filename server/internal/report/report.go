@@ -543,14 +543,9 @@ func (d *devWork) collect(o Options) {
 		d.meta = st.Meta()
 	}
 	var total int64
-	d.st.Scan(0, 0, true, func(r *model.Record) bool {
-		if d.toNs != 0 && r.TimeNs >= d.toNs {
-			return true
-		}
-		if r.TimeNs < d.fromNs {
-			// logcat is not strictly time ordered across buffers: look a bit further
-			return r.TimeNs >= d.fromNs-int64(time.Minute)
-		}
+	// every record in the window, however it is stored (device clock
+	// changes): no early stop on record order (issue #48)
+	d.st.ScanTime(0, 0, true, d.fromNs, d.toNs, func(r *model.Record) bool {
 		if !PackageMatch(r, o.Package) {
 			return true
 		}
