@@ -568,10 +568,11 @@ func (d *Device) recordOnce(ctx context.Context) error {
 		}
 	}
 	if whole {
-		if tail == 0 {
-			tail = tailSize(d.bufferLines(ctx))
-		}
-		known = tailMultiset(d.Store, tail)
+		// any stored line of the session may still be in the buffer: one
+		// buffer (system) can hold boot lines while another (main) rotated
+		// many times, so the stored lines it spans are not bounded by its
+		// entries (issue #75)
+		known = tailMultiset(d.Store, maxResumeHashes)
 	} else if sameBoot {
 		resume = logcat.FormatResumeTime(arrNs)
 		known = boundaryMultiset(d.Store, arrNs)

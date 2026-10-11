@@ -118,6 +118,18 @@ func (e Env) Log(serial string, lines ...string) error {
 	return nil
 }
 
+// DropLines removes buffer lines containing sub, as logd prunes one
+// buffer (main) while another (system) keeps its oldest lines.
+func (e Env) DropLines(serial, sub string) error {
+	var keep []string
+	for _, l := range bufferLines(e, serial) {
+		if !strings.Contains(l, sub) {
+			keep = append(keep, l+"\n")
+		}
+	}
+	return writeAtomic(filepath.Join(e.devDir(serial), "buffer"), strings.Join(keep, ""))
+}
+
 // SetDate fixes the device clock reported by `date` (zero: real time).
 func (e Env) SetDate(serial string, t time.Time) error {
 	p := filepath.Join(e.devDir(serial), "date")
