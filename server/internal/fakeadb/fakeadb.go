@@ -393,9 +393,14 @@ func shell(e Env, serial, cmd string) int {
 		fmt.Printf("size/num main               Total\nTotal    1000/%d      1000/%d\nNow      1000/%d      1000/%d\n", len(bufferLines(e, serial)), len(bufferLines(e, serial)), len(bufferLines(e, serial)), len(bufferLines(e, serial)))
 	case strings.HasPrefix(cmd, "date"):
 		fmt.Println(date(e, serial))
-	case strings.HasPrefix(cmd, "logcat -d -t 1"):
-		if l := bufferLines(e, serial); len(l) > 0 {
-			fmt.Println(l[len(l)-1])
+	case strings.HasPrefix(cmd, "logcat -d -t "):
+		n, _ := strconv.Atoi(strings.Fields(cmd)[3])
+		l := bufferLines(e, serial)
+		if len(l) > n {
+			l = l[len(l)-n:]
+		}
+		for _, x := range l {
+			fmt.Println(x)
 		}
 	case strings.HasPrefix(cmd, "logcat -d") && strings.Contains(cmd, "| head -n"):
 		n := 3

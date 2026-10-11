@@ -56,8 +56,8 @@ func ContinueIn(src, dst string, lastSeq uint64, boundary []uint64) error {
 		}
 	}
 	m.ResumeDedup = nil
-	if len(boundary) > 0 && m.LastTimeNs > 0 {
-		m.ResumeDedup = &ResumeDedup{TimeNs: m.LastTimeNs, Hashes: boundary}
+	if len(boundary) > 0 && m.ArrivalNs() > 0 {
+		m.ResumeDedup = &ResumeDedup{TimeNs: m.ArrivalNs(), Hashes: boundary}
 	}
 	m.LastSeenHostNs = time.Now().UnixNano()
 	for _, name := range CarriedFiles {

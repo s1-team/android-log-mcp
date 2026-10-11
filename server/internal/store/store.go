@@ -620,6 +620,7 @@ func (s *Store) Append(recs []*model.Record) error {
 		s.mem = append(s.mem, r)
 		s.memBytes += RecordBytes(r)
 		s.newestNs = r.TimeNs
+		s.meta.ArrivalTimeNs = r.TimeNs
 		if r.TimeNs > s.meta.LastTimeNs {
 			s.meta.LastTimeNs = r.TimeNs
 		}

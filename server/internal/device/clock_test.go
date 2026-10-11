@@ -1,6 +1,7 @@
 package device
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -158,22 +159,36 @@ func TestLivePipelineJump(t *testing.T) {
 	}
 }
 
-// T_end is matched by line identity: after a set back, replayed lines
-// dated after T_end are not the end of the replay (issue #48)
+// T_end is matched by its header and copy count: after a clock jump,
+// replayed lines dated after T_end are not the end of the replay (issues
+// #48, #52 D3); a later agreeing line ends it only after a quiet stream
 func TestReplayEndByIdentity(t *testing.T) {
+	line := func(sec, us, tid int, msg string) string {
+		return fmt.Sprintf("%10d.%06d %5d %5d %5d I %-8s: %s", sec, us, 10146, 100, tid, "T", msg)
+	}
+	out := line(1_800_000_000, 5, 100, "x") + "\n" + line(1_800_000_001, 7, 100, "dup") + "\n" +
+		line(1_800_000_001, 7, 101, "other") + "\n" + line(1_800_000_001, 7, 100, "dup") + "\n" +
+		line(1_800_000_001, 7, 100, "dup line 2") + "\n"
+	e := parseEnd(out, time.UTC)
+	if e.k.ns != 1_800_000_001_000_007_000 || e.k.tid != 100 || e.n != 2 {
+		t.Fatalf("end %+v", e)
+	}
+	if e := parseEnd("", time.UTC); e.k.ns != 0 {
+		t.Fatalf("empty: %+v", e)
+	}
 	h := time.Unix(1_800_000_000, 0)
-	tEnd := h.UnixNano() - int64(time.Second) + 123e6
-	future := rec(h.UnixNano()+day, "A", "logged before the set back")
-	if replayEnd(future, tEnd, h, 0, true) {
+	tEnd := h.UnixNano() - int64(time.Second)
+	if replayEndLate(rec(h.UnixNano()+day, "A", "logged before the set back"), tEnd, h, 0, true, true) {
 		t.Fatal("a +1 day replayed line ended the replay")
 	}
-	if !replayEnd(rec(tEnd+456e3, "A", "the T_end line"), tEnd, h, 0, true) {
-		t.Fatal("the T_end line (same ms) did not end the replay")
+	agrees := rec(tEnd+int64(time.Second), "A", "after T_end, agrees")
+	if replayEndLate(agrees, tEnd, h, 0, true, false) {
+		t.Fatal("a later agreeing line inside the burst ended the replay")
 	}
-	if !replayEnd(rec(tEnd+int64(time.Second), "A", "after T_end, agrees"), tEnd, h, 0, true) {
-		t.Fatal("a later line agreeing with the connect clock read did not end the replay")
+	if !replayEndLate(agrees, tEnd, h, 0, true, true) {
+		t.Fatal("a later agreeing line after a quiet stream did not end the replay")
 	}
-	if replayEnd(rec(tEnd-int64(time.Second), "A", "older"), tEnd, h, 0, true) {
+	if replayEndLate(rec(tEnd-int64(time.Second), "A", "older"), tEnd, h, 0, true, true) {
 		t.Fatal("an older line ended the replay")
 	}
 }

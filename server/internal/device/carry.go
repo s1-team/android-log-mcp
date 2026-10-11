@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/s1crab/android-log-mcp/server/internal/model"
 	"github.com/s1crab/android-log-mcp/server/internal/store"
 )
 
@@ -76,23 +75,16 @@ func Uncarry(cs []Carried) {
 	}
 }
 
-// boundaryHashes are the hashes of the stored lines at the newest
-// timestamp: logcat -T <that time> repeats them, and the new root does not
-// have them to deduplicate against.
+// boundaryHashes are the hashes of the stored lines that logcat -T
+// <newest arrival> can repeat (see boundaryMultiset); the new root does
+// not have them to deduplicate against.
 func boundaryHashes(st *store.Store) []uint64 {
-	ts := st.Meta().LastTimeNs
-	if ts == 0 {
-		return nil
-	}
+	m := st.Meta()
 	var out []uint64
-	st.Scan(0, st.LastSeq()+1, true, func(r *model.Record) bool {
-		if r.TimeNs < ts {
-			return false
+	for h, n := range boundaryMultiset(st, m.ArrivalNs()) {
+		for ; n > 0; n-- {
+			out = append(out, h)
 		}
-		if r.TimeNs == ts {
-			out = append(out, recHash(r))
-		}
-		return true
-	})
+	}
 	return out
 }

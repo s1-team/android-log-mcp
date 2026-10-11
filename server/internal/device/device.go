@@ -101,7 +101,7 @@ func recordPause(st *store.Store) {
 				return // already open
 			}
 		}
-		m.Gaps = append(m.Gaps, store.Gap{FromNs: m.LastTimeNs, ToNs: -1, Reason: PauseGapReason})
+		m.Gaps = append(m.Gaps, store.Gap{FromNs: m.ArrivalNs(), ToNs: -1, Reason: PauseGapReason})
 	})
 }
 
@@ -516,50 +516,78 @@ func (d *Device) recordOnce(ctx context.Context) error {
 	d.catchBegin(sess)
 	d.setSideWork(false)
 
+	// T_end: the newest buffered line (by arrival) now, at µs; the replay
+	// ends at the streamed line with that device time
+	end, terr := d.measureEnd(ctx, loc)
+	if terr != nil && ctx.Err() == nil {
+		end, terr = d.measureEnd(ctx, loc)
+	}
+	tEnd := end.k.ns
 	resume := ""
-	var dedupNs int64
-	dedup := map[uint64]bool{}
-	var rbSet map[uint64]bool // clock rollback: stored lines of this boot still in the buffer
-	sameBoot := meta.LastBootID == bootID && meta.LastTimeNs > 0
+	// stored lines the replayed part of the stream can repeat (issue #52):
+	// nil on a new boot; whole = read the whole buffer, not -T
+	var known multiset
+	whole := false
+	arrNs := meta.ArrivalNs()
+	sameBoot := meta.LastBootID == bootID && arrNs > 0
+	tail := 0
 	if sameBoot && devNow != 0 {
 		limit := devNow
 		if coarse {
 			limit += int64(time.Second)
 		}
-		if meta.LastTimeNs > limit {
-			// -T <last stored time> would name a future time and print
-			// nothing until then: read the whole buffer instead and drop
-			// what is already stored (issue #11 §4)
-			d.noteRollback(meta.LastTimeNs, devNow, loc)
-			rbSet = rollbackSet(d.Store, d.measureStart(ctx))
+		if arrNs > limit {
+			// -T <newest arrival> would name a future device time and
+			// print nothing until then (issue #11 §4)
+			d.noteRollback(arrNs, devNow, loc)
+			whole = true
 		}
 	}
-	if rbSet != nil {
-		// same boot session: nothing to set up
+	if sameBoot && !whole && terr == nil && tEnd != 0 && tEnd < arrNs {
+		// the newest buffered line is dated before the newest stored one
+		// although it arrived later: the device clock went back
+		d.noteWhole(fmt.Sprintf("device clock went back: the newest buffered line (device time %s) is earlier than the newest stored line (%s); read the whole buffer without -T and dropped lines already stored",
+			time.Unix(0, tEnd).In(loc).Format("2006-01-02 15:04:05.000"), time.Unix(0, arrNs).In(loc).Format("2006-01-02 15:04:05.000")))
+		whole = true
+	}
+	if sameBoot && jumpInTail(d.Store, sessionFirst(d.Store)) {
+		// a clock jump in this boot session: is it among the stored
+		// lines that may still be in the buffer, or measured now?
+		tail = tailSize(d.bufferLines(ctx))
+		from := sessionFirst(d.Store)
+		if last := d.Store.LastSeq(); last > uint64(tail) && last-uint64(tail) > from {
+			from = last - uint64(tail)
+		}
+		if !whole && jumpInTail(d.Store, from) {
+			// device time does not follow arrival order there: -T could
+			// skip lines dated before the resume point (issue #52 D1)
+			d.noteWhole("device clock jump among the stored lines that may still be in the device buffer: read the whole buffer without -T and dropped lines already stored")
+			whole = true
+		}
+	}
+	if whole {
+		if tail == 0 {
+			tail = tailSize(d.bufferLines(ctx))
+		}
+		known = tailMultiset(d.Store, tail)
 	} else if sameBoot {
-		resume = logcat.FormatResumeTime(meta.LastTimeNs)
-		dedupNs = meta.LastTimeNs
-		// hashes of stored records at the boundary timestamp
-		last := d.Store.LastSeq()
-		d.Store.Scan(0, last+1, true, func(r *model.Record) bool {
-			if r.TimeNs < dedupNs {
-				return false
-			}
-			dedup[recHash(r)] = true
-			return true
-		})
-		if rd := meta.ResumeDedup; rd != nil && rd.TimeNs == dedupNs {
+		resume = logcat.FormatResumeTime(arrNs)
+		known = boundaryMultiset(d.Store, arrNs)
+	}
+	if known != nil {
+		if rd := meta.ResumeDedup; rd != nil && rd.TimeNs == arrNs {
 			for _, h := range rd.Hashes { // stored in the previous root (set-root)
-				dedup[h] = true
+				known[h]++
 			}
 		}
-	} else {
+	}
+	if !sameBoot {
 		// new boot (or first contact): import the device's whole ring buffer
 		now := time.Now().UnixNano()
 		nextSeq := d.Store.LastSeq() + 1 // not inside UpdateMeta: store lock is held there
 		d.Store.UpdateMeta(func(m *store.Meta) {
 			if m.LastBootID != "" && m.LastBootID != bootID {
-				m.Gaps = append(m.Gaps, store.Gap{FromNs: m.LastTimeNs, ToNs: 0, Reason: "device rebooted (logs from before the reboot that were not yet recorded are lost)"})
+				m.Gaps = append(m.Gaps, store.Gap{FromNs: m.ArrivalNs(), ToNs: 0, Reason: "device rebooted (logs from before the reboot that were not yet recorded are lost)"})
 			}
 			m.Sessions = append(m.Sessions, store.Session{BootID: bootID, Boot: boot, FirstSeq: nextSeq})
 			m.LastBootID = bootID
@@ -570,12 +598,6 @@ func (d *Device) recordOnce(ctx context.Context) error {
 		// processes of earlier boots are certainly gone now
 		CloseOtherBoots(d.Store, boot)
 	}
-	// T_end: the newest buffered line now; caught up once a streamed line
-	// at or after it has been stored or deduplicated
-	tEnd, terr := d.measureEnd(ctx)
-	if terr != nil && ctx.Err() == nil {
-		tEnd, terr = d.measureEnd(ctx)
-	}
 	switch {
 	case ctx.Err() != nil:
 		return ctx.Err()
@@ -585,9 +607,6 @@ func (d *Device) recordOnce(ctx context.Context) error {
 		d.catchDone(sess)
 	case tEnd == 0:
 		d.catchDone(sess) // empty buffer
-	case resume != "" && tEnd <= dedupNs:
-		d.catchSetEnd(sess, tEnd, "")
-		d.catchDone(sess) // nothing newer than what is stored
 	default:
 		d.catchSetEnd(sess, tEnd, "")
 	}
@@ -636,7 +655,7 @@ func (d *Device) recordOnce(ctx context.Context) error {
 	d.recording = true
 	d.lastErr = ""
 	d.mu.Unlock()
-	if resume == "" && rbSet == nil {
+	if !sameBoot {
 		d.bg.spawn("measureTotal", func() { d.measureTotal(ctx) }) // whole buffer: estimate its line count
 	}
 	if resume != "" {
@@ -646,7 +665,7 @@ func (d *Device) recordOnce(ctx context.Context) error {
 				open = open || g.ToNs <= 0
 			}
 			if !open && m.LastSeenHostNs != 0 && time.Since(time.Unix(0, m.LastSeenHostNs)) > 5*time.Second {
-				m.Gaps = append(m.Gaps, store.Gap{FromNs: m.LastTimeNs, ToNs: -1, Reason: IdleGapReason})
+				m.Gaps = append(m.Gaps, store.Gap{FromNs: m.ArrivalNs(), ToNs: -1, Reason: IdleGapReason})
 			}
 		})
 	}
@@ -712,11 +731,24 @@ func (d *Device) recordOnce(ctx context.Context) error {
 		pipe.Live = true // empty buffer: every line is live
 	}
 	agree := 0
+	var prevAt time.Time
+	seenEnd := 0 // streamed records with the T_end key
 	accept := func(r *model.Record) {
 		if r == nil {
 			return
 		}
-		atEnd := tEnd != 0 && replayEnd(r, tEnd, time.Now(), off0, off0ok)
+		now := time.Now()
+		quiet := !prevAt.IsZero() && now.Sub(prevAt) >= time.Second
+		prevAt = now
+		atEnd := false
+		if tEnd != 0 && !pipe.Live {
+			if keyOf(r) == end.k {
+				seenEnd++
+				atEnd = seenEnd >= end.n
+			} else {
+				atEnd = replayEndLate(r, tEnd, now, off0, off0ok, quiet)
+			}
+		}
 		if atEnd {
 			// the line at T_end is the last replayed one: lines after it
 			// arrive as they are logged, so their arrival host time can
@@ -738,18 +770,11 @@ func (d *Device) recordOnce(ctx context.Context) error {
 		// part only: once live, a line dated before the last stored one
 		// is new (the device clock was set back; issue #48)
 		replaying := !pipe.Live
-		if replaying && dedupNs != 0 && r.TimeNs <= dedupNs {
+		if replaying && known != nil && known.take(recHash(r)) {
 			overlap = true
-			if r.TimeNs < dedupNs || dedup[recHash(r)] {
-				if atEnd {
-					d.catchDone(sess)
-				}
-				return
+			if whole {
+				d.rollbackSkipped.Add(1)
 			}
-		}
-		if replaying && rbSet != nil && rbSet[recHash(r)] {
-			overlap = true
-			d.rollbackSkipped.Add(1)
 			if atEnd {
 				d.catchDone(sess)
 			}
@@ -789,7 +814,7 @@ func (d *Device) recordOnce(ctx context.Context) error {
 					d.execOut.Store(1)
 				}
 				d.Store.UpdateMeta(func(m *store.Meta) {
-					m.Gaps = append(m.Gaps, store.Gap{FromNs: m.LastTimeNs, ToNs: -1, Reason: "logcat stream ended (device disconnected?); resumed later with logcat -T, so only lines the device buffer dropped meanwhile are lost"})
+					m.Gaps = append(m.Gaps, store.Gap{FromNs: m.ArrivalNs(), ToNs: -1, Reason: "logcat stream ended (device disconnected?); resumed later with logcat -T, so only lines the device buffer dropped meanwhile are lost"})
 				})
 				return fmt.Errorf("logcat exited: %v %s", werr, firstLines(msg, 3))
 			}
@@ -1199,17 +1224,15 @@ func (d *Device) started() bool {
 	return d.owned && d.cancel != nil
 }
 
-// replayEnd: r is the line at T_end, the last buffered line by arrival when
-// the stream started (#30 catch-up). Matched by its exact ms device time,
-// not by "device time ≥ T_end": after a clock set back, replayed lines can
-// be dated far after T_end (issue #48). A line at or after T_end whose
-// arrival agrees with the connect clock read also ends the replay (T_end
-// line evicted, or ms precision lost).
-func replayEnd(r *model.Record, tEnd int64, arrived time.Time, off0 int64, ok bool) bool {
-	if r.TimeNs/1e6 == tEnd/1e6 {
-		return true
-	}
-	return r.TimeNs >= tEnd && ok && lineAgrees(r, arrived, off0)
+// The replay ends at the T_end record, the last buffered one by arrival
+// when the stream started (#30 catch-up): matched by its header (endMark),
+// not by "device time ≥ T_end", since after a clock jump replayed lines
+// can be dated after T_end (issues #48, #52 D3). replayEndLate is the
+// fallback when that record never arrives (evicted): after the stream was
+// quiet for a while (the replay burst is over), a line at or after T_end
+// that agrees with the connect clock read ends the replay.
+func replayEndLate(r *model.Record, tEnd int64, arrived time.Time, off0 int64, ok, quiet bool) bool {
+	return quiet && r.TimeNs >= tEnd && ok && lineAgrees(r, arrived, off0)
 }
 
 // lineAgrees: r's device time against its arrival host time is within the

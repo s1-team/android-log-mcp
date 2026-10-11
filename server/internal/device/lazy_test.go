@@ -192,7 +192,7 @@ func TestCatchUpDeterministic(t *testing.T) {
 	if len(got) != 30 || got[29] != "FAKEA line 29" {
 		t.Fatalf("caught up before the line at T_end was stored: %d lines", len(got))
 	}
-	if len(e.CallsMatching("logcat -d -t 1 -b main,system,crash,events -v epoch")) == 0 {
+	if len(e.CallsMatching("logcat -d -t 50 -b main,system,crash,events")) == 0 {
 		t.Fatal("T_end was not measured")
 	}
 }
