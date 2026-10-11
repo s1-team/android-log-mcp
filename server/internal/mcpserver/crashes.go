@@ -80,7 +80,7 @@ func (t *Tools) crashes(ctx context.Context, a crashArgs) (out string, err error
 	own := procs.NameOwner(pk)
 	var su *sharedUID
 	if a.Package != "" {
-		su = newSharedUID(a.Package, pk, d.Procs())
+		su = newSharedUID(a.Package, pk, d.Procs)
 	}
 	var sel []*analysis.Crash
 	for _, c := range all {

@@ -493,7 +493,7 @@ func (t *Tools) packageStatus(d *device.Device, pkg string) string {
 	var alive, dead, prior []procs.Proc
 	own := procs.NameOwner(pk) // dotted process names (issue #41)
 	ps := d.Procs()
-	su := newSharedUID(pkg, pk, ps) // shared-uid processes (issue #44)
+	su := newSharedUID(pkg, pk, func() []procs.Proc { return ps }) // shared-uid processes (issue #44)
 	if su != nil {
 		b.WriteString("  note: " + su.note() + "\n")
 	}

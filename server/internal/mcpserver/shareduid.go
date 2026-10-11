@@ -21,14 +21,15 @@ type sharedUID struct {
 	names map[string]bool // shared-uid device process names seen (Procs)
 }
 
-// newSharedUID returns nil when pkg is not on a shared uid.
-func newSharedUID(pkg string, uidPkgs map[int][]string, ps []procs.Proc) *sharedUID {
+// newSharedUID returns nil when pkg is not on a shared uid; ps (the stored
+// process lifetimes) is loaded only for a shared uid.
+func newSharedUID(pkg string, uidPkgs map[int][]string, ps func() []procs.Proc) *sharedUID {
 	a, pkgs, ok := procs.SharedUIDOf(uidPkgs, pkg)
 	if !ok {
 		return nil
 	}
 	s := &sharedUID{pkg: pkg, appID: a, pkgs: pkgs, names: map[string]bool{}}
-	for _, p := range ps {
+	for _, p := range ps() {
 		// dotted names only: helper binaries (sh, crash_dump64) are not
 		// app processes
 		if procs.AppID(p.UID) == a && strings.Contains(p.Name, ".") && procs.MatchesNone(p.Name, pkgs) {
