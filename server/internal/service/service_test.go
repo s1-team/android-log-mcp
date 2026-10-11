@@ -190,6 +190,17 @@ func TestLingerFor(t *testing.T) {
 	if _, how := lingerFor(0, ""); !strings.Contains(how, "default") || !strings.Contains(how, "10m0s") {
 		t.Errorf("description %q", how)
 	}
+	// the global line names the rule, not a value for an unmeasured span
+	for _, env := range []string{"", "bogus"} {
+		t.Setenv(LingerEnv, env)
+		if txt := lingerText(); strings.Contains(txt, "not measured") || !strings.Contains(txt, "max(10m0s, 2 × the device's log buffer span), at most 1h0m0s") {
+			t.Errorf("%q: %q", env, txt)
+		}
+	}
+	t.Setenv(LingerEnv, "30m")
+	if txt := lingerText(); !strings.HasSuffix(txt, "30m0s ("+LingerEnv+")") {
+		t.Errorf("%q", txt)
+	}
 }
 
 // shortExit makes the service exit quickly when unused (tests).

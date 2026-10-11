@@ -246,7 +246,7 @@ d = Session("D")
 pd, td = d.service_pid()
 dl = [l for l in td.splitlines() if l.startswith("linger:")]
 log("default linger line:", dl)
-check(bool(dl) and "default: max(10m0s, 2 × the device's log buffer span" in dl[0], "default linger reported")
+check(bool(dl) and "max(10m0s, 2 × the device's log buffer span), at most 1h0m0s (default" in dl[0] and "not measured" not in dl[0], "default linger reported")
 d.close()
 code, out, _ = cli("service", "stop")
 log("service stop:", out.strip())

@@ -32,8 +32,8 @@ type Pipeline struct {
 	// buffer) name a new pid before its first lines are stored.
 	Delay time.Duration
 
-	OnUnknownPID func()           // a stored line had an unknown pid
-	NeedDropbox  func(tag string) // a crash wants DropBox evidence
+	OnUnknownPID func(newestNs int64) // stored lines had an unknown pid; the newest one's time
+	NeedDropbox  func(tag string)     // a crash wants DropBox evidence
 	BeforeAppend func(first *model.Record)
 
 	accepted uint64
@@ -106,10 +106,12 @@ func (p *Pipeline) Drain(all bool, now time.Time) error {
 	}
 	batch := make([]*model.Record, n)
 	unknown := false
+	var unknownNs int64
 	for i := 0; i < n; i++ {
 		r := p.queue[i].r
 		if !p.Procs.Annotate(r) && r.PID > 0 {
 			unknown = true
+			unknownNs = max(unknownNs, r.TimeNs)
 		}
 		batch[i] = r
 	}
@@ -124,7 +126,7 @@ func (p *Pipeline) Drain(all bool, now time.Time) error {
 		p.Det.Feed(r)
 	}
 	if unknown && p.OnUnknownPID != nil {
-		p.OnUnknownPID()
+		p.OnUnknownPID(unknownNs)
 	}
 	return nil
 }

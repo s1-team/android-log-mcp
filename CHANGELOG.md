@@ -12,6 +12,8 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 - **Breaking:** recording of a device stops after its own idle time since its last log tool call (`ANDROID_LOG_MCP_LINGER`, default `max(10m, 2 × the device's log buffer span)`, at most `1h`; `0` = after each call); a call that waits with `wait_ms` counts as use. Clients connecting or disconnecting no longer affect recording. The service no longer exits after the linger: it stays while clients are connected and exits 30 s after there are no clients, no pin and no recorded device.
 - **Breaking:** `report` starts the background service (detached) when none runs, starts recording the requested devices and backfills them (up to 10 s; otherwise the manifest warns "backfill incomplete"), instead of building the report in its own process.
 - `set-root` keeps the started devices, their idle timers and pins. Service protocol 2 (adds `record`); 0.4 clients keep working.
+- Faster first backfill, mostly on emulators: the device's log buffer is streamed with `adb exec-out logcat` (`adb logcat` on Android < 5.0 or when exec-out fails); while backfilling no other adb command runs on the device (`ps`, `pm list packages`, `dumpsys dropbox`, buffer span), and afterwards each DropBox tag needed by crashes in the backfill is fetched once (together with the new-boot history; skipped if fetched in the last 5 minutes); lines from before recording started no longer trigger `ps`; the identity and device probes are one adb shell. On an API 29 emulator a full buffer (~28,000 lines) now catches up in 29–37 s instead of 54–70 s; reading the buffer alone takes ~27 s there.
+- "backfill in progress" shows the estimated total, e.g. "(1,423 of ~27,000 lines; earliest …)", estimated from the entries logd holds (`logcat -S`); after a `-T` resume it shows "(N lines so far; …)".
 
 ### Added
 
@@ -25,6 +27,7 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ### Fixed
 
+- `logcat_status` / `service status`: the global `linger:` line no longer says "(not measured yet)"; it states the rule, each recorded device shows its own value.
 - Recording resumes without losing or duplicating lines after the device clock went back (e.g. an emulator snapshot restore): the buffer is read without `-T` and already stored lines are skipped; `logcat_status` reports it.
 
 ## [0.4.1] - 2026-10-10

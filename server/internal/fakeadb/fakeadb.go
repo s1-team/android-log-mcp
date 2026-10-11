@@ -6,13 +6,15 @@
 //
 // Layout of the state directory:
 //
-//	calls.log              one line per invocation (arguments)
+//	calls.log              one line per invocation ("<unix ns> <arguments>")
 //	devices                "serial state" lines (track-devices / devices)
 //	dev/<serial>/props     identity properties, key=value lines (with boot_id)
 //	dev/<serial>/buffer    the device log buffer, `-v epoch` threadtime lines
 //	dev/<serial>/date      device clock override (`date +%s.%N` output)
 //	dev/<serial>/delay_ms  delay per line while logcat dumps the buffer
 //	dev/<serial>/logcat    pids of streaming logcat processes, one per line
+//	dev/<serial>/no_exec_out  `adb exec-out` fails (adbd without exec, API < 21)
+//	dev/<serial>/crlf      `adb logcat` writes CRLF line ends (pty)
 package fakeadb
 
 import (
@@ -129,16 +131,54 @@ func (e Env) SetIdentDelay(serial string, d time.Duration) error {
 	return writeAtomic(filepath.Join(e.devDir(serial), "ident_delay_ms"), strconv.Itoa(int(d/time.Millisecond)))
 }
 
-// Calls returns every invocation so far.
-func (e Env) Calls() []string {
+// Call is one invocation: when it started and its arguments.
+type Call struct {
+	At   time.Time
+	Args string
+}
+
+// CallLog returns every invocation so far, oldest first.
+func (e Env) CallLog() []Call {
 	b, _ := os.ReadFile(filepath.Join(e.Dir, "calls.log"))
-	var out []string
+	var out []Call
 	for _, l := range strings.Split(string(b), "\n") {
-		if l != "" {
-			out = append(out, l)
+		ts, args, ok := strings.Cut(l, " ")
+		if !ok {
+			continue
 		}
+		ns, _ := strconv.ParseInt(ts, 10, 64)
+		out = append(out, Call{At: time.Unix(0, ns), Args: args})
 	}
 	return out
+}
+
+// Calls returns every invocation's arguments so far.
+func (e Env) Calls() []string {
+	var out []string
+	for _, c := range e.CallLog() {
+		out = append(out, c.Args)
+	}
+	return out
+}
+
+// SetProp sets a device property (e.g. ro.build.version.sdk).
+func (e Env) SetProp(serial, key, value string) error {
+	p := props(e, serial)
+	p[key] = value
+	var b strings.Builder
+	for k, v := range p {
+		fmt.Fprintf(&b, "%s=%s\n", k, v)
+	}
+	return writeAtomic(filepath.Join(e.devDir(serial), "props"), b.String())
+}
+
+// SetNoExecOut makes `adb exec-out` fail like adbd without exec support
+// (API < 21), and `adb logcat` write CRLF line ends (a pty).
+func (e Env) SetNoExecOut(serial string) error {
+	if err := writeAtomic(filepath.Join(e.devDir(serial), "no_exec_out"), "1"); err != nil {
+		return err
+	}
+	return writeAtomic(filepath.Join(e.devDir(serial), "crlf"), "1")
 }
 
 // CallsMatching returns the invocations containing sub.
@@ -201,7 +241,7 @@ func appendLine(p, s string) {
 // Main runs the fake adb with args (os.Args[1:]); returns the exit code.
 func Main(args []string) int {
 	e := Env{Dir: os.Getenv(EnvDir)}
-	appendLine(filepath.Join(e.Dir, "calls.log"), strings.Join(args, " "))
+	appendLine(filepath.Join(e.Dir, "calls.log"), strconv.FormatInt(time.Now().UnixNano(), 10)+" "+strings.Join(args, " "))
 	if len(args) == 0 {
 		return 1
 	}
@@ -243,7 +283,16 @@ func Main(args []string) int {
 		case "shell":
 			return shell(e, serial, strings.Join(args[3:], " "))
 		case "logcat":
-			return logcat(e, serial, args[3:])
+			return logcat(e, serial, args[3:], crlf(e, serial))
+		case "exec-out":
+			if _, err := os.Stat(filepath.Join(e.devDir(serial), "no_exec_out")); err == nil {
+				fmt.Fprintln(os.Stderr, "error: closed")
+				return 1
+			}
+			if len(args) > 3 && args[3] == "logcat" {
+				return logcat(e, serial, args[4:], false)
+			}
+			return shell(e, serial, strings.Join(args[3:], " "))
 		case "emu":
 			fmt.Println("KO: unsupported")
 			return 1
@@ -307,16 +356,23 @@ func lineTime(l string) int64 {
 func shell(e Env, serial, cmd string) int {
 	p := props(e, serial)
 	switch {
-	case strings.Contains(cmd, "ro.serialno"): // identity probe
-		if b, err := os.ReadFile(filepath.Join(e.devDir(serial), "ident_delay_ms")); err == nil {
-			ms, _ := strconv.Atoi(strings.TrimSpace(string(b)))
-			time.Sleep(time.Duration(ms) * time.Millisecond)
+	case strings.Contains(cmd, "boot_id"): // identity and/or recorder probe
+		if strings.Contains(cmd, "ro.serialno") {
+			if b, err := os.ReadFile(filepath.Join(e.devDir(serial), "ident_delay_ms")); err == nil {
+				ms, _ := strconv.Atoi(strings.TrimSpace(string(b)))
+				time.Sleep(time.Duration(ms) * time.Millisecond)
+			}
+			for _, k := range []string{"ro.serialno", "ro.boot.serialno", "ro.kernel.qemu", "ro.boot.qemu", "ro.boot.qemu.avd_name", "ro.product.manufacturer", "ro.build.fingerprint", "android_id"} {
+				fmt.Printf("%s=%s\n", k, p[k])
+			}
 		}
-		for _, k := range []string{"ro.serialno", "ro.boot.serialno", "ro.kernel.qemu", "ro.boot.qemu", "ro.boot.qemu.avd_name", "ro.product.manufacturer", "ro.product.model", "ro.build.fingerprint", "android_id", "boot_id"} {
-			fmt.Printf("%s=%s\n", k, p[k])
+		sdk := p["ro.build.version.sdk"]
+		if sdk == "" {
+			sdk = "29"
 		}
-	case strings.HasPrefix(cmd, "getprop ro.product.model;"): // recorder probe
-		fmt.Printf("%s\n10\n29\nUTC\n+0000\n%s\n%s\n", p["ro.product.model"], p["boot_id"], date(e, serial))
+		fmt.Printf("ro.product.model=%s\nro.build.version.release=10\nro.build.version.sdk=%s\npersist.sys.timezone=UTC\nzone=+0000\nboot_id=%s\nnow=%s\n", p["ro.product.model"], sdk, p["boot_id"], date(e, serial))
+	case strings.HasPrefix(cmd, "logcat -S"):
+		fmt.Printf("size/num main               Total\nTotal    1000/%d      1000/%d\nNow      1000/%d      1000/%d\n", len(bufferLines(e, serial)), len(bufferLines(e, serial)), len(bufferLines(e, serial)), len(bufferLines(e, serial)))
 	case strings.HasPrefix(cmd, "date"):
 		fmt.Println(date(e, serial))
 	case strings.HasPrefix(cmd, "logcat -d -t 1"):
@@ -343,7 +399,16 @@ func shell(e Env, serial, cmd string) int {
 	return 0
 }
 
-func logcat(e Env, serial string, args []string) int {
+func crlf(e Env, serial string) bool {
+	_, err := os.Stat(filepath.Join(e.devDir(serial), "crlf"))
+	return err == nil
+}
+
+func logcat(e Env, serial string, args []string, crlf bool) int {
+	eol := "\n"
+	if crlf {
+		eol = "\r\n" // `adb logcat` through a pty on old devices
+	}
 	var from int64
 	for i := 0; i < len(args)-1; i++ {
 		if args[i] == "-T" {
@@ -364,7 +429,7 @@ func logcat(e Env, serial string, args []string) int {
 			if from > 0 && lineTime(lines[sent]) < from {
 				continue
 			}
-			if _, err := w.WriteString(lines[sent] + "\n"); err != nil {
+			if _, err := w.WriteString(lines[sent] + eol); err != nil {
 				return 1
 			}
 			if delay > 0 {

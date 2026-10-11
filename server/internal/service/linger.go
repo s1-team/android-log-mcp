@@ -40,13 +40,7 @@ func lingerFor(span time.Duration, env string) (time.Duration, string) {
 	}
 	d := max(LingerMin, 2*span)
 	d = min(d, LingerMax)
-	how := fmt.Sprintf("default: max(%s, 2 × the device's log buffer span", LingerMin)
-	if span > 0 {
-		how += " " + span.Round(time.Second).String()
-	} else {
-		how += " (not measured yet)"
-	}
-	return d, fmt.Sprintf("%s (%s), at most %s)", d, how, LingerMax)
+	return d, fmt.Sprintf("%s (default: max(%s, 2 × the device's log buffer span %s), at most %s)", d, LingerMin, span.Round(time.Second), LingerMax)
 }
 
 func deviceLinger(d *device.Device) time.Duration {
@@ -152,5 +146,9 @@ func lingerText() string {
 	if d == 0 {
 		return "per device: " + how + ": a device stops right after each call (backfill only)"
 	}
-	return "per device, after its last log tool call: " + how
+	if !strings.Contains(how, "(default:") {
+		return "per device, after its last log tool call: " + how
+	}
+	// the default depends on each device's buffer span (shown per device)
+	return fmt.Sprintf("per device, after its last log tool call: max(%s, 2 × the device's log buffer span), at most %s (default; each recording device shows its own)", LingerMin, LingerMax)
 }

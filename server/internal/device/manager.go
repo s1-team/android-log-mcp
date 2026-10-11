@@ -566,6 +566,7 @@ func (m *Manager) attach(id Identity) string {
 	if id.BootID != "" {
 		d.bootID = id.BootID
 	}
+	d.preProbe = id.Probe
 	m.swap(id.ID, d)
 	return id.ID
 }

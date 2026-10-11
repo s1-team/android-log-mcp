@@ -33,6 +33,7 @@ type catchState struct {
 	startSeq uint64        // last stored seq when the backfill began
 	tEndNs   int64
 	note     string // why catch-up could not be verified, if so
+	estTotal uint64 // estimated lines of the whole backfill (0 = unknown)
 }
 
 // Progress describes a device's backfill.
@@ -45,6 +46,11 @@ type Progress struct {
 	EarliestNs int64
 	TEndNs     int64
 	Note       string
+	// EstTotal estimates the lines the backfill stores in all (0 =
+	// unknown): when the whole device buffer is read, the entries logd
+	// holds in the recorded buffers (`logcat -S`, row "Now") when the
+	// stream started. Not estimated for a -T resume.
+	EstTotal uint64
 }
 
 func (d *Device) catchBegin() {
@@ -58,6 +64,7 @@ func (d *Device) catchBegin() {
 	c.startSeq = d.Store.LastSeq()
 	c.tEndNs = 0
 	c.note = ""
+	c.estTotal = 0
 }
 
 func (d *Device) catchSetEnd(tEnd int64, note string) {
@@ -82,7 +89,7 @@ func (d *Device) catchDone() {
 func (d *Device) CatchUp() Progress {
 	c := &d.catch
 	c.mu.Lock()
-	p := Progress{Pending: c.pending, TEndNs: c.tEndNs, Note: c.note}
+	p := Progress{Pending: c.pending, TEndNs: c.tEndNs, Note: c.note, EstTotal: c.estTotal}
 	start := c.startSeq
 	c.mu.Unlock()
 	if last := d.Store.LastSeq(); last > start {
@@ -112,14 +119,97 @@ func (d *Device) WaitCaughtUp(ctx context.Context, timeout time.Duration) Progre
 	return d.CatchUp()
 }
 
-// BackfillText renders a pending backfill ("backfill in progress (N lines,
-// earliest <time>)").
+// caughtUp is closed when the current backfill ends (closed already when
+// none is pending).
+func (d *Device) caughtUp() <-chan struct{} {
+	c := &d.catch
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.pending {
+		return c.done
+	}
+	ch := make(chan struct{})
+	close(ch)
+	return ch
+}
+
+// BackfillText renders a pending backfill: "backfill in progress (1,423
+// of ~27,000 lines; earliest <time>)", or "(1,423 lines so far; ...)"
+// without an estimate.
 func (p Progress) BackfillText(loc *time.Location) string {
-	s := fmt.Sprintf("backfill in progress (%d lines", p.Lines)
+	var s string
+	if p.EstTotal > 0 {
+		s = fmt.Sprintf("backfill in progress (%s of ~%s lines", thousands(p.Lines), thousands(roughly(max(p.EstTotal, p.Lines))))
+	} else {
+		s = fmt.Sprintf("backfill in progress (%s lines so far", thousands(p.Lines))
+	}
 	if p.EarliestNs != 0 {
-		s += ", earliest " + time.Unix(0, p.EarliestNs).In(loc).Format("2006-01-02 15:04:05.000")
+		s += "; earliest " + time.Unix(0, p.EarliestNs).In(loc).Format("2006-01-02 15:04:05.000")
 	}
 	return s + ")"
+}
+
+// roughly rounds an estimate to two significant digits (26,322 → 26,000).
+func roughly(n uint64) uint64 {
+	unit := uint64(1)
+	for n/unit >= 100 {
+		unit *= 10
+	}
+	return (n + unit/2) / unit * unit
+}
+
+// thousands formats n with comma separators.
+func thousands(n uint64) string {
+	s := strconv.FormatUint(n, 10)
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	return s
+}
+
+// StatsCmd reads logd's per-buffer statistics (entry counts) of the
+// recorded buffers.
+const StatsCmd = "logcat -S -b main,system,crash,events"
+
+// parseStatsTotal returns the entries logd holds now, from the "Now" row
+// of `logcat -S` ("Now  1784359/18602  705019/4098 ...  2886865/26322"):
+// the last column is the total over the listed buffers.
+func parseStatsTotal(out string) uint64 {
+	for _, ln := range strings.Split(out, "\n") {
+		f := strings.Fields(ln)
+		if len(f) < 2 || f[0] != "Now" {
+			continue
+		}
+		_, num, ok := strings.Cut(f[len(f)-1], "/")
+		if !ok {
+			return 0
+		}
+		n, err := strconv.ParseUint(num, 10, 64)
+		if err != nil {
+			return 0
+		}
+		return n
+	}
+	return 0
+}
+
+// measureTotal estimates the backfill's line count (Progress.EstTotal).
+func (d *Device) measureTotal(ctx context.Context) {
+	if !d.CatchUp().Pending {
+		return
+	}
+	out, err := d.adb.Shell(ctx, d.Addr(), 20*time.Second, StatsCmd)
+	if err != nil {
+		return
+	}
+	if n := parseStatsTotal(out); n > 0 {
+		c := &d.catch
+		c.mu.Lock()
+		if c.pending {
+			c.estTotal = n
+		}
+		c.mu.Unlock()
+	}
 }
 
 // parseEpochTimes returns the times of the `-v epoch` lines in out.

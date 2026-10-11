@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -49,7 +50,9 @@ type Device struct {
 	lastSeen   time.Time
 	unknownPID time.Time // debounce for ps refresh
 	pkgRefresh time.Time
-	dbxPending map[string]bool
+	dbxPending map[string]int  // DropBox tag → dbxQueued/dbxRunning/dbxAgain (absent: idle)
+	dbxDefer   map[string]bool // tags crashes asked for before side work started
+	sideOn     bool            // side work of the current session runs (under dbxMu)
 	dbxMu      sync.Mutex
 	crashMu    sync.Mutex // serializes ID assignment + persistence
 	disk       *store.DiskGuard
@@ -60,8 +63,14 @@ type Device struct {
 	devNowNs        int64        // device clock read by the last probe (0 = unknown)
 	devNowCoarse    bool         // devNowNs has whole-second precision only
 	rollback        string       // last clock rollback (RollbackNote)
+	preProbe        *Probe       // probe that came with the identity probe (used once)
+	execOut         atomic.Int32 // 0 unknown, 1 `adb exec-out` works, -1 unsupported (stream with `adb logcat`)
 	rollbackSkipped atomic.Int64 // lines dropped as already stored after it
 }
+
+// errExecOut ends a recording session whose `adb exec-out logcat` failed
+// before any line (adbd without exec support): it restarts with `adb logcat`.
+var errExecOut = errors.New("adb exec-out is not supported by the device; streaming with adb logcat")
 
 // errDiskPaused ends a recording session because free disk space is low.
 var errDiskPaused = errors.New("recording paused: low free disk space")
@@ -87,7 +96,7 @@ func recordPause(st *store.Store) {
 }
 
 func newDevice(adb *ADB, st *store.Store, serial string) *Device {
-	d := &Device{Serial: serial, Store: st, adb: adb, dbxPending: map[string]bool{}}
+	d := &Device{Serial: serial, Store: st, adb: adb, dbxPending: map[string]int{}, dbxDefer: map[string]bool{}}
 	m := st.Meta()
 	d.addr = m.Addr
 	if d.addr == "" {
@@ -318,25 +327,30 @@ func (d *Device) stop() {
 	d.catchDone()
 }
 
-// probe reads device properties, boot id and clock offset (read-only).
+// probe reads device properties, boot id and clock offset (read-only):
+// the probe that came with the identity probe when it is recent (one adb
+// shell less when recording starts), else one adb shell.
 func (d *Device) probe(ctx context.Context) error {
-	cmd := "getprop ro.product.model; getprop ro.build.version.release; getprop ro.build.version.sdk; getprop persist.sys.timezone; date +%z; cat /proc/sys/kernel/random/boot_id; date +%s.%N"
-	t0 := time.Now()
-	out, err := d.adb.Shell(ctx, d.Addr(), 15*time.Second, cmd)
-	t1 := time.Now()
-	if err != nil {
-		return err
+	d.mu.Lock()
+	p := d.preProbe
+	d.preProbe = nil
+	d.mu.Unlock()
+	if p == nil || time.Since(p.T1) > probeReuse.Get() || p.Props["boot_id"] == "" {
+		t0 := time.Now()
+		out, err := d.adb.Shell(ctx, d.Addr(), 15*time.Second, probeCmd(false))
+		t1 := time.Now()
+		if err != nil {
+			return err
+		}
+		p = &Probe{Props: ParseIdentityProps(out), T0: t0, T1: t1}
+		if p.Props["boot_id"] == "" && p.Props["now"] == "" {
+			return fmt.Errorf("unexpected output %q", firstLines(strings.TrimSpace(out), 3))
+		}
 	}
-	l := strings.Split(strings.TrimRight(out, "\n"), "\n")
-	for len(l) < 7 {
-		l = append(l, "")
-	}
-	for i := range l {
-		l[i] = strings.TrimSpace(l[i])
-	}
-	d.applyTZ(l[3], l[4])
-	if now, coarse, ok := parseDate(l[6]); ok {
-		mid := t0.Add(t1.Sub(t0) / 2)
+	pr := p.Props
+	tz, zone := pr["persist.sys.timezone"], pr["zone"]
+	d.applyTZ(tz, zone)
+	if now, coarse, mid, ok := p.Clock(); ok {
 		est := now
 		if coarse {
 			// date +%s truncates: add 0.5 s to center the estimate.
@@ -353,11 +367,11 @@ func (d *Device) probe(ctx context.Context) error {
 		d.mu.Unlock()
 	}
 	d.mu.Lock()
-	d.bootID = l[5]
+	d.bootID = pr["boot_id"]
 	off := d.offset
 	d.mu.Unlock()
 	d.Store.UpdateMeta(func(m *store.Meta) {
-		m.Model, m.Release, m.SDK, m.TZ, m.TZOffset, m.ClockOffsetNs = l[0], l[1], l[2], l[3], l[4], int64(off)
+		m.Model, m.Release, m.SDK, m.TZ, m.TZOffset, m.ClockOffsetNs = pr["ro.product.model"], pr["ro.build.version.release"], pr["ro.build.version.sdk"], tz, zone, int64(off)
 		m.ClockHostNs = time.Now().UnixNano()
 	})
 	return nil
@@ -395,7 +409,7 @@ func (d *Device) run(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		if errors.Is(err, errDiskPaused) {
+		if errors.Is(err, errDiskPaused) || errors.Is(err, errExecOut) {
 			d.setErr(nil)
 			continue
 		}
@@ -431,7 +445,9 @@ func (d *Device) recordOnce(ctx context.Context) error {
 	d.mu.RUnlock()
 	boot := store.BootShort(bootID)
 	meta := d.Store.Meta()
+	newBoot := meta.LastBootID != bootID
 	d.catchBegin()
+	d.setSideWork(false)
 
 	resume := ""
 	var dedupNs int64
@@ -487,7 +503,6 @@ func (d *Device) recordOnce(ctx context.Context) error {
 		// processes of earlier boots are certainly gone now
 		CloseOtherBoots(d.Store, boot)
 	}
-	go d.measureSpan(ctx)
 	// T_end: the newest buffered line now; caught up once a streamed line
 	// at or after it has been stored or deduplicated
 	tEnd, terr := d.measureEnd(ctx)
@@ -512,29 +527,30 @@ func (d *Device) recordOnce(ctx context.Context) error {
 	var endAt uint64 // pipeline position of the first line at/after T_end
 	pipe := NewPipeline(d.Store, boot, loc)
 	pipe.NeedDropbox = d.requestDropbox
-	pipe.OnUnknownPID = func() { d.maybeSeedPS(ctx) }
+	// lines logged before the probe are history: their processes are
+	// mostly gone, and psLoop seeds the table once caught up anyway
+	liveFrom := devNow
+	if liveFrom == 0 {
+		liveFrom = tEnd
+	}
+	pipe.OnUnknownPID = func(newestNs int64) {
+		if newestNs >= liveFrom {
+			d.maybeSeedPS(ctx)
+		}
+	}
 	d.mu.Lock()
 	d.pipe = pipe
 	d.mu.Unlock()
-	go d.refreshPackages(ctx)
-	go d.psLoop(ctx, pipe)
-	if meta.LastBootID != bootID {
-		go func() { // dropbox history (crashes from before recording)
-			sleep(ctx, 3*time.Second)
-			for _, t := range []string{"data_app_crash", "data_app_native_crash", "SYSTEM_TOMBSTONE", "data_app_anr"} {
-				if ctx.Err() != nil {
-					return // stopped meanwhile
-				}
-				d.fetchDropbox(ctx, t)
-			}
-		}()
-	}
+	// no side work (ps, pm, dumpsys, buffer span) while backfilling: on a
+	// slow transport it competes with the stream (issue #11 follow-up)
+	go d.sideWork(ctx, d.caughtUp(), pipe, newBoot)
 
 	cctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	// Note: never rely on `logcat --uid` (missing on API 29) or multiple
 	// `--pid` (only one is honoured); all filtering happens on our side.
-	cmd := adbCmd(cctx, d.adb.Path, append([]string{"-s", d.Addr()}, logcat.Args(resume)...)...)
+	execOut := d.useExecOut()
+	cmd := adbCmd(cctx, d.adb.Path, streamArgs(d.Addr(), resume, execOut)...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
@@ -548,6 +564,9 @@ func (d *Device) recordOnce(ctx context.Context) error {
 	d.recording = true
 	d.lastErr = ""
 	d.mu.Unlock()
+	if resume == "" && rbSet == nil {
+		go d.measureTotal(ctx) // whole buffer: estimate its line count
+	}
 	if resume != "" {
 		d.Store.UpdateMeta(func(m *store.Meta) {
 			open := false
@@ -561,11 +580,13 @@ func (d *Device) recordOnce(ctx context.Context) error {
 	}
 
 	lines := make(chan string, 20000)
+	var gotLine atomic.Bool
 	go func() {
 		sc := bufio.NewScanner(stdout)
 		sc.Buffer(make([]byte, 64<<10), 4<<20)
 		for sc.Scan() {
-			lines <- sc.Text()
+			gotLine.Store(true)
+			lines <- strings.TrimRight(sc.Text(), "\r") // CRLF: `adb logcat` through a pty (old devices)
 		}
 		close(lines)
 	}()
@@ -668,12 +689,21 @@ func (d *Device) recordOnce(ctx context.Context) error {
 					return nil
 				}
 				msg := strings.TrimSpace(stderr.String())
+				if execOut && !gotLine.Load() && d.execOutFailed(werr, msg) {
+					return errExecOut
+				}
+				if execOut && gotLine.Load() {
+					d.execOut.Store(1)
+				}
 				d.Store.UpdateMeta(func(m *store.Meta) {
 					m.Gaps = append(m.Gaps, store.Gap{FromNs: m.LastTimeNs, ToNs: -1, Reason: "logcat stream ended (device disconnected?); resumed later with logcat -T, so only lines the device buffer dropped meanwhile are lost"})
 				})
 				return fmt.Errorf("logcat exited: %v %s", werr, firstLines(msg, 3))
 			}
 			lastLine = time.Now()
+			if execOut && d.execOut.Load() == 0 {
+				d.execOut.Store(1)
+			}
 			accept(asm.Push(ln))
 		case <-tick.C:
 			if asm.HasPending() && time.Since(lastLine) > 150*time.Millisecond {
@@ -726,6 +756,9 @@ func (d *Device) measureSpan(ctx context.Context) {
 func (d *Device) ReplaySpan() time.Duration { return time.Duration(d.spanNs.Load()) }
 
 func (d *Device) maybeSeedPS(ctx context.Context) {
+	if !d.sideWorkOn() {
+		return // psLoop seeds the table once caught up
+	}
 	d.mu.Lock()
 	if time.Since(d.unknownPID) < 5*time.Second {
 		d.mu.Unlock()
@@ -782,27 +815,175 @@ func (d *Device) Crashes() []*analysis.Crash { return LoadCrashes(d.Store) }
 // Procs loads process lifetimes (last version of each entry wins).
 func (d *Device) Procs() []procs.Proc { return LoadProcs(d.Store) }
 
+// DropBox fetch states of a tag (Device.dbxPending).
+const (
+	dbxQueued  = 1 // a fetch will start after dropboxDelay
+	dbxRunning = 2 // a fetch is running
+	dbxAgain   = 3 // running, and a crash after it started wants another
+)
+
+// dropboxDelay lets AMS write a crash's DropBox entry before it is read.
+var dropboxDelay = newDur(4 * time.Second)
+
+// dropboxRecent: after catch-up, a tag fetched successfully this recently
+// is not fetched again for crashes found in the backfill.
+var dropboxRecent = newDur(5 * time.Minute)
+
+// requestDropbox asks for a DropBox fetch of tag (a crash line wants its
+// evidence). Before the session's side work starts (backfill) the tag is
+// only noted; it is fetched once after catch-up (sideWork). A tag stays
+// pending until its fetch completed: requests meanwhile share it, or —
+// while it runs — queue exactly one more fetch.
 func (d *Device) requestDropbox(tag string) {
 	tags := []string{tag}
 	if tag == "data_app_native_crash" {
 		tags = append(tags, "SYSTEM_TOMBSTONE") // full tombstone, all threads
 	}
+	d.dbxMu.Lock()
+	defer d.dbxMu.Unlock()
 	for _, tag := range tags {
+		if !d.sideOn {
+			d.dbxDefer[tag] = true
+			continue
+		}
+		switch d.dbxPending[tag] {
+		case dbxQueued, dbxAgain:
+		case dbxRunning:
+			d.dbxPending[tag] = dbxAgain
+		default:
+			d.dbxPending[tag] = dbxQueued
+			go d.dropboxWorker(tag)
+		}
+	}
+}
+
+// dropboxWorker fetches a queued tag after dropboxDelay, again while
+// crashes arrived during a fetch.
+func (d *Device) dropboxWorker(tag string) {
+	for {
+		time.Sleep(dropboxDelay.Get())
 		d.dbxMu.Lock()
-		if d.dbxPending[tag] {
+		d.dbxPending[tag] = dbxRunning
+		d.dbxMu.Unlock()
+		d.fetchDropbox(context.Background(), tag)
+		if !d.dropboxFinished(tag) {
+			return
+		}
+	}
+}
+
+// dropboxFinished ends a fetch of tag; true: another one is wanted (queued).
+func (d *Device) dropboxFinished(tag string) bool {
+	d.dbxMu.Lock()
+	defer d.dbxMu.Unlock()
+	if d.dbxPending[tag] == dbxAgain {
+		d.dbxPending[tag] = dbxQueued
+		return true
+	}
+	delete(d.dbxPending, tag)
+	return false
+}
+
+// dropboxHistory are the tags read on a new boot (crashes from before
+// recording started).
+var dropboxHistory = []string{"data_app_crash", "data_app_native_crash", "SYSTEM_TOMBSTONE", "data_app_anr"}
+
+func (d *Device) setSideWork(on bool) {
+	d.dbxMu.Lock()
+	d.sideOn = on
+	d.dbxMu.Unlock()
+}
+
+func (d *Device) sideWorkOn() bool {
+	d.dbxMu.Lock()
+	defer d.dbxMu.Unlock()
+	return d.sideOn
+}
+
+// sideWorkWait: side work starts at the latest this long after recording
+// started, even when the backfill has not caught up by then.
+var sideWorkWait = newDur(time.Minute)
+
+// sideWork starts the session's other adb work once caught up (or after
+// sideWorkWait): the process table (ps), packages, the buffer span, and
+// one DropBox fetch per tag that crashes in the backfill asked for,
+// merged with the new-boot history tags.
+func (d *Device) sideWork(ctx context.Context, caught <-chan struct{}, pipe *Pipeline, newBoot bool) {
+	t := time.NewTimer(sideWorkWait.Get())
+	defer t.Stop()
+	select {
+	case <-caught:
+	case <-t.C:
+		log.Printf("%s: not caught up after %s; starting ps/pm/dumpsys anyway", d.Serial, sideWorkWait.Get())
+	case <-ctx.Done():
+		return
+	}
+	if ctx.Err() != nil || d.pipeline() != pipe {
+		return
+	}
+	d.dbxMu.Lock()
+	d.sideOn = true
+	var tags []string
+	if newBoot {
+		tags = append(tags, dropboxHistory...)
+	}
+	var deferred []string
+	for t := range d.dbxDefer {
+		if !slices.Contains(tags, t) {
+			deferred = append(deferred, t)
+		}
+	}
+	slices.Sort(deferred)
+	tags = append(tags, deferred...)
+	clear(d.dbxDefer)
+	d.dbxMu.Unlock()
+	go d.measureSpan(ctx)
+	go d.refreshPackages(ctx)
+	go d.psLoop(ctx, pipe)
+	for _, tag := range tags {
+		if ctx.Err() != nil {
+			d.deferDropbox(tag)
+			continue // stopped meanwhile: the next session fetches it
+		}
+		if when, ok := d.dropboxFetchedAt(tag); ok && time.Since(when) < dropboxRecent.Get() {
+			continue // read recently: already holds these crashes
+		}
+		d.dbxMu.Lock()
+		if d.dbxPending[tag] != 0 {
+			d.dbxMu.Unlock()
+			continue // a live crash's fetch is coming anyway
+		}
+		d.dbxPending[tag] = dbxRunning
+		d.dbxMu.Unlock()
+		d.fetchDropbox(ctx, tag)
+		if ctx.Err() != nil {
+			d.dbxMu.Lock()
+			delete(d.dbxPending, tag)
+			d.dbxDefer[tag] = true
 			d.dbxMu.Unlock()
 			continue
 		}
-		d.dbxPending[tag] = true
-		d.dbxMu.Unlock()
-		go func(tag string) {
-			time.Sleep(4 * time.Second) // let AMS write the entry
-			d.dbxMu.Lock()
-			delete(d.dbxPending, tag)
-			d.dbxMu.Unlock()
-			d.fetchDropbox(context.Background(), tag)
-		}(tag)
+		if d.dropboxFinished(tag) {
+			go d.dropboxWorker(tag)
+		}
 	}
+}
+
+func (d *Device) deferDropbox(tag string) {
+	d.dbxMu.Lock()
+	d.dbxDefer[tag] = true
+	d.dbxMu.Unlock()
+}
+
+// dropboxFetchedAt is when tag was last fetched successfully.
+func (d *Device) dropboxFetchedAt(tag string) (time.Time, bool) {
+	b, err := os.ReadFile(filepath.Join(d.Store.Dir, "dropbox_status_"+tag))
+	if err != nil {
+		return time.Time{}, false
+	}
+	ts, status, _ := strings.Cut(strings.TrimSpace(string(b)), " ")
+	t, err := time.Parse(time.RFC3339, ts)
+	return t, err == nil && status == "ok"
 }
 
 // fetchDropbox runs `dumpsys dropbox --print <tag>` and merges entries.

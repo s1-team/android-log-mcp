@@ -105,7 +105,7 @@ func lastStream(t *testing.T, e fakeadb.Env, serial string, n int) []string {
 	t.Helper()
 	var calls []string
 	waitFor(t, "the new logcat stream", 30*time.Second, func() bool {
-		calls = e.CallsMatching("-s " + serial + " logcat -b")
+		calls = e.CallsMatching("-s " + serial + " exec-out logcat -b")
 		return len(calls) > n
 	})
 	return calls
@@ -152,10 +152,10 @@ func TestLazyStartsOnlyWantedDevice(t *testing.T) {
 	if got := messages(d.Store); len(got) != 5 || got[0] != "FAKEA line 0" {
 		t.Fatalf("stored %q", got)
 	}
-	if n := len(e.CallsMatching("-s FAKEA logcat")); n != 1 {
+	if n := len(e.CallsMatching("-s FAKEA exec-out logcat")); n != 1 {
 		t.Fatalf("%d logcat streams for FAKEA: %q", n, e.Calls())
 	}
-	if len(e.CallsMatching("-s FAKEB logcat")) != 0 || e.LogcatRunning("FAKEB") {
+	if len(e.CallsMatching("-s FAKEB exec-out logcat")) != 0 || e.LogcatRunning("FAKEB") {
 		t.Fatal("FAKEB recorded")
 	}
 	if b := m.Get("FAKEB"); b != nil && b.Owned() {
@@ -222,7 +222,7 @@ func TestResumeAfterIdle(t *testing.T) {
 	}
 	waitFor(t, "fake adb children to exit", 5*time.Second, func() bool { return !e.AnyChildRunning() })
 	// nothing new: caught up at once
-	streams := len(e.CallsMatching("-s FAKEA logcat -b"))
+	streams := len(e.CallsMatching("-s FAKEA exec-out logcat -b"))
 	d = startDevice(t, m, "FAKEA")
 	t0 := time.Now()
 	if p := d.WaitCaughtUp(context.Background(), 5*time.Second); p.Pending || time.Since(t0) > 2*time.Second {
@@ -260,7 +260,7 @@ func TestClockRollback(t *testing.T) {
 	back := time.Now().Add(-time.Hour)
 	e.SetDate("FAKEA", back)
 	e.Log("FAKEA", fakeadb.Line(back.Add(time.Second), 100, "AFTER", "after the rollback"))
-	streams := len(e.CallsMatching("-s FAKEA logcat -b"))
+	streams := len(e.CallsMatching("-s FAKEA exec-out logcat -b"))
 	d = startDevice(t, m, "FAKEA")
 	if p := d.WaitCaughtUp(context.Background(), 10*time.Second); p.Pending {
 		t.Fatalf("not caught up: %+v", p)

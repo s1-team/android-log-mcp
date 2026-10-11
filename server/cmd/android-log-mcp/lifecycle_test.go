@@ -116,8 +116,8 @@ func TestADBServerSurvivesService(t *testing.T) {
 func TestServiceExitsAfterLastClient(t *testing.T) {
 	env := isoEnv(t)
 	out, _, code := cliEnv(t, env, "call", "logcat_status")
-	if code != 0 || !strings.Contains(out, "linger: per device, after its last log tool call: 10m0s (default: max(10m0s, 2 × the device's log buffer span") ||
-		!strings.Contains(out, "at most 1h0m0s") || !strings.Contains(out, "recording: idle (starts on the first log tool call)") {
+	if code != 0 || !strings.Contains(out, "linger: per device, after its last log tool call: max(10m0s, 2 × the device's log buffer span), at most 1h0m0s (default") ||
+		strings.Contains(out, "not measured") || !strings.Contains(out, "recording: idle (starts on the first log tool call)") {
 		t.Fatalf("status:\n%s", out)
 	}
 	cliEnv(t, env, "service", "stop")

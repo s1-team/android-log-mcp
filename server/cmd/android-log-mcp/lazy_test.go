@@ -106,7 +106,9 @@ func TestLazyRecording(t *testing.T) {
 // clients until the pin ends, then the service exits.
 func TestRecordForWithoutService(t *testing.T) {
 	env, e := lazyEnv(t, "ALM_TEST_EXIT_GRACE=1s", "ANDROID_LOG_MCP_LINGER=1s")
-	out, errOut, code := cliEnv(t, env, "record", "--for", "4s")
+	t0 := time.Now()
+	// long enough for slow fake-adb starts (-race: ~1 s per adb call)
+	out, errOut, code := cliEnv(t, env, "record", "--for", "10s")
 	if code != 0 || !strings.Contains(out, "pinned until") || !strings.Contains(out, "FAKEA: recording") {
 		t.Fatalf("record --for: %d\n%s\n%s", code, out, errOut)
 	}
@@ -118,7 +120,7 @@ func TestRecordForWithoutService(t *testing.T) {
 	if !strings.Contains(out, "pinned until") || !strings.Contains(out, "set by android-log-mcp record") {
 		t.Fatalf("record state:\n%s", out)
 	}
-	time.Sleep(2500 * time.Millisecond)
+	time.Sleep(time.Until(t0.Add(7 * time.Second)))
 	if !e.LogcatRunning("FAKEA") {
 		t.Fatal("stopped before the pin ended")
 	}
