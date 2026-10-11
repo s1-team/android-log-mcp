@@ -29,6 +29,13 @@ type Manager struct {
 	Version    string
 	Cfg        store.Config
 	MaxDevices int
+	// ADBPath is the adb binary to use; empty: FindADB
+	// (ANDROID_LOG_MCP_ADB, PATH, the SDK). Tests point it at the fake adb
+	// instead of changing the process environment (#26).
+	ADBPath string
+	// CatchUpWait is the longest a log-tool call waits for catch-up
+	// (DefaultCatchUpWait; tests shorten it per Manager, #26).
+	CatchUpWait time.Duration
 	// NoADB (--offline <dir>): browse a dataset read-only; adb is not used
 	// and nothing is recorded, pruned or created.
 	NoADB bool
@@ -89,7 +96,7 @@ func (t *trackSession) markReady() { t.once.Do(func() { close(t.ready) }) }
 func NewManager(base string, cfg store.Config) *Manager {
 	m := &Manager{Base: base, Root: layout.Root{Dir: base}, Cfg: cfg, MaxDevices: 4,
 		devices: map[string]*Device{}, states: map[string]string{}, addrs: map[string]string{}, resolving: map[string]bool{}, wantAddrs: map[string]bool{},
-		wanted: map[string]*want{}, idents: map[string]Identity{}, MaxTotalBytes: DefaultMaxTotalBytes, Disk: &store.DiskGuard{MinFree: DefaultMinFreeBytes}}
+		wanted: map[string]*want{}, idents: map[string]Identity{}, MaxTotalBytes: DefaultMaxTotalBytes, CatchUpWait: DefaultCatchUpWait, Disk: &store.DiskGuard{MinFree: DefaultMinFreeBytes}}
 	if v, err := strconv.Atoi(os.Getenv("ANDROID_LOG_MCP_MAX_DEVICES")); err == nil && v > 0 {
 		m.MaxDevices = v
 	}
@@ -236,7 +243,10 @@ func (m *Manager) Start(ctx context.Context) {
 		m.adbErr = fmt.Errorf("adb disabled")
 		return
 	}
-	p, err := FindADB() // a file lookup: runs no adb
+	p, err := m.ADBPath, error(nil)
+	if p == "" {
+		p, err = FindADB() // a file lookup: runs no adb
+	}
 	if err != nil {
 		m.adbErr = err
 		return

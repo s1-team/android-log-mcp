@@ -28,6 +28,7 @@ func stackMsg(parts ...[]string) string {
 func one(s string) []string { return []string{s} }
 
 func TestShortStackCausedByChain(t *testing.T) {
+	t.Parallel()
 	msg := stackMsg(one("request failed"), one("java.lang.RuntimeException: wrapper"), frames("a.Top", 25),
 		one("Caused by: java.io.IOException: middle"), frames("b.Mid", 12), one("\t... 20 more"),
 		one("Caused by: java.net.SocketTimeoutException: root cause here"), frames("c.Root", 9), one("\t... 30 more"))
@@ -41,6 +42,7 @@ func TestShortStackCausedByChain(t *testing.T) {
 }
 
 func TestShortStackSuppressedAndMore(t *testing.T) {
+	t.Parallel()
 	msg := stackMsg(one("java.lang.IllegalStateException: close failed"), frames("a.Main", 5),
 		one("\tSuppressed: java.io.IOException: flush"), []string{"\t\tat x.Flush.a(F.java:1)", "\t\tat x.Flush.b(F.java:2)", "\t\t... 5 more"},
 		one("Caused by: java.lang.Error: root"), frames("c.Root", 2), one("\t... 4 more"))
@@ -54,6 +56,7 @@ func TestShortStackSuppressedAndMore(t *testing.T) {
 }
 
 func TestShortStackUnchangedWhenShort(t *testing.T) {
+	t.Parallel()
 	msg := stackMsg(one("java.lang.Error: x"), frames("a", 3), one("Caused by: java.lang.Error: y"), frames("b", 1))
 	if out, hidden, changed := shortStack(msg); out != msg || hidden != 0 || changed {
 		t.Fatalf("changed a short stack:\n%s", out)
@@ -68,6 +71,7 @@ func TestShortStackUnchangedWhenShort(t *testing.T) {
 // Over 2,000 chars the causes win: every Caused by head and its first
 // frame stay, the last (root) cause included; the rest gives way.
 func TestShortStackCapKeepsCauses(t *testing.T) {
+	t.Parallel()
 	long := strings.Repeat("x", 150)
 	var parts [][]string
 	parts = append(parts, one("java.lang.RuntimeException: "+strings.Repeat("top message ", 200)))
@@ -98,6 +102,7 @@ func TestShortStackCapKeepsCauses(t *testing.T) {
 }
 
 func TestPerLineCapHints(t *testing.T) {
+	t.Parallel()
 	plain := strings.Repeat("y", 2500)
 	if got := capMsg(plain); !strings.HasSuffix(got, "…[+500 chars; lines are cut at 2,000 chars in every query, narrowing does not show more]") {
 		t.Fatalf("plain: %s", got[2000:])
@@ -141,6 +146,7 @@ func s1riusPatternPad(n int, pad string) string {
 }
 
 func TestSearchShortStacksReplay(t *testing.T) {
+	t.Parallel()
 	e := newReplay(t, fxBoot2)
 	e.replay(s1riusPattern(10))
 	q := `{"filter":"pid:7777 level:warn","limit":10}`
@@ -166,6 +172,7 @@ func TestSearchShortStacksReplay(t *testing.T) {
 
 // The default limit is 50 (#23), and a truncated page points at the summary.
 func TestSearchDefaultLimit50(t *testing.T) {
+	t.Parallel()
 	e := newReplay(t, fxBoot1)
 	e.file("session-raw.log")
 	out := e.ok("logcat_search", `{}`, "matched 6,447 lines; showing newest 50 ",
@@ -176,6 +183,7 @@ func TestSearchDefaultLimit50(t *testing.T) {
 // With context, the cap drops whole records, so every "same frames as T"
 // still points at a line in the response.
 func TestSearchSameStackReferencesSurviveCap(t *testing.T) {
+	t.Parallel()
 	e := newReplay(t, fxBoot2)
 	e.replay(s1riusPatternPad(40, strings.Repeat(" .", 200)))
 	out := e.ok("logcat_search", `{"filter":"pid:7777 level:warn","limit":40,"context":20}`, "[output cap: context lines cut")
@@ -215,6 +223,7 @@ func lineBlock(out string) string {
 // stack="full" shows the lines exactly as 0.5.2 did with limit=200: hashes
 // of lineBlock taken from main at ba2035f.
 func TestSearchStackFullMatchesOldOutput(t *testing.T) {
+	t.Parallel()
 	gold := []struct{ file, q, sum string }{
 		{"session-raw.log", `{"limit":200}`, "b3473278bd597391ceb4721a92bd3ae9533bcebfd59bcc096a860f340ca8c8f2"},
 		{"session-raw.log", `{"filter":"level:warn","limit":200}`, "3b185a49df2ef8dd69936f3cd7af50e8c707c3e185ef9f853161a7113584fa6b"},

@@ -32,6 +32,7 @@ func fxLine(sec float64, uid, pid int, lvl, tag, msg string) string {
 }
 
 func TestPackageIncludesDottedProcesses(t *testing.T) {
+	t.Parallel()
 	// like newReplay, but the store has no package list yet (first session
 	// on a device): the failing order of issue #41
 	e := &replayEnv{t: t, base: replayDir(t)}

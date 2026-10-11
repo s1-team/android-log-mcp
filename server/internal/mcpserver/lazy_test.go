@@ -65,8 +65,6 @@ func newLazy(t *testing.T, buffered int, serials ...string) *lazyEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("ANDROID_LOG_MCP_ADB", adb)
-	t.Setenv(fakeadb.EnvDir, dir)
 	e := fakeadb.Env{Dir: dir}
 	states := map[string]string{}
 	for _, s := range serials {
@@ -83,6 +81,7 @@ func newLazy(t *testing.T, buffered int, serials ...string) *lazyEnv {
 	}
 	e.SetDevices(states)
 	m := device.NewManager(t.TempDir(), store.Config{})
+	m.ADBPath = adb
 	m.Lazy = true
 	m.IdleTick = 20 * time.Millisecond
 	linger := new(atomic.Int64)
@@ -104,6 +103,7 @@ func (l *lazyEnv) call(t *testing.T, name, args string) (string, bool) {
 // The first log tool call starts its device and returns what was in the
 // buffer before the call (backfill); nothing ran adb before it.
 func TestFirstCallBackfills(t *testing.T) {
+	t.Parallel()
 	l := newLazy(t, 5, "FAKEA")
 	time.Sleep(200 * time.Millisecond)
 	if c := l.e.Calls(); len(c) != 0 {
@@ -122,6 +122,7 @@ func TestFirstCallBackfills(t *testing.T) {
 // not recorded, starts none and returns no cursor; naming one starts only
 // that one.
 func TestStatusSeveralDevicesStartsNone(t *testing.T) {
+	t.Parallel()
 	l := newLazy(t, 2, "FAKEA", "FAKEB")
 	out, isErr := l.call(t, "logcat_status", `{}`)
 	if isErr || strings.Contains(out, "cursor (newest line") || !strings.Contains(out, "2 devices are connected; pass device=one of: FAKEA, FAKEB") || !strings.Contains(out, "No device was started") {
@@ -144,11 +145,10 @@ func TestStatusSeveralDevicesStartsNone(t *testing.T) {
 
 // No cursor while the backfill runs; the response says to call again.
 func TestStatusNoCursorDuringBackfill(t *testing.T) {
+	t.Parallel()
 	l := newLazy(t, 40, "FAKEA")
 	l.m.Track(10 * time.Second) // identify the device before the wait is shortened
-	old := device.CatchUpWait
-	device.CatchUpWait = 500 * time.Millisecond
-	t.Cleanup(func() { device.CatchUpWait = old })
+	l.m.CatchUpWait = 500 * time.Millisecond
 	l.e.SetDelay("FAKEA", 100*time.Millisecond) // ~4 s dump
 	out, _ := l.call(t, "logcat_status", `{}`)
 	if strings.Contains(out, "cursor (newest line") || !strings.Contains(out, "backfill in progress (") || !strings.Contains(out, "call logcat_status again") {
@@ -174,6 +174,7 @@ func TestStatusNoCursorDuringBackfill(t *testing.T) {
 }
 
 func TestRecordFor(t *testing.T) {
+	t.Parallel()
 	l := newLazy(t, 1, "FAKEA")
 	for _, bad := range []string{"30", "-1h", "25h", "1d", "abc", "30 m"} {
 		out, isErr := l.call(t, "logcat_status", `{"record_for":"`+bad+`"}`)
@@ -201,6 +202,7 @@ func TestRecordFor(t *testing.T) {
 }
 
 func TestParsePin(t *testing.T) {
+	t.Parallel()
 	for in, want := range map[string]time.Duration{"30m": 30 * time.Minute, "2h": 2 * time.Hour, "90m": 90 * time.Minute, "1h30m": 90 * time.Minute, "24h": 24 * time.Hour, "0": 0, "45s": 45 * time.Second} {
 		if got, err := ParsePin(in); err != nil || got != want {
 			t.Errorf("ParsePin(%q) = %v, %v", in, got, err)
@@ -214,6 +216,7 @@ func TestParsePin(t *testing.T) {
 }
 
 func TestToolDescriptionsAndSchemas(t *testing.T) {
+	t.Parallel()
 	for _, d := range ToolDefs() {
 		var v map[string]any
 		if err := json.Unmarshal(d.Schema, &v); err != nil {
@@ -236,6 +239,7 @@ func TestToolDescriptionsAndSchemas(t *testing.T) {
 // A device whose identity is still being read when the wait ends: the call
 // says so and asks to call again instead of "no device connected".
 func TestSlowIdentity(t *testing.T) {
+	t.Parallel()
 	l := newLazy(t, 5, "FAKEA")
 	l.e.SetIdentDelay("FAKEA", 3*time.Second)
 	l.m.Track(0) // adb lists it; its identity takes 3 s
@@ -244,9 +248,7 @@ func TestSlowIdentity(t *testing.T) {
 			t.Fatal("device never listed")
 		}
 	}
-	old := device.CatchUpWait
-	device.CatchUpWait = 300 * time.Millisecond
-	t.Cleanup(func() { device.CatchUpWait = old })
+	l.m.CatchUpWait = 300 * time.Millisecond
 	out, isErr := l.call(t, "logcat_status", `{}`)
 	if isErr || !strings.Contains(out, "adb lists FAKEA but reading its identity has not finished yet") || strings.Contains(out, "cursor (newest line") {
 		t.Fatalf("status:\n%s", out)
@@ -254,7 +256,7 @@ func TestSlowIdentity(t *testing.T) {
 	if out, isErr := l.call(t, "logcat_search", `{}`); !isErr || !strings.Contains(out, "call again") {
 		t.Fatalf("search (error %v):\n%s", isErr, out)
 	}
-	device.CatchUpWait = 10 * time.Second
+	l.m.CatchUpWait = device.DefaultCatchUpWait
 	if out, _ := l.call(t, "logcat_status", `{}`); !strings.Contains(out, "cursor (newest line, FAKEA)") {
 		t.Fatalf("status after identification:\n%s", out)
 	}
@@ -263,6 +265,7 @@ func TestSlowIdentity(t *testing.T) {
 // Issue #30: a reconnect whose previous recording session does not stop in
 // time starts recording anyway, and logcat_status says so explicitly.
 func TestStatusShowsLateHandover(t *testing.T) {
+	// serial: device.HoldSessionEndForTest sets package globals (hook, recorderStopWait)
 	l := newLazy(t, 3, "FAKEA")
 	if out, isErr := l.call(t, "logcat_status", `{}`); isErr {
 		t.Fatal(out)
@@ -309,6 +312,8 @@ func TestNamedStoredDeviceStartsWhileIdentityPending(t *testing.T) {
 	l.m.Close()
 	l.e.SetIdentDelay("FAKEA", 3*time.Second)
 	m := device.NewManager(l.m.Base, store.Config{})
+	m.ADBPath = l.m.ADBPath
+	m.CatchUpWait = 300 * time.Millisecond
 	m.Lazy = true
 	m.IdleTick = 20 * time.Millisecond
 	m.Linger = func(*device.Device) time.Duration { return time.Minute }
@@ -316,9 +321,6 @@ func TestNamedStoredDeviceStartsWhileIdentityPending(t *testing.T) {
 	m.Start(ctx)
 	t.Cleanup(func() { cancel(); m.Close() })
 	tools := &Tools{M: m, Pins: l.pins}
-	old := device.CatchUpWait
-	device.CatchUpWait = 300 * time.Millisecond
-	t.Cleanup(func() { device.CatchUpWait = old })
 
 	out, _ := tools.Call(context.Background(), "logcat_status", json.RawMessage(`{"device":"FAKEA"}`))
 	if strings.Contains(out, "recording: idle") || strings.Contains(out, "not recording") || strings.Contains(out, "device not connected") {
@@ -349,9 +351,7 @@ func TestUnknownNameDoesNotStartWhileIdentityPending(t *testing.T) {
 			t.Fatal("device never listed")
 		}
 	}
-	old := device.CatchUpWait
-	device.CatchUpWait = 300 * time.Millisecond
-	t.Cleanup(func() { device.CatchUpWait = old })
+	l.m.CatchUpWait = 300 * time.Millisecond
 	l.call(t, "logcat_status", `{"device":"NOSUCH"}`)
 	if ids := l.m.WantedIDs(); len(ids) != 0 {
 		t.Fatalf("started %v for an unknown name", ids)
@@ -369,9 +369,7 @@ func TestNamedAdbSerialStartsWhileIdentityPending(t *testing.T) {
 			t.Fatal("device never listed")
 		}
 	}
-	old := device.CatchUpWait
-	device.CatchUpWait = 300 * time.Millisecond
-	t.Cleanup(func() { device.CatchUpWait = old })
+	l.m.CatchUpWait = 300 * time.Millisecond
 	l.call(t, "logcat_status", `{"device":"FAKEB"}`)
 	for end := time.Now().Add(15 * time.Second); !l.m.Wanted("FAKEB") || !l.e.LogcatRunning("FAKEB"); time.Sleep(20 * time.Millisecond) {
 		if time.Now().After(end) {

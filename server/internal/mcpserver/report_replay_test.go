@@ -86,6 +86,7 @@ func allFiles(t *testing.T, dir string) string {
 }
 
 func TestReplayFromReport(t *testing.T) {
+	t.Parallel()
 	e := newReplay(t, fxBoot1)
 	e.replay(fixtureFile(t, "session-raw.log") + "\n" + leakLines(1791573034))
 	for _, f := range []string{"dropbox-data_app_crash.txt", "dropbox-data_app_native_crash.txt", "dropbox-SYSTEM_TOMBSTONE.txt", "dropbox-data_app_anr.txt"} {
@@ -229,6 +230,7 @@ func TestReplayFromReport(t *testing.T) {
 // the manifest and as a gap), --package keeps the app's lines and system lines
 // naming it, and the trimmed report still loads.
 func TestReportSizeCapAndPackage(t *testing.T) {
+	t.Parallel()
 	e := newReplay(t, fxBoot1)
 	e.file("session-raw.log")
 	e.st.Close()

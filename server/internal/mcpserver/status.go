@@ -185,7 +185,7 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 			if starting {
 				prog = device.StartingProgress()
 			} else {
-				prog = target.WaitCaughtUp(ctx, waitLeft(start))
+				prog = target.WaitCaughtUp(ctx, t.waitLeft(start))
 			}
 		}
 	}
