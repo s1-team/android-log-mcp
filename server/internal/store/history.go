@@ -257,7 +257,7 @@ func decodeLines(data []byte) ([]*model.Record, int64) {
 			continue
 		}
 		r := new(model.Record)
-		if json.Unmarshal(line, r) != nil {
+		if DecodeRecord(line, r) != nil {
 			continue
 		}
 		// records written before printable-unescaping existed

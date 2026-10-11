@@ -486,7 +486,7 @@ func lastRecord(path string) (*model.Record, int64) {
 		if j := bytes.LastIndexByte(body, '\n'); j >= 0 || pos == 0 {
 			line := body[j+1:]
 			r := new(model.Record)
-			if json.Unmarshal(line, r) != nil {
+			if DecodeRecord(line, r) != nil {
 				return nil, end
 			}
 			r.Msg = logcat.UnescapePrintable(r.Msg)
@@ -1435,7 +1435,7 @@ func firstRecordNs(path string) int64 {
 		return 0
 	}
 	var r model.Record
-	if json.Unmarshal(line, &r) != nil {
+	if DecodeRecord(line, &r) != nil {
 		return 0
 	}
 	return r.TimeNs
