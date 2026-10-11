@@ -221,11 +221,17 @@ func (t *Tracker) packageForLocked(name string, uid int) string {
 //     com.foo for com.foobar.sync). This runs only towards installed
 //     packages, so package=com.google never matches com.google.android.gms;
 //  3. a shared uid whose packages the name does not match
-//     (android.process.acore) → the uid's alphabetically first package, so
-//     the pick is deterministic (attribution of such shared-uid system
-//     processes: issue #44);
+//     (android.process.acore), or an empty name on a shared uid → "": such
+//     a device process can run components of any package of the uid, so it
+//     belongs to none of them; AppID falls back to the process name, and
+//     package= matches it for every package of the uid at query time
+//     (SharedUIDOf / MatchesNone, issue #44);
 //  4. otherwise the earlier fallbacks: an isolated or unknown application
 //     uid → base; a name without a '.' (system binaries) → "".
+//
+// The '.' rule never resolves to the framework package "android" (uid 1000,
+// system_server): android.process.acore or android.hardware.* with an
+// unknown uid are not the framework (issue #70).
 //
 // An empty name resolves the uid only (helper binaries running with an
 // app's uid).
@@ -248,7 +254,7 @@ func Owner(name string, uid int, uidPkgs map[int][]string, installed map[string]
 					return p
 				}
 			}
-			return minStr(l)
+			return "" // shared uid, no match (issue #44)
 		}
 		if a >= 90000 { // isolated process: name is usually the package
 			return base
@@ -258,7 +264,7 @@ func Owner(name string, uid int, uidPkgs map[int][]string, installed map[string]
 		return ""
 	}
 	if a >= 10000 || uid < 0 {
-		if p := dottedOwner(base, func(p string) bool { return installed[p] }); p != "" {
+		if p := dottedOwner(base, func(p string) bool { return installed[p] && p != FrameworkPackage }); p != "" {
 			return p
 		}
 	} else if installed[base] {
@@ -286,14 +292,47 @@ func dottedOwner(base string, has func(string) bool) string {
 	return ""
 }
 
-func minStr(l []string) string {
-	m := l[0]
-	for _, s := range l[1:] {
-		if s < m {
-			m = s
+// FrameworkPackage is the package of the Android framework (uid 1000,
+// system_server). Name-prefix matching never resolves to it (issue #70).
+const FrameworkPackage = "android"
+
+// CrashPackage is a stored crash's package for matching and display: the
+// framework package only for system_server / android (crashes of
+// android.process.* or android.hardware.* stored as "android" by earlier
+// versions: issue #70).
+func CrashPackage(pkg, process string) string {
+	if pkg == FrameworkPackage && process != "" && process != "system_server" && process != FrameworkPackage {
+		return ""
+	}
+	return pkg
+}
+
+// AppID is the application id part of a uid (uid % 100000; negative: unknown).
+func AppID(uid int) int { return appID(uid) }
+
+// SharedUIDOf returns the application id of the shared uid (more than one
+// package) that lists pkg, and the uid's packages, sorted (issue #44).
+func SharedUIDOf(uidPkgs map[int][]string, pkg string) (appID int, pkgs []string, ok bool) {
+	for a, l := range uidPkgs {
+		if len(l) > 1 && containsStr(l, pkg) {
+			pkgs = append([]string(nil), l...)
+			sort.Strings(pkgs)
+			return a, pkgs, true
 		}
 	}
-	return m
+	return 0, nil, false
+}
+
+// MatchesNone reports whether a device process name of a shared uid matches
+// none of the uid's packages (Owner step 3): such a process, e.g.
+// android.process.acore, can run components of any of them (issue #44).
+// An empty name (a line whose device process is unknown) matches none.
+func MatchesNone(name string, pkgs []string) bool {
+	base := name
+	if i := strings.IndexByte(base, ':'); i > 0 {
+		base = base[:i]
+	}
+	return name == "" || dottedOwner(base, func(p string) bool { return containsStr(pkgs, p) }) == ""
 }
 
 // NameOwner returns a lookup of the package a device process name belongs

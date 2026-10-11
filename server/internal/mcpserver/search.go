@@ -161,7 +161,11 @@ func (t *Tools) buildQuery(d *device.Device, a commonArgs) (*query, error) {
 	if a.pkg != "" {
 		pkg := strings.TrimSpace(a.pkg)
 		q.pkg = pkg
-		kids = append(kids, &filter.Pred{Desc: "package == " + pkg, Fn: func(r *model.Record, _ *filter.Ctx) bool { return pkgMatches(r, pkg) }})
+		su := newSharedUID(pkg, d.Packages(), d.Procs())
+		kids = append(kids, &filter.Pred{Desc: "package == " + pkg, Fn: func(r *model.Record, _ *filter.Ctx) bool { return pkgMatches(r, pkg) || su.line(r.UID, r.Process) }})
+		if su != nil {
+			q.notes = append(q.notes, su.note())
+		}
 		q.parts = append(q.parts, "package == "+pkg)
 	}
 	if len(a.tags) > 0 {

@@ -48,14 +48,38 @@ var ownerCases = []struct {
 	{"com.foobar", 10202, "com.foobar"},
 	{"com.google.x", 10999, "com.google.x"},     // not com.google (not installed)
 	{"com.google.x:svc", 10999, "com.google.x"}, // the ':' fallback as before
-	// shared uid, no name match: the uid's alphabetically first package (Q1)
-	{"android.process.acore", 10054, "com.android.calllogbackup"},
+	// shared uid, no name match: none of its packages (issue #44)
+	{"android.process.acore", 10054, ""},
+	// never the framework package by name prefix (issue #70)
+	{"android.process.acore", -1, ""},
+	{"android.process.media", 10999, "android.process.media"},
+	{"android.hardware.sensors@1.0-service", -1, ""},
+	{"android.hardware.sensors@1.0-service", 1000, ""},
 	// unchanged fallbacks
 	{"com.example.iso", 99001, "com.example.iso"}, // isolated
 	{"system_server", 1000, ""},
 	{"com.android.settings", 1000, "com.android.settings"},
 	{"com.android.settings.extra", 1000, ""}, // system uid: exact name only
 	{"/system/bin/sh", 10115, ""},
+}
+
+func TestSharedUID(t *testing.T) {
+	uidPkgs := ParsePackagesU(ownerPackages)
+	a, pkgs, ok := SharedUIDOf(uidPkgs, "com.android.providers.contacts")
+	if !ok || a != 10054 || fmt.Sprint(pkgs) != "[com.android.calllogbackup com.android.contacts com.android.providers.contacts]" {
+		t.Fatalf("SharedUIDOf: %d %v %v", a, pkgs, ok)
+	}
+	if _, _, ok := SharedUIDOf(uidPkgs, "com.foo"); ok {
+		t.Error("com.foo is not on a shared uid")
+	}
+	for name, want := range map[string]bool{
+		"android.process.acore": true, "": true, "com.android.contacts": false,
+		"com.android.providers.contacts:sync": false, "com.android.contacts.x": false,
+	} {
+		if got := MatchesNone(name, pkgs); got != want {
+			t.Errorf("MatchesNone(%q) = %v", name, got)
+		}
+	}
 }
 
 func TestOwner(t *testing.T) {
@@ -71,15 +95,31 @@ func TestOwner(t *testing.T) {
 			t.Errorf("Owner(%q, %d) = %q, want %q", c.name, c.uid, got, c.want)
 		}
 	}
-	// the shared-uid pick does not depend on the order of the list
+	// a shared uid resolves to none of its packages whatever the order
 	rev := map[int][]string{}
 	for u, l := range uidPkgs {
 		r := slices.Clone(l)
 		slices.Reverse(r)
 		rev[u] = r
 	}
-	if got := Owner("android.process.acore", 10054, rev, installed); got != "com.android.calllogbackup" {
+	if got := Owner("android.process.acore", 10054, rev, installed); got != "" {
 		t.Errorf("reversed list: %q", got)
+	}
+	if got := Owner("", 10054, uidPkgs, installed); got != "" {
+		t.Errorf("uid-only on a shared uid: %q", got)
+	}
+	// uid unknown (stored crashes, process lists): the process name, never
+	// the framework package (issue #70)
+	own := NameOwner(uidPkgs)
+	for name, want := range map[string]string{
+		"android.process.acore":                "android.process.acore",
+		"android.hardware.sensors@1.0-service": "android.hardware.sensors@1.0-service",
+		"com.android.providers.contacts":       "com.android.providers.contacts",
+		"system_server":                        "system_server",
+	} {
+		if got := own(name); got != want {
+			t.Errorf("NameOwner(%q) = %q, want %q", name, got, want)
+		}
 	}
 	// helper binaries resolve by uid only
 	if got := Owner("", 10202, uidPkgs, installed); got != "com.foobar" {

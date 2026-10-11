@@ -160,6 +160,7 @@ The `exe/` directory holds one binary (about 11 MB), plus renamed copies only wh
 
 - **Device time:** `from` / `to` / `age:` are device time (the Android device's clock, as printed in lines): relative (`30m`, `2h` = device now minus that; such a window ends at device now + 2 s), device-local (`14:05`, `2026-10-10 14:05:00`), ISO 8601 and epoch. Output is in the **device's time zone**; each response shows device now, host now and the clock offset. Lines stay in arrival order; when the device clock is changed (auto_time, a manual set, expiry testing) the output marks the clock jump with matches on each side.
 - **Reproducing a bug:** call `logcat_status` for a `cursor`, let the user reproduce, then call `logcat_search(after=cursor, wait_ms=20000)`. If `logcat_status` says "backfill in progress", call it again: it returns no cursor until the device's log buffer has been read.
+- **`package` parameter:** an exact application id. It matches the package's device processes: a device process belongs to the installed package that its name equals or extends at a `.` or `:`. When packages share a uid, a device process of that uid whose name matches none of them (for example `android.process.acore` for `com.android.providers.contacts` and `com.android.contacts`) can run code of any of them: its lines, crashes and lifetimes are attributed to no package, and `package=` includes them for each package of the uid, with a `note:` naming the packages. The `package:` filter term keeps its Android Studio meaning (device process name prefix).
 - **Several devices:** a call without `device` uses the single connected device; with several connected, it starts none and lists them.
 
 Filter syntax:
@@ -505,4 +506,5 @@ android-log-mcp 是一个 MCP stdio server，让 AI agent（MCP 宿主，如 Cla
 - **诊断包**：`android-log-mcp report` 生成 zip（没有后台服务进程时会以 detached 方式启动它并先回填），默认打码 token、密码、邮箱、手机号、身份证、银行卡、设备 ID、IP、MAC、域名等；打码基于模式，分享前请检查。
 - **升级到 0.5.0（破坏性变更）**：录制改为按需开始、空闲后停止；未录制期间被设备缓冲区覆盖的日志不会出现在历史里，需要时用 `record --for`。`ANDROID_LOG_MCP_LINGER` 改为按设备、从最后一次日志工具调用开始计时；`report` 会启动后台服务进程；`ANDROID_LOG_MCP_CALL_WAIT` 已弃用并被忽略。
 - **升级到 0.4.0（破坏性变更）**：旧数据不迁移、不读取（旧 `<serial>/` 目录被忽略，请手动删除）；移除 `ANDROID_LOG_MCP_HOME` 和 `--home`（仍设置时会报错退出）；开发版遗留的 `owners/` 目录会被自动删除。升级到 0.3.0 时默认保留期从 7 天改为 1 天。
+- **`package` 参数**：精确的应用 id。共享 uid 的设备进程若名称不对应其中任何包（如 `android.process.acore`），其日志、崩溃和进程不归属任何包；对该 uid 的每个包，`package=` 都会包含它们，并在 `note:` 中列出这些包。过滤语法中的 `package:` 仍是 Android Studio 语义（进程名前缀）。
 - 变更历史见 [CHANGELOG.md](CHANGELOG.md)。
