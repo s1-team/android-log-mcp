@@ -72,10 +72,13 @@ const possibleJumpNs = int64(time.Hour)
 // at the next line), a step back of more than the threshold between
 // consecutive lines, or a step forward of more than possibleJumpNs
 // (a forward jump or a quiet period).
-func (p *Pipeline) detectJumps(batch []*model.Record, arrived []time.Time, live []bool) {
+func (p *Pipeline) detectJumps(batch []*model.Record, arrived []time.Time, live, late []bool) {
 	th := store.ClockJumpThreshold
 	event := false
 	for i, r := range batch {
+		if late[i] {
+			continue
+		}
 		js := &p.jump
 		announced := js.set
 		_, js.set = clockSetLine(r)
@@ -146,6 +149,7 @@ type pending struct {
 	r       *model.Record
 	arrived time.Time
 	live    bool // accepted while Live
+	late    bool // recovered from the device buffer after later lines (AcceptLate)
 }
 
 // NewPipeline prepares ingestion for boot (short boot id) into st.
@@ -194,7 +198,21 @@ func (p *Pipeline) Accept(r *model.Record, arrived time.Time) {
 	}
 	r.Boot = p.Boot
 	p.Procs.Observe(r)
-	p.queue = append(p.queue, pending{r, arrived, p.Live})
+	p.queue = append(p.queue, pending{r, arrived, p.Live, false})
+	p.accepted++
+}
+
+// AcceptLate takes a record the live stream skipped and a later dump of
+// the device buffer recovered (issue #65). It is stored like any other,
+// but its device time says nothing about clock jumps: lines around it
+// arrived long before.
+func (p *Pipeline) AcceptLate(r *model.Record, arrived time.Time) {
+	if r == nil {
+		return
+	}
+	r.Boot = p.Boot
+	p.Procs.Observe(r)
+	p.queue = append(p.queue, pending{r, arrived, false, true})
 	p.accepted++
 }
 
@@ -220,6 +238,7 @@ func (p *Pipeline) Drain(all bool, now time.Time) error {
 	batch := make([]*model.Record, n)
 	arrived := make([]time.Time, n)
 	live := make([]bool, n)
+	late := make([]bool, n)
 	unknown := false
 	var unknownNs int64
 	for i := 0; i < n; i++ {
@@ -228,7 +247,7 @@ func (p *Pipeline) Drain(all bool, now time.Time) error {
 			unknown = true
 			unknownNs = max(unknownNs, r.TimeNs)
 		}
-		batch[i], arrived[i], live[i] = r, p.queue[i].arrived, p.queue[i].live
+		batch[i], arrived[i], live[i], late[i] = r, p.queue[i].arrived, p.queue[i].live, p.queue[i].late
 	}
 	p.queue = append(p.queue[:0], p.queue[n:]...)
 	if p.BeforeAppend != nil {
@@ -237,7 +256,7 @@ func (p *Pipeline) Drain(all bool, now time.Time) error {
 	if err := p.Store.Append(batch); err != nil {
 		return err
 	}
-	p.detectJumps(batch, arrived, live)
+	p.detectJumps(batch, arrived, live, late)
 	for _, r := range batch {
 		p.Det.Feed(r)
 	}
