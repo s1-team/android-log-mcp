@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/s1crab/android-log-mcp/server/internal/logcat"
 	"github.com/s1crab/android-log-mcp/server/internal/model"
 	"github.com/s1crab/android-log-mcp/server/internal/store"
 )
@@ -24,7 +25,27 @@ import (
 var CatchUpWait = 10 * time.Second
 
 // TEndCmd measures T_end (the same buffers the recorder streams).
-const TEndCmd = "logcat -d -t 1 -b main,system,crash,events -v epoch"
+const TEndCmd = "logcat -d -t 50 -b main,system,crash,events -v threadtime -v epoch -v uid -v usec -v printable"
+
+// endKey identifies the T_end line by its header (device time at µs, pid,
+// tid, level, tag): a multi-line message repeats it on every line.
+type endKey struct {
+	ns       int64
+	pid, tid int
+	level    model.Level
+	tag      string
+}
+
+func keyOf(r *model.Record) endKey {
+	return endKey{r.TimeNs, r.PID, r.TID, r.Level, r.Tag}
+}
+
+// endMark is the replay's end: the n-th streamed record with key k (copies
+// logged in the same µs by the same thread count; issue #52 D3).
+type endMark struct {
+	k endKey
+	n int
+}
 
 // The state belongs to one recording session (issue #30): a session that
 // was stopped (disconnect) can still be returning while the next one has
@@ -255,77 +276,142 @@ func (d *Device) measureTotal(ctx context.Context) {
 	}
 }
 
-// parseEpochTimes returns the times of the `-v epoch` lines in out.
-func parseEpochTimes(out string) []int64 {
-	var ts []int64
-	for _, ln := range strings.Split(out, "\n") {
-		m := epochLine.FindStringSubmatch(ln)
-		if m == nil {
-			continue
-		}
-		sec, err := strconv.ParseInt(m[1], 10, 64)
-		if err != nil {
-			continue
-		}
-		frac := (m[2] + "000000000")[:9]
-		ns, _ := strconv.ParseInt(frac, 10, 64)
-		ts = append(ts, sec*1e9+ns)
-	}
-	return ts
-}
-
-// measureEnd runs TEndCmd: the newest buffered line's time (0 = empty).
-func (d *Device) measureEnd(ctx context.Context) (int64, error) {
+// measureEnd runs TEndCmd: the newest buffered record by arrival (zero
+// key = empty buffer) and how many of the last 50 lines' records share its
+// key.
+func (d *Device) measureEnd(ctx context.Context, loc *time.Location) (endMark, error) {
 	out, err := d.adb.Shell(ctx, d.Addr(), 15*time.Second, TEndCmd)
 	if err != nil {
-		return 0, err
+		return endMark{}, err
 	}
-	var end int64
-	for _, t := range parseEpochTimes(out) {
-		end = max(end, t)
-	}
-	return end, nil
+	return parseEnd(out, loc), nil
 }
 
-// measureStart returns the oldest buffered line's time (0 = unknown).
-func (d *Device) measureStart(ctx context.Context) int64 {
-	out, err := d.adb.Shell(ctx, d.Addr(), 20*time.Second, "logcat -d -b main,system,crash,events -v epoch | head -n 8")
+func parseEnd(out string, loc *time.Location) endMark {
+	asm := &logcat.Assembler{Loc: loc, Year: time.Now().Year()}
+	var recs []*model.Record
+	for _, ln := range strings.Split(strings.TrimRight(out, "\r\n"), "\n") {
+		if r := asm.Push(strings.TrimSuffix(ln, "\r")); r != nil {
+			recs = append(recs, r)
+		}
+	}
+	if r := asm.Flush(); r != nil {
+		recs = append(recs, r)
+	}
+	if len(recs) == 0 {
+		return endMark{}
+	}
+	e := endMark{k: keyOf(recs[len(recs)-1])}
+	for _, r := range recs {
+		if keyOf(r) == e.k {
+			e.n++
+		}
+	}
+	return e
+}
+
+// multiset counts the hashes of stored lines (recHash) that the replayed
+// part of a stream can repeat. A replayed line is dropped only while its
+// hash has a count left, so a line the app really logged twice in the
+// same ms survives (issue #52).
+type multiset map[uint64]int32
+
+// take consumes one count of h; false if none is left.
+func (m multiset) take(h uint64) bool {
+	if m[h] > 0 {
+		m[h]--
+		return true
+	}
+	return false
+}
+
+// maxResumeHashes caps a multiset (≈ 20 MB).
+const maxResumeHashes = 500000
+
+// resumeSlack: stored lines this far before the -T resume point are still
+// compared (logd interleaves its buffers by device time).
+const resumeSlack = 10 * time.Second
+
+// sessionFirst is the seq before the current boot session's first line.
+func sessionFirst(st *store.Store) uint64 {
+	m := st.Meta()
+	if len(m.Sessions) == 0 {
+		return 0
+	}
+	if f := m.Sessions[len(m.Sessions)-1].FirstSeq; f > 0 {
+		return f - 1
+	}
+	return 0
+}
+
+// tailMultiset counts the last n stored lines of the current boot session,
+// chosen by seq, not by device time: after a clock jump device time says
+// nothing about what is still in the device buffer (issue #52 D2).
+func tailMultiset(st *store.Store, n int) multiset {
+	set := multiset{}
+	if n > maxResumeHashes || n <= 0 {
+		n = maxResumeHashes
+	}
+	seen := 0
+	st.Scan(sessionFirst(st), st.LastSeq()+1, true, func(r *model.Record) bool {
+		set[recHash(r)]++
+		seen++
+		return seen < n
+	})
+	return set
+}
+
+// boundaryMultiset counts the stored lines that logcat -T arrNs can
+// repeat: newest first by seq, back to the first line dated more than
+// resumeSlack before arrNs. Used only when no clock jump lies among the
+// lines still in the device buffer, so device time follows arrival order.
+func boundaryMultiset(st *store.Store, arrNs int64) multiset {
+	set := multiset{}
+	if arrNs == 0 {
+		return set
+	}
+	seen := 0
+	st.Scan(sessionFirst(st), st.LastSeq()+1, true, func(r *model.Record) bool {
+		if r.TimeNs < arrNs-int64(resumeSlack) {
+			return false
+		}
+		set[recHash(r)]++
+		seen++
+		return seen < maxResumeHashes
+	})
+	return set
+}
+
+// bufferLines returns the entries logd holds in the recorded buffers
+// (`logcat -S`; 0 = unknown).
+func (d *Device) bufferLines(ctx context.Context) uint64 {
+	out, err := d.adb.Shell(ctx, d.Addr(), 20*time.Second, StatsCmd)
 	if err != nil {
 		return 0
 	}
-	var start int64
-	for _, t := range parseEpochTimes(out) {
-		if start == 0 || t < start {
-			start = t
-		}
-	}
-	return start
+	return parseStatsTotal(out)
 }
 
-// rollbackSet collects the hashes of stored records of the current boot
-// session that may still be in the device buffer (time ≥ bufStart, or
-// everything when bufStart is unknown), bounded.
-func rollbackSet(st *store.Store, bufStart int64) map[uint64]bool {
-	const maxHashes = 500000
-	set := map[uint64]bool{}
-	first := uint64(0)
-	if m := st.Meta(); len(m.Sessions) > 0 {
-		first = m.Sessions[len(m.Sessions)-1].FirstSeq
+// tailSize is how many stored lines may still be in a device buffer of n
+// entries: n × 1.5 (lines logged since the read), capped; the cap when n
+// is unknown.
+func tailSize(n uint64) int {
+	if n == 0 || n*3/2 > maxResumeHashes {
+		return maxResumeHashes
 	}
-	last := st.LastSeq()
-	if first > 0 {
-		first--
+	return int(n * 3 / 2)
+}
+
+// jumpInTail reports whether a recorded clock jump lies after seq from
+// (among the stored lines that may still be in the device buffer, or
+// measured at this connect).
+func jumpInTail(st *store.Store, from uint64) bool {
+	for _, j := range st.ClockJumps() {
+		if j.Seq > from {
+			return true
+		}
 	}
-	st.Scan(first, last+1, true, func(r *model.Record) bool {
-		if bufStart != 0 && r.TimeNs < bufStart-int64(10*time.Second) {
-			return false
-		}
-		if bufStart == 0 || r.TimeNs >= bufStart {
-			set[recHash(r)] = true
-		}
-		return len(set) < maxHashes
-	})
-	return set
+	return false
 }
 
 // RollbackNote describes the last clock rollback (empty if none).
@@ -342,8 +428,12 @@ func (d *Device) RollbackNote() string {
 }
 
 func (d *Device) noteRollback(lastNs, nowNs int64, loc *time.Location) {
-	msg := fmt.Sprintf("device clock went back: the last stored line (%s) is later than the device clock (%s); read the whole buffer without -T and dropped lines already stored",
-		time.Unix(0, lastNs).In(loc).Format("2006-01-02 15:04:05.000"), time.Unix(0, nowNs).In(loc).Format("2006-01-02 15:04:05.000"))
+	d.noteWhole(fmt.Sprintf("device clock went back: the newest stored line (device time %s) is later than device now (%s); read the whole buffer without -T and dropped lines already stored",
+		time.Unix(0, lastNs).In(loc).Format("2006-01-02 15:04:05.000"), time.Unix(0, nowNs).In(loc).Format("2006-01-02 15:04:05.000")))
+}
+
+// noteWhole records why a same-boot resume read the whole device buffer.
+func (d *Device) noteWhole(msg string) {
 	log.Printf("%s: %s", d.Serial, msg)
 	d.rollbackSkipped.Store(0)
 	d.mu.Lock()

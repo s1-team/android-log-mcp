@@ -25,7 +25,8 @@ type Meta struct {
 	TZOffset       string    `json:"tz_offset,omitempty"` // date +%z (source of truth)
 	Sessions       []Session `json:"sessions,omitempty"`
 	Gaps           []Gap     `json:"gaps,omitempty"`
-	LastTimeNs     int64     `json:"last_time_ns,omitempty"` // newest record time (for -T resume)
+	LastTimeNs     int64     `json:"last_time_ns,omitempty"`    // maximum device time stored
+	ArrivalTimeNs  int64     `json:"arrival_time_ns,omitempty"` // device time of the newest arrival (for -T resume; issue #52)
 	LastBootID     string    `json:"last_boot_id,omitempty"`
 	RecordingSince int64     `json:"recording_since_ns,omitempty"` // host time ns
 	LastSeenHostNs int64     `json:"last_seen_host_ns,omitempty"`  // host time of the writer's last flush or heartbeat (every 30 s)
@@ -53,10 +54,11 @@ type Meta struct {
 	// Holes are seq ranges that are not in this directory (recorded in
 	// another root before the recording moved back here).
 	Holes []SeqRange `json:"holes,omitempty"`
-	// ResumeDedup holds the hashes of the lines stored (in the previous
-	// root) at LastTimeNs: logcat -T <that time> repeats them after a
-	// set-root move, and this directory does not have them to compare
-	// against. Ignored once LastTimeNs moves on.
+	// ResumeDedup holds the hashes (one per line, repeats kept) of the
+	// lines stored in the previous root near the newest arrival's device
+	// time: logcat -T <that time> repeats them after a set-root move, and
+	// this directory does not have them to compare against. Ignored once
+	// the newest arrival moves on.
 	ResumeDedup *ResumeDedup `json:"resume_dedup,omitempty"`
 }
 
@@ -113,4 +115,13 @@ func BootShort(bootID string) string {
 		return "0"
 	}
 	return h
+}
+
+// ArrivalNs is the device time of the newest stored line (the -T resume
+// point). Stores written before issue #52 only have LastTimeNs.
+func (m *Meta) ArrivalNs() int64 {
+	if m.ArrivalTimeNs != 0 {
+		return m.ArrivalTimeNs
+	}
+	return m.LastTimeNs
 }

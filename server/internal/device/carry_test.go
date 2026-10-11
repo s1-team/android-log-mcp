@@ -39,8 +39,8 @@ func TestCarryOverAndUncarry(t *testing.T) {
 	}
 	m := nst.Meta()
 	nst.Close()
-	if m.SeqFloor != 3 || m.ResumeDedup == nil || m.ResumeDedup.TimeNs != 200 || len(m.ResumeDedup.Hashes) != 2 ||
-		m.ResumeDedup.Hashes[0] != recHash(recs[2]) && m.ResumeDedup.Hashes[0] != recHash(recs[1]) {
+	if m.SeqFloor != 3 || m.ResumeDedup == nil || m.ResumeDedup.TimeNs != 200 || len(m.ResumeDedup.Hashes) != 3 {
+		// all lines within resumeSlack of the newest arrival (issue #52)
 		t.Fatalf("meta: %+v", m)
 	}
 	Uncarry(cs)

@@ -780,6 +780,7 @@ func (d *devWork) write(zf *zipFile, red *redact.Redactor, o Options, dbx map[st
 	}
 	if len(out) > 0 {
 		m.LastTimeNs = out[len(out)-1].TimeNs
+		m.ArrivalTimeNs = m.LastTimeNs
 	}
 	m.State = ""
 	if red.Enabled() {
