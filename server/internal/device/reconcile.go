@@ -139,19 +139,28 @@ func (d *Device) reconcileLoop(ctx context.Context, caught <-chan struct{}, out 
 			}
 		}
 		seq := d.Store.LastSeq()
+		final := false
 		if !d.repairNeeded(bufN) {
-			d.setRepair(false, "no line dated after device now is left in the device buffer")
-			prev = 0
-			clear(sent)
-			continue
+			if prev == 0 {
+				d.setRepair(false, "no line dated after device now is left in the device buffer")
+				clear(sent)
+				continue
+			}
+			// one more read: lines skipped since the previous one
+			final = true
+		} else {
+			d.setRepair(true, "the device buffer holds lines dated after device now (clock set back)")
 		}
-		d.setRepair(true, "the device buffer holds lines dated after device now (clock set back)")
 		n := reconcileSize(prev, seq, bufN)
 		recs, err := d.dumpTail(ctx, n)
+		prev = seq // a failed whole read is not retried: the next reads cover what follows
+		if final {
+			prev = 0
+		}
 		if err != nil {
+			log.Printf("%s: repair read of %d entries failed: %v", d.Serial, n, err)
 			continue
 		}
-		prev = seq
 		var missing []*model.Record
 		for _, r := range holes(recs, d.Store) {
 			if sent[recHash(r)] == 0 {
@@ -193,9 +202,15 @@ func reconcileSize(prev, seq, bufN uint64) int {
 	return min(max(int(2*(seq-prev))+500, 2000), whole)
 }
 
+// dumpTail's timeout: an API 29 emulator prints about 470 entries per
+// second through adb shell (a whole 2 MiB × 4 buffer took 2m40s).
+func dumpTimeout(n int) time.Duration {
+	return 30*time.Second + time.Duration(n)*5*time.Millisecond
+}
+
 // dumpTail reads and assembles the newest n entries of the device buffer.
 func (d *Device) dumpTail(ctx context.Context, n int) ([]*model.Record, error) {
-	out, err := d.adb.Shell(ctx, d.Addr(), time.Minute, reconcileCmd(n))
+	out, err := d.adb.Shell(ctx, d.Addr(), dumpTimeout(n), reconcileCmd(n))
 	if err != nil {
 		return nil, err
 	}
@@ -212,12 +227,13 @@ func (d *Device) dumpTail(ctx context.Context, n int) ([]*model.Record, error) {
 	return recs, nil
 }
 
-// headerHash identifies a record by its header only (device time, pid,
-// tid, level, tag): a stored record split or merged differently from the
-// dump still counts as stored.
+// headerHash identifies a record by device time (µs), pid and tid only: a
+// stored record split or merged differently from the dump, or printed
+// with another tag (logd renders some audit entries differently in a
+// dump), still counts as stored.
 func headerHash(r *model.Record) uint64 {
 	h := fnv.New64a()
-	fmt.Fprintf(h, "%d|%d|%d|%c|%s", r.TimeNs, r.PID, r.TID, r.Level, r.Tag)
+	fmt.Fprintf(h, "%d|%d|%d", r.TimeNs, r.PID, r.TID)
 	return h.Sum64()
 }
 
