@@ -16,6 +16,10 @@ type Step struct {
 	Ns     int64 // 0 = not found
 	TookMs int64 // callback duration if reported (-1 unknown)
 	Note   string
+	// AfterJump: the step was logged after a device clock jump that
+	// followed the launch request, so Ns − RequestNs is not a duration
+	// (issue #54).
+	AfterJump bool
 }
 
 // Launch is one computed app launch.
@@ -37,6 +41,17 @@ type Launch struct {
 	FullyDrawn Step
 	Events     string // "am_on_*" (API ≤ 29, no durations) or "wm_on_*"
 	Notes      []string
+	// ClockJumped: at least one step was logged after a device clock jump
+	// that followed the request (see Step.AfterJump).
+	ClockJumped bool
+}
+
+// ClockStep is a device clock jump as the launch analysis uses it: the
+// first stored line after it (Seq) and its size (device time after −
+// device time before; + forward, − back).
+type ClockStep struct {
+	Seq     uint64
+	DeltaNs int64
 }
 
 var (
@@ -90,6 +105,11 @@ func LaunchTag(r *model.Record) bool {
 	return lifecycleStep(r.Tag) != ""
 }
 
+// LaunchRequest reports whether r is a launch request ("START u0 {… cmp=…}").
+func LaunchRequest(r *model.Record) bool {
+	return isATM(r.Tag) && strings.HasPrefix(r.Msg, "START u") && reStart.MatchString(r.Msg)
+}
+
 // lifecycleStep maps both event families to a step name:
 // wm_on_<x>_called (Android 11+, with a duration field) and
 // am_on_<x>_called (Android ≤ 10, "[0,class,reason]", no duration).
@@ -115,19 +135,63 @@ func lifecycleStep(tag string) string {
 // request (bounded by the next launch request of the same component).
 const DisplayedSlackNs = int64(180e9)
 
-// Launches computes launches from records (any order; they are sorted by
-// time here because logcat interleaves buffers non-monotonically).
-// pkg=="" means all.
+// Launches computes launches from records, assuming the device clock was
+// never set (see LaunchesAcross). pkg=="" means all.
 func Launches(in []*model.Record, pkg string) []*Launch {
-	recs := make([]*model.Record, 0, len(in))
+	return LaunchesAcross(in, pkg, nil)
+}
+
+// clockRec is a launch record with its clock segment (the number of clock
+// jumps before it in arrival order) and its continuous time: device time
+// minus the jumps before it, i.e. device time as if the clock had never
+// been set. Within one segment the two differ by a constant.
+type clockRec struct {
+	*model.Record
+	seg int
+	c   int64
+}
+
+// LaunchesAcross computes launches from records (any order). Records are
+// sorted by device time only within a clock segment (between two clock
+// jumps, by Seq), because logcat interleaves buffers non-monotonically;
+// segments stay in arrival order (issue #54). Steps are paired by
+// continuous time, so a step logged after a jump that followed its request
+// still belongs to the launch; it is marked AfterJump (no duration).
+// jumps: the device clock jumps, any order; pkg=="" means all.
+func LaunchesAcross(in []*model.Record, pkg string, jumps []ClockStep) []*Launch {
+	js := append([]ClockStep(nil), jumps...)
+	sort.Slice(js, func(i, j int) bool { return js[i].Seq < js[j].Seq })
+	cum := make([]int64, len(js)+1) // cum[k]: sum of the first k jumps
+	for i, j := range js {
+		cum[i+1] = cum[i] + j.DeltaNs
+	}
+	recs := make([]clockRec, 0, len(in))
 	for _, r := range in {
 		if LaunchTag(r) {
-			recs = append(recs, r)
+			seg := 0
+			if len(js) > 0 {
+				seg = sort.Search(len(js), func(i int) bool { return js[i].Seq > r.Seq })
+			}
+			recs = append(recs, clockRec{r, seg, r.TimeNs - cum[seg]})
 		}
 	}
-	sort.SliceStable(recs, func(i, j int) bool { return recs[i].TimeNs < recs[j].TimeNs })
+	sort.SliceStable(recs, func(i, j int) bool {
+		if recs[i].seg != recs[j].seg {
+			return recs[i].seg < recs[j].seg
+		}
+		return recs[i].TimeNs < recs[j].TimeNs
+	})
+	segEnd := make([]int, len(recs)) // index of the first record of the next segment
+	for i := len(recs) - 1; i >= 0; i-- {
+		if i == len(recs)-1 || recs[i+1].seg != recs[i].seg {
+			segEnd[i] = i + 1
+		} else {
+			segEnd[i] = segEnd[i+1]
+		}
+	}
 	type anchor struct {
 		idx int
+		c   int64 // continuous time of the request
 		l   *Launch
 	}
 	var anchors []anchor
@@ -143,20 +207,22 @@ func Launches(in []*model.Record, pkg string) []*Launch {
 		if pkg != "" && p != pkg {
 			continue
 		}
-		anchors = append(anchors, anchor{i, &Launch{Package: p, Component: m[1], Class: cls, RequestNs: r.TimeNs, RequestMsg: r.Msg, Kind: "UNKNOWN"}})
+		anchors = append(anchors, anchor{i, r.c, &Launch{Package: p, Component: m[1], Class: cls, RequestNs: r.TimeNs, RequestMsg: r.Msg, Kind: "UNKNOWN"}})
 	}
 	var out []*Launch
 	for ai, a := range anchors {
 		l := a.l
+		reqSeg := recs[a.idx].seg
 		// lifecycle evidence belongs to this request until the next request
 		// for the same package; Displayed may come much later (see above).
-		end := l.RequestNs + 60e9
-		dispEnd := l.RequestNs + DisplayedSlackNs
+		// All bounds are continuous times.
+		end := a.c + 60e9
+		dispEnd := a.c + DisplayedSlackNs
 		for _, b := range anchors[ai+1:] {
 			if b.l.Package == l.Package {
-				end = min(end, b.l.RequestNs)
+				end = min(end, b.c)
 				if b.l.Class == l.Class {
-					dispEnd = min(dispEnd, b.l.RequestNs)
+					dispEnd = min(dispEnd, b.c)
 				}
 				break
 			}
@@ -168,11 +234,18 @@ func Launches(in []*model.Record, pkg string) []*Launch {
 		paused := false // the target activity itself paused first (intent delivered to it)
 		var launchTimeMs int64 = -1
 		var launchTimeNs int64
-		for _, r := range recs[a.idx+1:] {
-			if r.TimeNs >= max(end, dispEnd) {
-				break
+		launchTimeJump := false
+		for i := a.idx + 1; i < len(recs); i++ {
+			r := recs[i]
+			if r.c >= max(end, dispEnd) {
+				// sorted by device time within a segment: the rest of this
+				// segment is later too; a later segment may start earlier
+				// (continuous times across a jump are estimates)
+				i = segEnd[i] - 1
+				continue
 			}
-			inMain := r.TimeNs < end
+			inMain := r.c < end
+			jumped := r.seg != reqSeg
 			switch {
 			case r.Tag == "am_proc_start" && l.ProcStart.Ns == 0 && inMain:
 				f := logcat.EventFields(r.Msg, 6)
@@ -181,14 +254,14 @@ func Launches(in []*model.Record, pkg string) []*Launch {
 					pid, _ := strconv.Atoi(f[1])
 					l.PID = pid
 					appPIDs[pid] = true
-					l.ProcStart = Step{Name: "process started", Ns: r.TimeNs, TookMs: -1, Note: "am_proc_start pid " + f[1]}
+					l.ProcStart = Step{Name: "process started", Ns: r.TimeNs, TookMs: -1, Note: "am_proc_start pid " + f[1], AfterJump: jumped}
 				}
 			case r.Tag == "ActivityManager" && strings.HasPrefix(r.Msg, "Start proc ") && l.ProcStart.Ns == 0 && inMain:
 				if m := reStartProcLine.FindStringSubmatch(r.Msg); m != nil && (m[2] == l.Package || strings.HasPrefix(m[2], l.Package+":")) {
 					pid, _ := strconv.Atoi(m[1])
 					l.PID = pid
 					appPIDs[pid] = true
-					l.ProcStart = Step{Name: "process started", Ns: r.TimeNs, TookMs: -1, Note: "Start proc pid " + m[1]}
+					l.ProcStart = Step{Name: "process started", Ns: r.TimeNs, TookMs: -1, Note: "Start proc pid " + m[1], AfterJump: jumped}
 				}
 			case lifecycleStep(r.Tag) != "" && inMain:
 				f := logcat.EventFields(r.Msg, 0)
@@ -222,7 +295,7 @@ func Launches(in []*model.Record, pkg string) []*Launch {
 				}
 				// only the first lifecycle pass after the request
 				if st.Ns == 0 && l.OnResume.Ns == 0 {
-					*st = Step{Ns: r.TimeNs, TookMs: took}
+					*st = Step{Ns: r.TimeNs, TookMs: took, AfterJump: jumped}
 					l.Events = r.Tag[:2] + "_on_*"
 					if l.PID == 0 {
 						l.PID = r.PID
@@ -235,7 +308,7 @@ func Launches(in []*model.Record, pkg string) []*Launch {
 					_, cls := ExpandComponent(f[2])
 					if cls == l.Class {
 						if n, err := strconv.ParseInt(strings.TrimSpace(f[3]), 10, 64); err == nil {
-							launchTimeMs, launchTimeNs = n, r.TimeNs
+							launchTimeMs, launchTimeNs, launchTimeJump = n, r.TimeNs, jumped
 						}
 					}
 				}
@@ -253,7 +326,7 @@ func Launches(in []*model.Record, pkg string) []*Launch {
 					st = &l.FullyDrawn
 				}
 				if st.Ns == 0 {
-					*st = Step{Ns: r.TimeNs, TookMs: ParseAndroidDuration(m[3]), Note: "ActivityTaskManager Displayed"}
+					*st = Step{Ns: r.TimeNs, TookMs: ParseAndroidDuration(m[3]), Note: "ActivityTaskManager Displayed", AfterJump: jumped}
 					if m[1] == "Fully drawn" {
 						st.Note = "Fully drawn"
 					}
@@ -261,7 +334,12 @@ func Launches(in []*model.Record, pkg string) []*Launch {
 			}
 		}
 		if l.Displayed.Ns == 0 && launchTimeNs != 0 {
-			l.Displayed = Step{Ns: launchTimeNs, TookMs: launchTimeMs, Note: "activity_launch_time event"}
+			l.Displayed = Step{Ns: launchTimeNs, TookMs: launchTimeMs, Note: "activity_launch_time event", AfterJump: launchTimeJump}
+		}
+		for _, s := range []Step{l.ProcStart, l.OnCreate, l.OnRestart, l.OnStart, l.OnResume, l.Displayed, l.FullyDrawn} {
+			if s.Ns != 0 && s.AfterJump {
+				l.ClockJumped = true
+			}
 		}
 		switch {
 		case l.ProcStart.Ns != 0:
