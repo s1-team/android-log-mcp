@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
   - Every lines response has a machine-readable `count:` line: `total`, `count_exact` and, for a lower bound, `counted_from` / `counted_to`.
   - The top-tags line says when it covers only the counted matches, or only the page.
   - On a one-day history, `logcat_search {}` takes about 1 ms instead of 1.5 s, and filtered searches whose page fills quickly about 110 ms.
+- `logcat_status` no longer repeats the lines that rarely change on every call ([#23](https://github.com/s1crab/android-log-mcp/issues/23)). `root:`, `linger:`, `lifetime:`, `service log:`, `adb:` and `store:` are shown on the first call of each MCP or CLI process's connection and again whenever one of them changes; otherwise they become one line, `unchanged since shown earlier in this session: root, linger, lifetime, service log, adb, store (logcat_status(verbose=true) shows them)`. This saves about 500 characters (about 35 %) on every later call. The `service:` line (pid, version, uptime, connected MCP and CLI processes), recording state, pins, devices, adb problems and the cursor are always shown. The new `verbose` parameter always shows every line. `android-log-mcp service status` is unchanged.
 
 ## [0.5.2] - 2026-10-11
 

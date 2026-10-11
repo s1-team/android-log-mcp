@@ -8,6 +8,7 @@ type statusArgs struct {
 	Device    string `json:"device"`
 	Package   string `json:"package"`
 	RecordFor string `json:"record_for"`
+	Verbose   bool   `json:"verbose"`
 }
 
 type searchArgs struct {
@@ -58,7 +59,8 @@ func toolDefs() []toolDef {
 			schema: `{"type":"object","properties":{
 "device":{"type":"string","description":"adb serial or device ID. Omit when only one device is connected."},
 "record_for":{"type":"string","description":"Keep recording this device for this long, independent of calls: a duration with a unit like 30m, 2h or 1h30m (max 24h; the deadline never shortens). \"0\" stops recording the device now and removes the pin."},
-"package":{"type":"string","description":"Exact application id, e.g. com.example.app. Optional."}
+"package":{"type":"string","description":"Exact application id, e.g. com.example.app. Optional."},
+"verbose":{"type":"boolean","default":false,"description":"Always show the lines that rarely change (root, linger, lifetime, service log, adb, store). By default they are shown on the first call of a session and again when they change."}
 },"additionalProperties":false}`,
 		},
 		{

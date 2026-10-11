@@ -91,6 +91,8 @@ With `package`, also reports install state and live/recently-dead processes (pid
 }
 ```
 
+Since #23 the lines that rarely change (`root`, `linger`, `lifetime`, `service log`, `adb`, `store`) are shown on the first call of a connection to the service process and again when they change; `verbose: true` always shows them. 自 #23 起，这些很少变化的行只在每个连接的第一次调用和内容变化时显示，`verbose: true` 总是显示。
+
 **输出示例**（示意，数据是虚构的）
 ```
 adb: ok (server 1.0.41)
