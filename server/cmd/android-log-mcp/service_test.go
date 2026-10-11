@@ -157,6 +157,7 @@ func waitGone(t *testing.T, pid int) {
 // Two MCP clients share one service; when the service is killed, both
 // recover on their next call with one new service.
 func TestClientsShareServiceAndRecover(t *testing.T) {
+	t.Parallel()
 	env := isoEnv(t)
 	a, b := startMCP(t, env), startMCP(t, env)
 	pa, _ := servicePID(t, a.status(t))
@@ -180,6 +181,7 @@ func TestClientsShareServiceAndRecover(t *testing.T) {
 // When a detached start is impossible, the first MCP client runs the service
 // itself and other clients use it; when it exits, they take over.
 func TestEmbeddedFallback(t *testing.T) {
+	t.Parallel()
 	env := isoEnv(t, "ALM_TEST_NO_SPAWN=1")
 	a := startMCP(t, env)
 	txt := a.status(t)
@@ -202,6 +204,7 @@ func TestEmbeddedFallback(t *testing.T) {
 // A client replaces only an older service; an older client uses a newer
 // service if the protocol is compatible and fails clearly otherwise.
 func TestVersionHandoff(t *testing.T) {
+	t.Parallel()
 	env := isoEnv(t)
 	call := func(v string, extra ...string) (string, string, int) {
 		return cliEnv(t, append(append(env, "ALM_TEST_VERSION="+v), extra...), "call", "logcat_status")

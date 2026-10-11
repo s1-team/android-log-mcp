@@ -61,6 +61,7 @@ func eventually(t *testing.T, what string, d time.Duration, ok func() bool) {
 // linger the device's logcat stops again while the client stays connected,
 // and the service stays.
 func TestLazyRecording(t *testing.T) {
+	t.Parallel()
 	env, e := lazyEnv(t, "ANDROID_LOG_MCP_LINGER=2s")
 	s := startMCP(t, env)
 	pid := statePID(t, env)
@@ -105,10 +106,15 @@ func TestLazyRecording(t *testing.T) {
 // record --for with no service spawns it detached; recording runs without
 // clients until the pin ends, then the service exits.
 func TestRecordForWithoutService(t *testing.T) {
+	t.Parallel()
 	env, e := lazyEnv(t, "ALM_TEST_EXIT_GRACE=1s", "ANDROID_LOG_MCP_LINGER=1s")
 	t0 := time.Now()
 	// long enough for slow fake-adb starts (-race: ~1 s per adb call)
-	out, errOut, code := cliEnv(t, env, "record", "--for", "10s")
+	pin, check := 3*time.Second, 2*time.Second
+	if raceEnabled {
+		pin, check = 10*time.Second, 7*time.Second
+	}
+	out, errOut, code := cliEnv(t, env, "record", "--for", pin.String())
 	if code != 0 || !strings.Contains(out, "pinned until") || !strings.Contains(out, "FAKEA: recording") {
 		t.Fatalf("record --for: %d\n%s\n%s", code, out, errOut)
 	}
@@ -123,7 +129,7 @@ func TestRecordForWithoutService(t *testing.T) {
 	if !strings.Contains(out, "pinned until") || !strings.Contains(out, "set by android-log-mcp record") {
 		t.Fatalf("record state:\n%s", out)
 	}
-	time.Sleep(time.Until(t0.Add(7 * time.Second)))
+	time.Sleep(time.Until(t0.Add(check)))
 	if !e.LogcatRunning("FAKEA") {
 		t.Fatal("stopped before the pin ended")
 	}
@@ -139,6 +145,7 @@ func TestRecordForWithoutService(t *testing.T) {
 
 // record --stop stops recording and removes the pin at once.
 func TestRecordStop(t *testing.T) {
+	t.Parallel()
 	env, e := lazyEnv(t, "ALM_TEST_EXIT_GRACE=1s")
 	if out, errOut, code := cliEnv(t, env, "record", "--for", "1h"); code != 0 {
 		t.Fatalf("record --for: %d\n%s\n%s", code, out, errOut)
@@ -159,6 +166,7 @@ func TestRecordStop(t *testing.T) {
 // once (no tool call needed) and resumes recording the pinned device; the
 // crash is counted in record.json.
 func TestClientRestartsPinnedService(t *testing.T) {
+	t.Parallel()
 	env, e := lazyEnv(t)
 	s := startMCP(t, env)
 	old := statePID(t, env)
@@ -184,6 +192,7 @@ func TestClientRestartsPinnedService(t *testing.T) {
 // A version handoff keeps the pins (the new service resumes recording)
 // and drops devices started by tool calls.
 func TestHandoffKeepsPins(t *testing.T) {
+	t.Parallel()
 	env, e := lazyEnv(t)
 	e.AddDevice("FAKEB", "boot-b")
 	e.SetDevices(map[string]string{"FAKEA": "device", "FAKEB": "device"})

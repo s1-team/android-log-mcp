@@ -68,6 +68,7 @@ func resolved(t *testing.T, p string) string {
 }
 
 func TestSetRoot(t *testing.T) {
+	t.Parallel()
 	env := isoEnv(t)
 	ctrl := controlDirOf(env)
 	seedStore(t, ctrl)
@@ -183,8 +184,10 @@ func TestSetRoot(t *testing.T) {
 // A failure before the commit rolls back: target removed, root unchanged,
 // the service records in the old root again.
 func TestSetRootRollback(t *testing.T) {
+	t.Parallel()
 	for _, stage := range []string{"carry", "commit"} {
 		t.Run(stage, func(t *testing.T) {
+			t.Parallel()
 			env := isoEnv(t, "ALM_TEST_SETROOT_FAIL="+stage)
 			ctrl := controlDirOf(env)
 			seedStore(t, ctrl)
@@ -220,6 +223,7 @@ func TestSetRootRollback(t *testing.T) {
 // configured root and the service's root agree afterwards. Without a
 // service, --delete-old of the default root keeps the control files.
 func TestSetRootConcurrentAndDeleteDefault(t *testing.T) {
+	t.Parallel()
 	env := isoEnv(t)
 	ctrl := controlDirOf(env)
 	seedStore(t, ctrl)

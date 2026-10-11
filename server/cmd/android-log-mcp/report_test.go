@@ -6,6 +6,7 @@ import (
 )
 
 func TestParseSize(t *testing.T) {
+	t.Parallel()
 	for in, want := range map[string]int64{"50MB": 50 << 20, "50m": 50 << 20, "512KiB": 512 << 10, "1.5G": 3 << 29, "1000": 1000} {
 		if got, err := parseSize(in); err != nil || got != want {
 			t.Errorf("parseSize(%q) = %d, %v; want %d", in, got, err, want)
@@ -19,6 +20,7 @@ func TestParseSize(t *testing.T) {
 }
 
 func TestMaskArgs(t *testing.T) {
+	t.Parallel()
 	got := maskArgs([]string{"report", "--note", "my token abc", "--redact-extra=secret\\d+", "-package", "com.x", "-note=x", "--keep-domain", "corp.example"})
 	want := []string{"report", "--note", "<omitted>", "--redact-extra=<omitted>", "-package", "com.x", "-note=<omitted>", "--keep-domain", "<omitted>"}
 	if !reflect.DeepEqual(got, want) {
