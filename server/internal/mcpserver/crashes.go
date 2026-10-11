@@ -10,11 +10,15 @@ import (
 	"github.com/s1crab/android-log-mcp/server/internal/analysis"
 	"github.com/s1crab/android-log-mcp/server/internal/device"
 	"github.com/s1crab/android-log-mcp/server/internal/model"
+	"github.com/s1crab/android-log-mcp/server/internal/procs"
 	"github.com/s1crab/android-log-mcp/server/internal/timeparse"
 )
 
-func crashPkgMatch(c *analysis.Crash, pkg string) bool {
-	return pkg == "" || c.Package == pkg || pkgOfName(c.Process) == pkg
+// crashPkgMatch: own maps a process name to its package (procs.NameOwner),
+// so crashes in dotted processes (com.google.android.gms.persistent) and
+// crashes stored with the process name as package match (issue #41).
+func crashPkgMatch(c *analysis.Crash, pkg string, own func(string) string) bool {
+	return pkg == "" || c.Package == pkg || own(c.Process) == pkg
 }
 
 func (t *Tools) crashes(ctx context.Context, a crashArgs) (out string, err error) {
@@ -78,9 +82,10 @@ func (t *Tools) crashes(ctx context.Context, a crashArgs) (out string, err error
 		}
 		return "", errf("no crash with id %q on %s. Recent ids: %s (call logcat_crashes without id to list)", a.ID, d.Serial, strings.Join(ids, ", "))
 	}
+	own := procs.NameOwner(d.Packages())
 	var sel []*analysis.Crash
 	for _, c := range all {
-		if !crashPkgMatch(c, a.Package) || (len(kinds) > 0 && !kinds[c.Kind]) {
+		if !crashPkgMatch(c, a.Package, own) || (len(kinds) > 0 && !kinds[c.Kind]) {
 			continue
 		}
 		if (fromNs != 0 && c.TimeNs < fromNs) || (toNs != 0 && c.TimeNs >= toNs) {
@@ -110,7 +115,7 @@ func (t *Tools) crashes(ctx context.Context, a crashArgs) (out string, err error
 		if sig == "" {
 			sig = c.Headline
 		}
-		key := c.Kind + "|" + pkgOfName(c.Process) + "|" + sig
+		key := c.Kind + "|" + own(c.Process) + "|" + sig
 		if c.Kind == "anr" {
 			key = c.ID // ANRs are not grouped
 		}

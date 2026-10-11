@@ -534,10 +534,6 @@ func PackageMatch(r *model.Record, pkg string) bool {
 	return r.Package == pkg || r.Process == pkg || strings.HasPrefix(r.Process, pkg+":") || strings.Contains(r.Msg, pkg)
 }
 
-func procMatch(proc, pkg string) bool {
-	return pkg == "" || proc == pkg || strings.HasPrefix(proc, pkg+":")
-}
-
 // collect gathers window records newest first, stopping once MaxBytes is
 // exceeded (the remainder is only counted).
 func (d *devWork) collect(o Options) {
@@ -716,6 +712,8 @@ func (d *devWork) write(zf *zipFile, red *redact.Redactor, o Options, dbx map[st
 
 	// crashes (latest version of each, in the window, for the package)
 	var crashLines [][]byte
+	own := procs.NameOwner(device.LoadPackages(d.st)) // dotted process names (issue #41)
+	procMatch := func(proc, pkg string) bool { return pkg == "" || own(proc) == pkg }
 	cs := device.LoadCrashes(d.st)
 	sort.SliceStable(cs, func(i, j int) bool { return cs[i].TimeNs < cs[j].TimeNs })
 	for _, c := range cs {

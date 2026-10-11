@@ -56,6 +56,11 @@ type Detector struct {
 	Emit func(c *Crash)
 	// NeedDropbox is called when dropbox should be polled for a tag.
 	NeedDropbox func(tag string)
+	// PackageOf maps a device process name to its package (the pipeline
+	// sets the process tracker's rule, which knows the installed packages:
+	// com.google.android.gms.persistent → com.google.android.gms, issue
+	// #41). nil: the name before ':'.
+	PackageOf func(proc string) string
 
 	recent   []*Crash           // last crashes for dedup/merge (bounded)
 	amNative []amNative         // am_crash "Native crash" events waiting for the tombstone
@@ -85,7 +90,7 @@ func (d *Detector) mergeAmNative(c *Crash) {
 	for _, a := range d.amNative {
 		if sameProc(c.Process, a.proc) && abs(a.ns-c.TimeNs) < 60e9 {
 			c.addSource("events:am_crash")
-			c.Process, c.Package = a.proc, pkgOf(a.proc)
+			c.Process, c.Package = a.proc, d.pkgOf(a.proc)
 			continue
 		}
 		kept = append(kept, a)
@@ -208,7 +213,7 @@ func (d *Detector) Feed(r *model.Record) {
 		}
 		c.Package = r.Package
 		if c.Package == "" {
-			c.Package = pkgOf(c.Process)
+			c.Package = d.pkgOf(c.Process)
 		}
 		c.addSource("logcat:" + r.Buffer)
 		emit = append(emit, c)
@@ -229,12 +234,12 @@ func (d *Detector) Feed(r *model.Record) {
 			if c := d.findRecentProc("native", proc, r.TimeNs, 60e9); c != nil {
 				c.addSource("events:am_crash")
 				if c.Process == "" || len(c.Process) < len(proc) {
-					c.Process, c.Package = proc, pkgOf(proc)
+					c.Process, c.Package = proc, d.pkgOf(proc)
 				}
 				emit = append(emit, c)
 			} else if c := d.pendingNative(proc); c != nil {
 				c.addSource("events:am_crash")
-				c.Process, c.Package = proc, pkgOf(proc)
+				c.Process, c.Package = proc, d.pkgOf(proc)
 			} else {
 				d.amNative = append(d.amNative, amNative{proc: proc, ns: r.TimeNs, seq: r.Seq, boot: r.Boot, sig: msg})
 			}
@@ -246,7 +251,7 @@ func (d *Detector) Feed(r *model.Record) {
 			emit = append(emit, c)
 			break
 		}
-		c := &Crash{Kind: "java", Boot: r.Boot, TimeNs: r.TimeNs, Seq: r.Seq, PID: pid, Process: proc, Package: pkgOf(proc),
+		c := &Crash{Kind: "java", Boot: r.Boot, TimeNs: r.TimeNs, Seq: r.Seq, PID: pid, Process: proc, Package: d.pkgOf(proc),
 			Headline: strings.TrimSpace(exc + ": " + msg)}
 		c.Signature = exc + "@" + msg
 		if len(f) >= 8 {
@@ -282,7 +287,7 @@ func (d *Detector) Feed(r *model.Record) {
 		}
 		c.Body = r.Msg
 		if c.Package == "" {
-			c.Package = pkgOf(c.Process)
+			c.Package = d.pkgOf(c.Process)
 		}
 		c.addSource("logcat:" + r.Buffer)
 		d.natives[c.PID] = c
@@ -314,7 +319,7 @@ func (d *Detector) Feed(r *model.Record) {
 			pid, _ := strconv.Atoi(f[1])
 			c := d.findRecent("anr", pid, r.TimeNs, 30e9)
 			if c == nil {
-				c = &Crash{Kind: "anr", Boot: r.Boot, TimeNs: r.TimeNs, Seq: r.Seq, PID: pid, Process: f[2], Package: pkgOf(f[2]), Headline: f[4]}
+				c = &Crash{Kind: "anr", Boot: r.Boot, TimeNs: r.TimeNs, Seq: r.Seq, PID: pid, Process: f[2], Package: d.pkgOf(f[2]), Headline: f[4]}
 				d.remember(c)
 			} else if c.Headline == "" {
 				c.Headline = f[4]
@@ -333,7 +338,7 @@ func (d *Detector) Feed(r *model.Record) {
 		}
 		c := d.findRecent("anr", pid, r.TimeNs, 30e9)
 		if c == nil {
-			c = &Crash{Kind: "anr", Boot: r.Boot, TimeNs: r.TimeNs, Seq: r.Seq, PID: pid, Process: proc, Package: pkgOf(proc)}
+			c = &Crash{Kind: "anr", Boot: r.Boot, TimeNs: r.TimeNs, Seq: r.Seq, PID: pid, Process: proc, Package: d.pkgOf(proc)}
 			d.remember(c)
 		}
 		if rm := reANRReason.FindStringSubmatch(r.Msg); rm != nil && c.Headline == "" {
@@ -397,7 +402,7 @@ func (d *Detector) expireLocked(now int64) []*Crash {
 		if d.findRecentProc("native", a.proc, a.ns, 60e9) != nil {
 			continue
 		}
-		c := &Crash{Kind: "native", Boot: a.boot, TimeNs: a.ns, Seq: a.seq, Process: a.proc, Package: pkgOf(a.proc),
+		c := &Crash{Kind: "native", Boot: a.boot, TimeNs: a.ns, Seq: a.seq, Process: a.proc, Package: d.pkgOf(a.proc),
 			Headline: "Native crash: " + a.sig, Signature: "native@" + a.proc + ":" + a.sig,
 			Body: "only ActivityManager's am_crash event was recorded (no libc/DEBUG tombstone lines in the log buffers); see DropBox data_app_native_crash / SYSTEM_TOMBSTONE"}
 		c.addSource("events:am_crash")
@@ -603,6 +608,17 @@ func JavaSignature(stack string) string {
 	}
 	return strings.TrimSpace(exc) + "@" + frame
 }
+
+func (d *Detector) pkgOf(proc string) string {
+	if d.PackageOf != nil && proc != "" {
+		return d.PackageOf(proc)
+	}
+	return pkgOf(proc)
+}
+
+// PackageOfName is the default package of a device process name: the name
+// before ':'.
+func PackageOfName(proc string) string { return pkgOf(proc) }
 
 func pkgOf(proc string) string {
 	if i := strings.IndexByte(proc, ':'); i > 0 {

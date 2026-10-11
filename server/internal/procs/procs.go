@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/s1crab/android-log-mcp/server/internal/logcat"
 	"github.com/s1crab/android-log-mcp/server/internal/model"
@@ -53,8 +54,14 @@ type Tracker struct {
 	packages map[string]bool
 	// OnChange is called (without the lock) for every start/end so the caller can persist it.
 	OnChange func(p Proc)
-	nextID   int
-	lastNs   int64 // newest record time observed (to detect a backlog)
+	// OnUnknownUID is called (without the lock) when a device process has an
+	// application uid that the loaded package list does not contain, e.g. an
+	// app installed after the list was read (issue #41). The caller re-reads
+	// the list, rate-limited.
+	OnUnknownUID func(uid int)
+	unknownUID   atomic.Int64 // appId+1 of the last such uid, 0: none pending
+	nextID       int
+	lastNs       int64 // newest record time observed (to detect a backlog)
 }
 
 // GoneNotInPS is the end reason for live entries a full ps snapshot no longer lists.
@@ -88,6 +95,9 @@ func (t *Tracker) Restore(ps []Proc) {
 		p := ps[i]
 		if p.Boot != t.boot {
 			continue
+		}
+		if len(t.packages) > 0 { // re-attribute against the current list (issue #41)
+			p.Package = t.packageForLocked(p.Name, p.UID)
 		}
 		t.upsertLocked(&p)
 	}
@@ -124,10 +134,12 @@ func (t *Tracker) sortLocked(pid int) {
 	sort.SliceStable(l, func(i, j int) bool { return order(l[i]) < order(l[j]) })
 }
 
-// SetPackages installs the uid map from `pm list packages -U`.
+// SetPackages installs the uid map from `pm list packages -U` and
+// re-attributes every device process of the current boot against it: an
+// entry created before the list was read got a fallback (its process name)
+// that is replaced now (issue #41). Changed entries are passed to OnChange.
 func (t *Tracker) SetPackages(uidPkgs map[int][]string) {
 	t.mu.Lock()
-	defer t.mu.Unlock()
 	t.uidPkgs = uidPkgs
 	t.packages = map[string]bool{}
 	for _, l := range uidPkgs {
@@ -135,13 +147,19 @@ func (t *Tracker) SetPackages(uidPkgs map[int][]string) {
 			t.packages[p] = true
 		}
 	}
+	var changed []Proc
 	for _, l := range t.byPID {
 		for _, p := range l {
-			if p.Package == "" {
-				p.Package = t.packageForLocked(p.Name, p.UID)
+			if pkg := t.packageForLocked(p.Name, p.UID); pkg != p.Package {
+				p.Package = pkg
+				changed = append(changed, *p)
 			}
 		}
 	}
+	t.unknownUID.Store(0) // the list was just read: uids still missing wait for the next new process
+	t.mu.Unlock()
+	sort.Slice(changed, func(i, j int) bool { return changed[i].ID < changed[j].ID })
+	t.emit(changed)
 }
 
 // Installed reports whether pkg is in the last package list, and its uid.
@@ -184,6 +202,34 @@ func appID(uid int) int {
 // and the process→package mapping). Helper binaries that run with an app's
 // uid (crash_dump64, sh, …) are not app processes and get "".
 func (t *Tracker) packageForLocked(name string, uid int) string {
+	if a := appID(uid); name != "" && a >= 10000 && a < 20000 && len(t.packages) > 0 && len(t.uidPkgs[a]) == 0 {
+		t.unknownUID.Store(int64(a) + 1)
+	}
+	return Owner(name, uid, t.uidPkgs, t.packages)
+}
+
+// Owner is the application id that the device process name (with uid, -1
+// if unknown) belongs to, given the uid → packages map and the set of
+// installed packages from `pm list packages -U` (issue #41). With base = the
+// name before ':':
+//
+//  1. an application uid with exactly one package → that package;
+//  2. else, among the candidates (the uid's packages when the uid is shared,
+//     otherwise all installed packages): base itself if it is one, else the
+//     longest candidate that base extends at a '.' boundary
+//     (com.google.android.gms.persistent → com.google.android.gms; never
+//     com.foo for com.foobar.sync). This runs only towards installed
+//     packages, so package=com.google never matches com.google.android.gms;
+//  3. a shared uid whose packages the name does not match
+//     (android.process.acore) → the uid's alphabetically first package, so
+//     the pick is deterministic (attribution of such shared-uid system
+//     processes: issue #44);
+//  4. otherwise the earlier fallbacks: an isolated or unknown application
+//     uid → base; a name without a '.' (system binaries) → "".
+//
+// An empty name resolves the uid only (helper binaries running with an
+// app's uid).
+func Owner(name string, uid int, uidPkgs map[int][]string, installed map[string]bool) string {
 	base := name
 	if i := strings.IndexByte(base, ':'); i > 0 {
 		base = base[:i]
@@ -191,29 +237,102 @@ func (t *Tracker) packageForLocked(name string, uid int) string {
 	if name != "" && !strings.Contains(base, ".") {
 		return ""
 	}
-	if a := appID(uid); a >= 10000 {
-		if l := t.uidPkgs[a]; len(l) > 0 {
+	a := appID(uid)
+	if a >= 10000 {
+		if l := uidPkgs[a]; len(l) > 0 {
 			if len(l) == 1 {
 				return l[0]
 			}
-			for _, p := range l {
-				if p == base {
+			if name != "" {
+				if p := dottedOwner(base, func(p string) bool { return containsStr(l, p) }); p != "" {
 					return p
 				}
 			}
-			return l[0]
+			return minStr(l)
 		}
 		if a >= 90000 { // isolated process: name is usually the package
 			return base
 		}
 	}
-	if t.packages[base] {
-		return base
+	if name == "" {
+		return ""
 	}
-	if a := appID(uid); a >= 10000 && strings.Contains(base, ".") {
+	if a >= 10000 || uid < 0 {
+		if p := dottedOwner(base, func(p string) bool { return installed[p] }); p != "" {
+			return p
+		}
+	} else if installed[base] {
+		return base // system uid: exact name only
+	}
+	if a >= 10000 {
 		return base // AS fallback: process name before ':'
 	}
 	return ""
+}
+
+// dottedOwner returns base if has(base), else the longest prefix of base
+// ending before a '.' that has() accepts, else "".
+func dottedOwner(base string, has func(string) bool) string {
+	for s := base; s != ""; {
+		if has(s) {
+			return s
+		}
+		i := strings.LastIndexByte(s, '.')
+		if i <= 0 {
+			return ""
+		}
+		s = s[:i]
+	}
+	return ""
+}
+
+func minStr(l []string) string {
+	m := l[0]
+	for _, s := range l[1:] {
+		if s < m {
+			m = s
+		}
+	}
+	return m
+}
+
+// NameOwner returns a lookup of the package a device process name belongs
+// to when its uid is not known (stored crashes, process lists): Owner
+// against uidPkgs, falling back to the name before ':'. Results are
+// memoized; the lookup is not safe for concurrent use.
+func NameOwner(uidPkgs map[int][]string) func(name string) string {
+	installed := map[string]bool{}
+	for _, l := range uidPkgs {
+		for _, p := range l {
+			installed[p] = true
+		}
+	}
+	memo := map[string]string{}
+	return func(name string) string {
+		if o, ok := memo[name]; ok {
+			return o
+		}
+		o := ""
+		if len(installed) > 0 {
+			o = Owner(name, -1, uidPkgs, installed)
+		}
+		if o == "" {
+			o = name
+			if i := strings.IndexByte(o, ':'); i > 0 {
+				o = o[:i]
+			}
+		}
+		memo[name] = o
+		return o
+	}
+}
+
+// notifyUnknown passes a pending unknown application uid to OnUnknownUID.
+// Call it without the lock.
+func (t *Tracker) notifyUnknown() {
+	if v := t.unknownUID.Swap(0); v != 0 && t.OnUnknownUID != nil {
+		t.OnUnknownUID(int(v - 1))
+	}
 }
 
 // Seed reconciles the table with a full `ps` snapshot taken at device time
@@ -315,6 +434,7 @@ func CloseAll(ps []Proc, endNs int64, reason string) []Proc {
 }
 
 func (t *Tracker) emit(ps []Proc) {
+	t.notifyUnknown()
 	if t.OnChange == nil {
 		return
 	}
@@ -565,7 +685,7 @@ func (t *Tracker) ForPackage(pkg string) []Proc {
 	var out []Proc
 	for _, l := range t.byPID {
 		for _, p := range l {
-			if p.Package == pkg || p.Name == pkg || strings.HasPrefix(p.Name, pkg+":") {
+			if p.Package == pkg || ownerOfName(p.Name, t.uidPkgs, t.packages) == pkg {
 				out = append(out, *p)
 			}
 		}
@@ -587,6 +707,27 @@ type PSEntry struct {
 }
 
 // ParsePS parses `ps -A -o PID,UID,NAME` or default toybox/legacy `ps` output.
+// OwnerOf is the package that the device process name belongs to when its
+// uid is not known (see NameOwner), against the current package list.
+func (t *Tracker) OwnerOf(name string) string {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return ownerOfName(name, t.uidPkgs, t.packages)
+}
+
+// ownerOfName is NameOwner's rule without a memo (uid unknown).
+func ownerOfName(name string, uidPkgs map[int][]string, installed map[string]bool) string {
+	if len(installed) > 0 {
+		if o := Owner(name, -1, uidPkgs, installed); o != "" {
+			return o
+		}
+	}
+	if i := strings.IndexByte(name, ':'); i > 0 {
+		return name[:i]
+	}
+	return name
+}
+
 func ParsePS(out string) []PSEntry {
 	lines := strings.Split(strings.ReplaceAll(out, "\r", ""), "\n")
 	if len(lines) == 0 {

@@ -498,10 +498,11 @@ func (t *Tools) packageStatus(d *device.Device, pkg string) string {
 	}
 	connected := d.Status().State == "device"
 	var alive, dead, prior []procs.Proc
+	own := procs.NameOwner(pk) // dotted process names (issue #41)
 	for _, p := range d.Procs() {
 		// app processes only: helpers running with the app's uid
 		// (crash_dump64, sh …) have no package and are not listed
-		if !(p.Package == pkg || p.Name == pkg || strings.HasPrefix(p.Name, pkg+":")) {
+		if !(p.Package == pkg || own(p.Name) == pkg) {
 			continue
 		}
 		switch {
