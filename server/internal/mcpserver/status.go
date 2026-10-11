@@ -275,6 +275,9 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 		if rb := d.RollbackNote(); rb != "" {
 			fmt.Fprintf(&b, "    note: %s\n", rb)
 		}
+		if rc := d.RecoveredNote(); rc != "" {
+			fmt.Fprintf(&b, "    note: %s\n", rc)
+		}
 		if h := d.HandoffNote(); h != "" {
 			fmt.Fprintf(&b, "    note: %s\n", h)
 		}

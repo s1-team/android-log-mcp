@@ -76,6 +76,8 @@ type Device struct {
 	preProbe        *Probe       // probe that came with the identity probe (used once)
 	execOut         atomic.Int32 // 0 unknown, 1 `adb exec-out` works, -1 unsupported (stream with `adb logcat`)
 	rollbackSkipped atomic.Int64 // lines dropped as already stored after it
+	recovered       atomic.Int64 // lines the live stream skipped, stored late (reconcileLoop, issue #65)
+	repairSince     int64        // host ns the repair mode started (0: off; under mu)
 }
 
 // errExecOut ends a recording session whose `adb exec-out logcat` failed
@@ -635,6 +637,8 @@ func (d *Device) recordOnce(ctx context.Context) error {
 	// slow transport it competes with the stream (issue #11 follow-up)
 	caught := d.caughtUp()
 	d.bg.spawn("sideWork", func() { d.sideWork(ctx, caught, pipe, newBoot) })
+	recovered := make(chan []*model.Record, 4)
+	d.bg.spawn("reconcile", func() { d.reconcileLoop(ctx, caught, recovered) })
 
 	cctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -824,6 +828,8 @@ func (d *Device) recordOnce(ctx context.Context) error {
 				d.execOut.Store(1)
 			}
 			accept(asm.Push(ln))
+		case rs := <-recovered:
+			d.storeRecovered(pipe, rs)
 		case <-tick.C:
 			if asm.HasPending() && time.Since(lastLine) > 150*time.Millisecond {
 				accept(asm.Flush())

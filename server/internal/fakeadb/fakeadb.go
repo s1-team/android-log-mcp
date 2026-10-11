@@ -448,7 +448,11 @@ func logcat(e Env, serial string, args []string, crlf bool) int {
 	sent := 0
 	for end := time.Now().Add(10 * time.Minute); time.Now().Before(end); {
 		lines := bufferLines(e, serial)
+		skip := streamSkip(e, serial)
 		for ; sent < len(lines); sent++ {
+			if skipped(lines[sent], sent, skip) {
+				continue // like Android ≤ 11 logd kicking a reader (SetStreamSkip)
+			}
 			// like logd: -T <time> picks the start, the first line at
 			// or after it in buffer order; every line after it follows,
 			// whatever its time (a clock set back while streaming)
@@ -475,6 +479,40 @@ func logcat(e Env, serial string, args []string, crlf bool) int {
 		time.Sleep(50 * time.Millisecond)
 	}
 	return 0
+}
+
+// SetStreamSkip makes the live logcat stream leave out buffer lines that
+// contain any of subs ("#n": the n-th buffer line, from 0), as Android ≤ 11 logd does when it tells a reader to
+// skip entries while pruning (issue #65); `logcat -d` still prints them.
+func (e Env) SetStreamSkip(serial string, subs ...string) error {
+	return writeAtomic(filepath.Join(e.devDir(serial), "stream_skip"), strings.Join(subs, "\n")+"\n")
+}
+
+func streamSkip(e Env, serial string) []string {
+	b, err := os.ReadFile(filepath.Join(e.devDir(serial), "stream_skip"))
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, l := range strings.Split(string(b), "\n") {
+		if l != "" {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+func skipped(line string, i int, subs []string) bool {
+	for _, s := range subs {
+		if n, err := strconv.Atoi(strings.TrimPrefix(s, "#")); err == nil && strings.HasPrefix(s, "#") {
+			if n == i {
+				return true
+			}
+		} else if strings.Contains(line, s) {
+			return true
+		}
+	}
+	return false
 }
 
 // SetHang makes shell commands containing any of subs hang: the fake
