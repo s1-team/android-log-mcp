@@ -9,6 +9,12 @@ Read [docs/GOALS.md](docs/GOALS.md) first, and check every change against its pr
 ## 2. Workflow
 
 1. **Open an issue first.** Describe the problem, the proposed change and the acceptance criteria.
+   - **Every issue gets a priority label and a milestone.** Priority labels:
+     - `priority: P0`: silent data loss, wrong results or a crash; must ship in the current milestone.
+     - `priority: P1`: important; planned for the next release.
+     - `priority: P2`: nice to have; no commitment.
+   - Agents set the priority label when it is clear and leave it unset when unsure.
+   - Milestones and version planning are set by the release owner with the user, never by the implementing agent. When you open a new issue, set the priority label if it is clear, and never set a milestone.
 2. **Implement with tests.** Add unit or regression tests for the behavior you change, and run:
    - `go vet ./...` and `go test ./...` in `server/`;
    - `-race` on the packages you touched;
@@ -76,7 +82,7 @@ Repository artifacts (docs, issues, commit messages, release notes) are **Englis
 
 - 先读 `docs/GOALS.md`，每个改动都要对照其中的原则和禁止事项。
 - 流程：
-  1. 先开 issue；
+  1. 先开 issue；每个 issue 要有优先级标签和里程碑：`priority: P0`（静默丢数据、结果错误或崩溃，必须在当前里程碑发布）、`priority: P1`（重要，下个版本）、`priority: P2`（锦上添花，不承诺）。优先级明确时由 agent 设置，不确定就不设；里程碑和版本规划由发布负责人与用户确定，实现的 agent 不设。新开 issue 时，优先级明确就设标签，永远不设里程碑；
   2. 实现并补测试（`go vet`、`go test`、改动的包加 `-race`、Windows 交叉 vet）；
   3. 不直接提交到 main（main 有分支保护，禁止直接 push 和 force-push）：在功能分支上提交，开 PR，PR 正文写 `Closes #N`；
   4. 等 PR 的 CI 全绿（必需检查：三个系统的 `test` 和 `npm-pack`，分支要与 main 同步；npx-compat 等其他 job 也要通过），main 有更新就 rebase 后再推；
