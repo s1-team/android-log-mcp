@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/s1crab/android-log-mcp/server/internal/fakeadb"
+	"github.com/s1crab/android-log-mcp/server/internal/procs"
 )
 
 // Issue #41: a device process whose application uid is not in the package
@@ -23,23 +23,21 @@ func TestUnknownUIDRefreshesPackagesOncePerWindow(t *testing.T) {
 	pm := func() int { return len(e.CallsMatching("pm list packages")) }
 	waitFor(t, "the first package list read", 30*time.Second, func() bool { return pm() == 1 && d.sideWorkOn() })
 
+	// new device processes reach the tracker the way psLoop's ps snapshot
+	// does (the trigger is the same for am_proc_start lines)
 	pid := 20000
 	burst := func() {
 		t.Helper()
-		var lines []string
+		p := d.pipeline()
+		if p == nil {
+			t.Fatal("no pipeline")
+		}
+		var ps []procs.PSEntry
 		for i := 0; i < 5; i++ {
 			pid++
-			lines = append(lines, fakeadb.Line(time.Now(), 1500, "am_proc_start",
-				fmt.Sprintf("[0,%d,%d,com.new.app%d,service,{com.new.app%d/.S}]", pid, 10990+pid%5, pid, pid)))
+			ps = append(ps, procs.PSEntry{PID: pid, UID: 10990 + pid%5, Name: fmt.Sprintf("com.new.app%d", pid)})
 		}
-		if err := e.Log("FAKEA", lines...); err != nil {
-			t.Fatal(err)
-		}
-		last := pid
-		waitFor(t, "the new device processes", 30*time.Second, func() bool {
-			p := d.pipeline()
-			return p != nil && p.Procs.Lookup(last, time.Now().Add(time.Hour).UnixNano()) != nil
-		})
+		p.Procs.Seed(ps, d.Now().UnixNano())
 	}
 	// within the window of the first read: no extra read
 	burst()
