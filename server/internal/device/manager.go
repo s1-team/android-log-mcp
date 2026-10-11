@@ -67,6 +67,8 @@ type Manager struct {
 	watchErr  error
 	closed    bool // Close was called: never attach again
 	sess      *trackSession
+	bg        workers             // device tracking and identity probes (issue #24)
+	kids      children            // their adb processes
 	wanted    map[string]*want    // Lazy: devices to record, by ID
 	idents    map[string]Identity // resolved online devices, by ID
 	trackedAt time.Time           // last Track call (TrackGrace)
@@ -260,21 +262,21 @@ func (m *Manager) startTracking() *trackSession {
 	if m.sess != nil {
 		return m.sess
 	}
-	ctx, cancel := context.WithCancel(m.ctx)
+	ctx, cancel := context.WithCancel(withChildren(m.ctx, &m.kids))
 	ts := &trackSession{ctx: ctx, cancel: cancel, ready: make(chan struct{})}
 	m.sess = ts
 	if m.adb == nil {
 		ts.markReady()
 		return ts
 	}
-	go func() {
+	m.bg.spawn("device tracking", func() {
 		sctx, scancel := context.WithTimeout(ctx, 20*time.Second)
 		if err := m.adb.StartServer(sctx); err != nil && ctx.Err() == nil {
 			log.Printf("adb start-server: %v", err)
 		}
 		scancel()
 		m.adb.Watch(ctx, func(l []DevState, err error) { m.onDevices(ts, l, err) })
-	}()
+	})
 	return ts // callers wait for ready with their own bound (WaitReady)
 }
 
@@ -377,7 +379,7 @@ func (m *Manager) startResolvesLocked() int {
 		n++
 		if !m.resolving[a] {
 			m.resolving[a] = true
-			go m.resolve(a)
+			m.bg.spawn("identity probe "+a, func() { m.resolve(a) })
 		}
 	}
 	return n
@@ -472,7 +474,7 @@ func (m *Manager) recheck() {
 	}
 	for _, a := range retry {
 		m.resolving[a] = true
-		go m.resolve(a)
+		m.bg.spawn("identity probe "+a, func() { m.resolve(a) })
 	}
 	m.mu.Unlock()
 }
@@ -729,6 +731,17 @@ func (m *Manager) Close() {
 	case <-time.After(10 * time.Second):
 		log.Print("recorders did not stop within 10 s; closing the stores anyway")
 	}
+	for _, d := range devs {
+		d.waitBackground()
+	}
+	// device tracking and identity probes (issue #24)
+	m.mu.Lock()
+	ts := m.sess
+	m.mu.Unlock()
+	if ts != nil {
+		ts.cancel()
+	}
+	stopBackground("device tracking", &m.bg, &m.kids)
 	m.attachMu.Lock()
 	defer m.attachMu.Unlock()
 	for _, d := range m.Devices() {

@@ -275,6 +275,7 @@ func (m *Manager) release(id string, d *Device) {
 	case <-time.After(10 * time.Second):
 		log.Printf("%s: recorder did not stop within 10 s", id)
 	}
+	d.waitBackground()
 	if p := ReleasePause.Get(); p > 0 {
 		time.Sleep(p)
 	}

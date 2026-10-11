@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+### Fixed
+
+- Stopping the recording of a device (idle stop, end of a pin, `record --stop`) or stopping the service no longer leaves adb processes behind ([#24](https://github.com/s1crab/android-log-mcp/issues/24)). It cancels the device's background work (process table, packages, buffer span, DropBox fetches, device tracking, identity probes) and waits for it, at most 5 s, before the store is closed. Work still running then is named in the service log, and its adb processes are killed with their child processes (never the adb server). A cancelled adb call also stops waiting for output pipes that a child process of adb still holds open. A DropBox fetch can now be cancelled, and a fetch interrupted by a stop runs in the next recording session.
+
 ## [0.5.0] - 2026-10-11
 
 ### Changed

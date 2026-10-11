@@ -56,8 +56,11 @@ type Device struct {
 	dbxMu      sync.Mutex
 	crashMu    sync.Mutex // serializes ID assignment + persistence
 	disk       *store.DiskGuard
-	runWG      sync.WaitGroup // the recorder goroutine (run)
-	spanNs     atomic.Int64   // replay span of the device's main log buffer (measureSpan)
+	runWG      sync.WaitGroup  // the recorder goroutine (run)
+	bg         workers         // background work of the recording sessions (issue #24)
+	kids       children        // adb processes started under the session context
+	sideCtx    context.Context // context of the session whose side work runs (under dbxMu)
+	spanNs     atomic.Int64    // replay span of the device's main log buffer (measureSpan)
 
 	catch           catchState   // backfill / catch-up of the current recording session
 	devNowNs        int64        // device clock read by the last probe (0 = unknown)
@@ -298,7 +301,7 @@ func (d *Device) setState(ctx context.Context, state string) {
 	d.mu.Unlock()
 	if state == "device" && !running && owned {
 		d.catchBegin() // a call right after attach waits for this session's catch-up
-		cctx, cancel := context.WithCancel(ctx)
+		cctx, cancel := context.WithCancel(withChildren(ctx, &d.kids))
 		d.mu.Lock()
 		d.cancel = cancel
 		d.runWG.Add(1)
@@ -551,7 +554,8 @@ func (d *Device) recordOnce(ctx context.Context) error {
 	d.mu.Unlock()
 	// no side work (ps, pm, dumpsys, buffer span) while backfilling: on a
 	// slow transport it competes with the stream (issue #11 follow-up)
-	go d.sideWork(ctx, d.caughtUp(), pipe, newBoot)
+	caught := d.caughtUp()
+	d.bg.spawn("sideWork", func() { d.sideWork(ctx, caught, pipe, newBoot) })
 
 	cctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -568,12 +572,13 @@ func (d *Device) recordOnce(ctx context.Context) error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
+	defer trackChild(cctx, cmd)() // unregistered after the Wait below
 	d.mu.Lock()
 	d.recording = true
 	d.lastErr = ""
 	d.mu.Unlock()
 	if resume == "" && rbSet == nil {
-		go d.measureTotal(ctx) // whole buffer: estimate its line count
+		d.bg.spawn("measureTotal", func() { d.measureTotal(ctx) }) // whole buffer: estimate its line count
 	}
 	if resume != "" {
 		d.Store.UpdateMeta(func(m *store.Meta) {
@@ -776,7 +781,7 @@ func (d *Device) maybeSeedPS(ctx context.Context) {
 	pipe := d.pipe
 	d.mu.Unlock()
 	if pipe != nil {
-		go d.seedPS(ctx, pipe)
+		d.bg.spawn("seedPS", func() { d.seedPS(ctx, pipe) })
 	}
 }
 
@@ -860,20 +865,37 @@ func (d *Device) requestDropbox(tag string) {
 			d.dbxPending[tag] = dbxAgain
 		default:
 			d.dbxPending[tag] = dbxQueued
-			go d.dropboxWorker(tag)
+			ctx := d.sideCtx
+			d.bg.spawn("dropboxWorker "+tag, func() { d.dropboxWorker(ctx, tag) })
 		}
 	}
 }
 
 // dropboxWorker fetches a queued tag after dropboxDelay, again while
 // crashes arrived during a fetch.
-func (d *Device) dropboxWorker(tag string) {
+// It runs in the context of the session that queued it: a stop cancels
+// it, and the tag is fetched by the next session instead.
+func (d *Device) dropboxWorker(ctx context.Context, tag string) {
 	for {
-		time.Sleep(dropboxDelay.Get())
+		sleep(ctx, dropboxDelay.Get())
+		if ctx.Err() != nil {
+			d.dbxMu.Lock()
+			delete(d.dbxPending, tag)
+			d.dbxDefer[tag] = true
+			d.dbxMu.Unlock()
+			return
+		}
 		d.dbxMu.Lock()
 		d.dbxPending[tag] = dbxRunning
 		d.dbxMu.Unlock()
-		d.fetchDropbox(context.Background(), tag)
+		d.fetchDropbox(ctx, tag)
+		if ctx.Err() != nil {
+			d.dbxMu.Lock()
+			delete(d.dbxPending, tag)
+			d.dbxDefer[tag] = true
+			d.dbxMu.Unlock()
+			return
+		}
 		if !d.dropboxFinished(tag) {
 			return
 		}
@@ -931,6 +953,7 @@ func (d *Device) sideWork(ctx context.Context, caught <-chan struct{}, pipe *Pip
 	}
 	d.dbxMu.Lock()
 	d.sideOn = true
+	d.sideCtx = ctx
 	var tags []string
 	if newBoot {
 		tags = append(tags, dropboxHistory...)
@@ -945,9 +968,9 @@ func (d *Device) sideWork(ctx context.Context, caught <-chan struct{}, pipe *Pip
 	tags = append(tags, deferred...)
 	clear(d.dbxDefer)
 	d.dbxMu.Unlock()
-	go d.measureSpan(ctx)
-	go d.refreshPackages(ctx)
-	go d.psLoop(ctx, pipe)
+	d.bg.spawn("measureSpan", func() { d.measureSpan(ctx) })
+	d.bg.spawn("refreshPackages", func() { d.refreshPackages(ctx) })
+	d.bg.spawn("psLoop", func() { d.psLoop(ctx, pipe) })
 	for _, tag := range tags {
 		if ctx.Err() != nil {
 			d.deferDropbox(tag)
@@ -972,7 +995,7 @@ func (d *Device) sideWork(ctx context.Context, caught <-chan struct{}, pipe *Pip
 			continue
 		}
 		if d.dropboxFinished(tag) {
-			go d.dropboxWorker(tag)
+			d.bg.spawn("dropboxWorker "+tag, func() { d.dropboxWorker(ctx, tag) })
 		}
 	}
 }

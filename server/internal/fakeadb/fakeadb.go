@@ -21,11 +21,14 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/s1crab/android-log-mcp/server/internal/procattr"
 )
 
 // EnvDir names the state directory.
@@ -34,8 +37,12 @@ const EnvDir = "ALM_FAKEADB_DIR"
 // Is reports whether this process was started as the fake adb.
 func Is() bool {
 	b := strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe")
-	return b == "adb" && os.Getenv(EnvDir) != ""
+	return (b == "adb" || b == helperName) && os.Getenv(EnvDir) != ""
 }
+
+// helperName is the grandchild a hanging shell command starts (SetHang):
+// not named adb, so it is not taken for an adb server.
+const helperName = "adbhang"
 
 // Install copies the running test binary to dir/bin/adb[.exe] and returns
 // its path (point ANDROID_LOG_MCP_ADB at it, and set EnvDir=dir).
@@ -241,6 +248,10 @@ func appendLine(p, s string) {
 // Main runs the fake adb with args (os.Args[1:]); returns the exit code.
 func Main(args []string) int {
 	e := Env{Dir: os.Getenv(EnvDir)}
+	appendLine(filepath.Join(e.Dir, "pids"), strconv.Itoa(os.Getpid()))
+	if strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe") == helperName {
+		return helperMain(e)
+	}
 	appendLine(filepath.Join(e.Dir, "calls.log"), strconv.FormatInt(time.Now().UnixNano(), 10)+" "+strings.Join(args, " "))
 	if len(args) == 0 {
 		return 1
@@ -354,6 +365,13 @@ func lineTime(l string) int64 {
 }
 
 func shell(e Env, serial, cmd string) int {
+	if b, err := os.ReadFile(filepath.Join(e.devDir(serial), "hang")); err == nil {
+		for _, sub := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+			if sub != "" && strings.Contains(cmd, sub) {
+				return hang(e)
+			}
+		}
+	}
 	p := props(e, serial)
 	switch {
 	case strings.Contains(cmd, "boot_id"): // identity and/or recorder probe
@@ -447,5 +465,62 @@ func logcat(e Env, serial string, args []string, crlf bool) int {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+	return 0
+}
+
+// SetHang makes shell commands containing any of subs hang: the fake
+// starts a grandchild (not named adb) that inherits its output pipes, and
+// both sleep for a minute; the grandchild then writes HelperLateFile.
+func (e Env) SetHang(serial string, subs ...string) error {
+	return writeAtomic(filepath.Join(e.devDir(serial), "hang"), strings.Join(subs, "\n")+"\n")
+}
+
+// HelperLateFile is written by a hang grandchild that was not killed.
+const HelperLateFile = "late_write"
+
+// Running returns the pids of fake adb processes (and hang grandchildren)
+// that are still alive.
+func (e Env) Running() []int {
+	b, _ := os.ReadFile(filepath.Join(e.Dir, "pids"))
+	var out []int
+	for _, l := range strings.Fields(string(b)) {
+		if pid, _ := strconv.Atoi(l); pid > 0 && pid != os.Getpid() && Alive(pid) {
+			out = append(out, pid)
+		}
+	}
+	return out
+}
+
+// Hanging reports whether a hang grandchild was started.
+func (e Env) Hanging() bool {
+	_, err := os.Stat(filepath.Join(e.Dir, "hang_started"))
+	return err == nil
+}
+
+func hang(e Env) int {
+	exe, err := os.Executable()
+	if err == nil {
+		helper := filepath.Join(filepath.Dir(exe), helperName+filepath.Ext(exe))
+		if _, serr := os.Stat(helper); serr != nil {
+			if os.Link(exe, helper) != nil {
+				if b, rerr := os.ReadFile(exe); rerr == nil {
+					os.WriteFile(helper+".tmp", b, 0o755)
+					os.Rename(helper+".tmp", helper)
+				}
+			}
+		}
+		cmd := procattr.Hide(exec.Command(helper))
+		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr // holds our output pipes
+		if cmd.Start() == nil {
+			appendLine(filepath.Join(e.Dir, "hang_started"), strconv.Itoa(cmd.Process.Pid))
+		}
+	}
+	time.Sleep(time.Minute)
+	return 0
+}
+
+func helperMain(e Env) int {
+	time.Sleep(time.Minute)
+	os.WriteFile(filepath.Join(e.Dir, HelperLateFile), []byte("late"), 0o644)
 	return 0
 }

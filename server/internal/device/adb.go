@@ -3,6 +3,7 @@ package device
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -64,9 +65,16 @@ func (a *ADB) Output(ctx context.Context, timeout time.Duration, args ...string)
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := adbCmd(ctx, a.Path, args...)
+	var stdout bytes.Buffer
 	var stderr strings.Builder
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	err := cmd.Start()
+	if err == nil {
+		untrack := trackChild(ctx, cmd)
+		err = cmd.Wait()
+		untrack()
+	}
+	out := stdout.Bytes()
 	if err != nil {
 		msg := strings.TrimSpace(stderr.String())
 		if msg == "" {
@@ -166,10 +174,12 @@ func (a *ADB) Watch(ctx context.Context, fn func([]DevState, error)) {
 			err = cmd.Start()
 		}
 		if err == nil {
+			untrack := trackChild(ctx, cmd)
 			started := time.Now()
 			err = ReadTrackFrames(stdout, func(d []DevState) { fn(d, nil) })
-			cmd.Process.Kill()
+			killTree(cmd.Process)
 			cmd.Wait()
+			untrack()
 			if time.Since(started) > 10*time.Second {
 				backoff = time.Second
 			}

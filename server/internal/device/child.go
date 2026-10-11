@@ -14,9 +14,15 @@ import (
 // orphaned `adb logcat` exits on its next write to the closed pipe.
 // Only the adb *client* process is affected; an adb server it starts is not
 // our child and is never killed (it serves other tools too).
+//
+// Cancelling kills the process with its tree (killTree; never an adb
+// server), and Wait gives up on output pipes still held open by a
+// grandchild after adbWaitDelay, so a cancelled call cannot hang (#24).
 func adbCmd(ctx context.Context, path string, args ...string) *exec.Cmd {
 	cmd := procattr.Hide(exec.CommandContext(ctx, path, args...))
 	tieToParent(cmd)
+	cmd.Cancel = func() error { return killTree(cmd.Process) }
+	cmd.WaitDelay = adbWaitDelay.Get()
 	return cmd
 }
 
