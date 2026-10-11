@@ -1,0 +1,226 @@
+name: emulator
+
+# Nightly emulator validation (issue #27): hardware-accelerated emulators on
+# GitHub-hosted ubuntu-latest runners (KVM). Never run this on a self-hosted
+# runner or the dev box: nested KVM crashes that host (AGENTS.md §6).
+# Not a required check. Steps and evidence: scripts/emulator-ci.sh.
+on:
+  schedule:
+    - cron: "41 20 * * *"   # nightly, 04:41 Asia/Shanghai (after the perf nightly in ci.yml)
+  workflow_dispatch:
+    inputs:
+      api:
+        description: "API levels, comma-separated (29, 30, 35)"
+        default: "29,35"
+        type: string
+  pull_request:
+    paths:
+      - .github/workflows/emulator.yml
+      - scripts/emulator-ci.sh
+      - scripts/app-e2e.sh
+      - scripts/service-e2e.*
+      - scripts/e2e-report.sh
+      - scripts/compat-probe.sh
+      - validation/logtest-app/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emulator-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  plan:
+    if: github.repository == 's1crab/android-log-mcp'
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - id: m
+        env:
+          API: ${{ github.event_name == 'workflow_dispatch' && inputs.api || '29,35' }}
+        run: |
+          # API → system image: 29 default (the fixtures, time-based logd
+          # readers), 35 google_apis (current logd), 30 aosp_atd (on demand)
+          m=$(echo "$API" | tr ', ' '\n\n' | grep -E '^[0-9]+$' | sort -un | while read -r a; do
+            case $a in 29) t=default ;; 30) t=aosp_atd ;; *) t=google_apis ;; esac
+            printf '{"api":%s,"target":"%s"}\n' "$a" "$t"
+          done | jq -sc '{include: .}')
+          echo "matrix=$m" >> "$GITHUB_OUTPUT"
+          echo "$m"
+
+  emulator:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    name: emulator (API ${{ matrix.api }}, ${{ matrix.target }})
+    env:
+      OUT: out-api${{ matrix.api }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Build android-log-mcp
+        working-directory: server
+        run: go build -o android-log-mcp ./cmd/android-log-mcp
+      - id: sdk
+        run: echo "home=$ANDROID_HOME" >> "$GITHUB_OUTPUT"
+      - name: Cache the test app
+        id: apk
+        uses: actions/cache@v4
+        with:
+          path: validation/logtest-app/build/logtest.apk
+          key: logtest-apk-${{ hashFiles('validation/logtest-app/**') }}
+      - name: Build the test app
+        if: steps.apk.outputs.cache-hit != 'true'
+        run: validation/logtest-app/build.sh
+      - name: Cache the system image
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.sdk.outputs.home }}/system-images/android-${{ matrix.api }}/${{ matrix.target }}/x86_64
+          key: sysimg-${{ matrix.api }}-${{ matrix.target }}-x86_64-v1
+      - name: Cache the AVD and its boot snapshot
+        id: avd
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ matrix.api }}-${{ matrix.target }}-x86_64-v1
+      - name: Create the AVD and its boot snapshot
+        if: steps.avd.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: ${{ matrix.target }}
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: echo "boot snapshot saved"
+      # The checks never fail this step (results.tsv decides below), so a
+      # failure here is the emulator itself: boot it once more.
+      - name: Run the validation
+        id: run1
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: ${{ matrix.target }}
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-save
+          disable-animations: true
+          script: bash scripts/emulator-ci.sh emulator-5554 "$OUT" || echo "some checks failed (see results.tsv)"
+      - name: Run the validation (emulator retry)
+        if: steps.run1.outcome == 'failure'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: ${{ matrix.target }}
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-save
+          disable-animations: true
+          script: rm -rf "$OUT" && bash scripts/emulator-ci.sh emulator-5554 "$OUT" || echo "some checks failed (see results.tsv)"
+      - name: Results
+        if: always()
+        run: |
+          echo "emulator boot retried: ${{ steps.run1.outcome == 'failure' }}" | tee "$OUT/meta.txt" 2>/dev/null || true
+          test -s "$OUT/results.tsv" || { echo "::error::no results (the emulator did not run the checks)"; exit 1; }
+          cat "$OUT/results.tsv"
+          ! grep -q $'\tfail' "$OUT/results.tsv"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: emulator-api${{ matrix.api }}
+          path: |
+            ${{ env.OUT }}
+            !${{ env.OUT }}/scratch
+            !${{ env.OUT }}/app/calls/android-log-mcp
+          retention-days: 14
+          if-no-files-found: warn
+
+  # Job summary; for nightly and manual runs on main, one rolling issue: opened
+  # (or commented) on failure with the run link and the failing steps, closed
+  # on the next green run.
+  report:
+    needs: [plan, emulator]
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: results
+          pattern: emulator-api*
+      - name: Summary
+        id: sum
+        run: |
+          run="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          {
+            echo "## Emulator validation"
+            echo
+            echo "Run: $run"
+            echo
+            echo "| API | step | result | seconds | first failing check |"
+            echo "|---|---|---|---|---|"
+            for d in results/emulator-api*; do
+              api=${d#results/emulator-api}
+              f=$(ls "$d"/results.tsv 2>/dev/null || true)
+              if [ -z "$f" ]; then echo "| $api | – | **no results** (emulator did not run) | | |"; continue; fi
+              while IFS=$'\t' read -r step res secs first; do
+                [ "$res" = pass ] || res="**$res**"
+                echo "| $api | $step | $res | $secs | ${first//|/\\|} |"
+              done < "$f"
+            done
+            for d in results/emulator-api*; do
+              for x in "$d"/compat/fixture-diff.txt "$d"/fixtures/event-tags-diff.txt; do
+                [ -s "$x" ] || continue
+                echo; echo "<details><summary>API ${d#results/emulator-api}: ${x#"$d"/} (summary only)</summary>"; echo; echo '```'; head -40 "$x"; echo '```'; echo "</details>"
+              done
+            done
+          } > summary.md
+          cat summary.md >> "$GITHUB_STEP_SUMMARY"
+          failed=false
+          [ "${{ needs.emulator.result }}" = success ] || failed=true
+          echo "failed=$failed" >> "$GITHUB_OUTPUT"
+      - name: Rolling failure issue
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          FAILED: ${{ steps.sum.outputs.failed }}
+        run: |
+          title="ci: nightly emulator validation failing"
+          run="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          num=$(gh issue list --state open --search "\"$title\" in:title" --json number,title --jq "map(select(.title == \"$title\"))[0].number // empty")
+          if [ "$FAILED" = true ]; then
+            if [ -n "$num" ]; then gh issue comment "$num" --body-file summary.md
+            else
+              { echo "Opened automatically by the emulator workflow (#27); it closes itself on the next green run."; echo; cat summary.md; } > body.md
+              gh issue create --title "$title" --body-file body.md
+            fi
+          elif [ -n "$num" ]; then
+            gh issue close "$num" --comment "Green again: $run"
+          fi
