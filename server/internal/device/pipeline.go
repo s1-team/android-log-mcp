@@ -36,6 +36,9 @@ type Pipeline struct {
 	NeedDropbox  func(tag string)     // a crash wants DropBox evidence
 	OnUnknownUID func(uid int)        // a device process has an app uid missing from the package list
 	BeforeAppend func(first *model.Record)
+	// DeviceNow returns device now in ns (0 = unknown); it sets the
+	// DropBox import cutoff (issue #53). Nil: the newest stored line.
+	DeviceNow func() int64
 
 	// Clock jump detection (issue #48). Live: lines arrive as they are
 	// logged (catch-up is done), so their host arrival time is meaningful.
@@ -291,11 +294,22 @@ func (p *Pipeline) ApplyDropbox(out string) {
 	// Entries older than the retention window are not imported: their
 	// dropbox_seen keys may already have been cleaned up (the device keeps
 	// DropBox for ~3 days, the default retention is 1 day), and re-importing
-	// them would show old crashes as new. The cutoff is relative to the
-	// newest stored line (device clock), not the host clock.
+	// them would show old crashes as new. DropBox stamps entries with the
+	// device clock, so the cutoff is device now − retention, not the host
+	// clock and not the highest device time ever stored, which a clock
+	// jump leaves far ahead (issue #53). Entries dated after device now
+	// (written before the clock was set back) are kept out of a second
+	// import by their dropbox_seen keys.
 	var cutoff int64
-	if last := p.Store.Meta().LastTimeNs; last > 0 {
-		cutoff = last - int64(p.Store.Config().MaxAge)
+	now := int64(0)
+	if p.DeviceNow != nil {
+		now = p.DeviceNow()
+	}
+	if now == 0 {
+		now = p.Store.Stats().NewestNs // newest arrival
+	}
+	if now != 0 {
+		cutoff = now - int64(p.Store.Config().MaxAge)
 	}
 	for _, e := range entries {
 		if e.TimeNs != 0 && e.TimeNs < cutoff {

@@ -613,6 +613,7 @@ func (d *Device) recordOnce(ctx context.Context) error {
 	var endAt uint64 // pipeline position of the first line at/after T_end
 	pipe := NewPipeline(d.Store, boot, loc)
 	pipe.NeedDropbox = d.requestDropbox
+	pipe.DeviceNow = func() int64 { return d.Clock().Now.UnixNano() }
 	pipe.OnUnknownUID = func(uid int) { d.maybeRefreshPackages(ctx, uid) }
 	pipe.Clock = &d.lc
 	pipe.OnClockEvent = d.onClockEvent
