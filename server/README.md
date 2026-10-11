@@ -5,7 +5,7 @@
 ```bash
 go vet ./... && go test ./...                          # 单元测试，以及 API 29 fixture 回放回归测试
 go build -o android-log-mcp ./cmd/android-log-mcp      # 本机构建
-go build -ldflags "-X main.version=0.4.1" ./cmd/android-log-mcp   # 写入版本号（release 构建就是这样做的）
+go build -ldflags "-X main.version=0.5.0" ./cmd/android-log-mcp   # 写入版本号（release 构建就是这样做的）
 REPLAY_DUMP=1 go test ./internal/mcpserver -run ReplayExplore -v  # 打印 fixture 回放后各工具的完整输出
 ../scripts/e2e-report.sh emulator-5556 [证据目录]          # 真机 / 模拟器上的 report 打码端到端检查（需要 adb）
 ../scripts/service-e2e.sh emulator-5556                  # live check of the background service through the npm launcher

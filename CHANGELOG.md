@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-11
+
 ### Changed
 
 - **Breaking:** recording starts on use ([#11](https://github.com/s1crab/android-log-mcp/issues/11)). An idle background service runs no adb at all. A device starts being recorded on the first log tool call that uses it (`logcat_status`, `logcat_search`, `logcat_crashes`, `logcat_app_launches`, also via `call`), on `report` and on `record --for`, and is first backfilled from its log buffer: calls wait up to 10 s for that and otherwise say "backfill in progress"; `logcat_status` then returns no cursor and asks to be called again. With several devices connected and no `device`, nothing is started and the devices are listed; exceeding `ANDROID_LOG_MCP_MAX_DEVICES` is an error. Upgrade notes: [README › Upgrading › To 0.5.0](README.md#to-050-breaking).
@@ -145,7 +147,8 @@ Upgrade notes: [README › Upgrading › To 0.4.0](https://github.com/s1crab/and
 - First release: an MCP stdio server giving AI agents read-only access to Android logcat, with background recording of every connected device, the tools `logcat_status`, `logcat_search` (Android Studio filter syntax with strict errors), `logcat_crashes` and `logcat_app_launches`, and the `call` debug subcommand.
 - npm packaging: a Node launcher plus per-platform binary packages (linux / darwin / win32 × x64 / arm64), CI and release workflows.
 
-[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/s1crab/android-log-mcp/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/s1crab/android-log-mcp/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/s1crab/android-log-mcp/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/s1crab/android-log-mcp/compare/v0.2.1...v0.3.0
