@@ -42,6 +42,8 @@ Release only after **explicit sign-off from the user or maintainer**.
 
 Repository artifacts (docs, issues, commit messages, release notes) are **English-first**, with a short Chinese section at the end where useful. Some older docs are still Chinese-first; convert them when you substantially edit them.
 
+**Terminology:** issues, PRs, docs, code comments, logs and tool output use the terms in [docs/glossary.md](docs/glossary.md): MCP process, service process (short: service), CLI process, adb server, adb child, device process, MCP host. Never write a bare "process", "server", "daemon", "client" or "服务". Existing code identifiers and output strings that still use older words are listed there; do not add new ones.
+
 ## 6. Safety on the dev box
 
 - **Never start KVM-accelerated emulators, and never touch `/dev/kvm`.** Nested KVM crashes the host. Use the device or emulator that is already running.
@@ -57,7 +59,7 @@ Repository artifacts (docs, issues, commit messages, release notes) are **Englis
   - `scripts/compat-probe.sh` / `android-log-mcp compat` for the device compatibility probe;
   - `scripts/perf.sh` for the performance guard (CI job `perf`): output bytes, allocations, latency, memory against `perf/baseline.json`. A change that intentionally moves a metric re-records the baseline (`scripts/perf.sh --update`) in the same PR and says why ([docs/performance.md](docs/performance.md));
   - the evidence and procedures in [validation/README.md](validation/README.md).
-- **Isolating tests:** the background service, its control directory (`os.UserCacheDir()/android-log-mcp`: `run/service.lock`, the socket, `config.json`) and the default data root are fixed per user. Tests must never touch the real user's control dir, config or service (a test that stops, replaces or `set-root`s the real service would break the user's recording).
+- **Isolating tests:** the service process, its control directory (`os.UserCacheDir()/android-log-mcp`: `run/service.lock`, the socket, `config.json`) and the default data root are fixed per user. Tests must never touch the real user's control dir, config or service (a test that stops, replaces or `set-root`s the real service would break the user's recording).
   - Go: every package whose tests create a `device.Manager`, start a service or call `layout.DefaultDir` has `func TestMain(m *testing.M) { os.Exit(testhome.Run(m)) }` (`internal/testhome` points `XDG_CACHE_HOME`, `HOME`, `LocalAppData` at a temp dir). Multi-process tests in `cmd/android-log-mcp` give every child its own cache dir with `isoEnv` (and a nonexistent `ANDROID_LOG_MCP_ADB`, or the fake adb of `fakeADBEnv`); the spawned service inherits it.
   - Shell / manual runs: redirect the whole per-user cache dir, which moves the control dir, the service and the default root: Linux `XDG_CACHE_HOME=/tmp/x`, macOS `HOME=/tmp/x`, Windows `LocalAppData=C:\tmp\x`. Stop such a test service with the same environment (`… android-log-mcp service stop`).
   - Read-only checks of a dataset: `--offline <dir>` (in-process; never talks to the service, never records, prunes or creates files).
@@ -85,7 +87,8 @@ Repository artifacts (docs, issues, commit messages, release notes) are **Englis
   3. 有面向用户的变化时，把自动生成的说明换成手写的说明（英文为主）。
 - 版本规则：1.0 之前，破坏性变更升 minor 版本，并附升级说明；1.0 之后升 major 版本。
 - 语言：仓库产出物英文为主，中文为辅。
+- 术语：issue、PR、文档、代码注释、日志和工具输出统一使用 [docs/glossary.md](docs/glossary.md) 中的术语（MCP 进程、后台服务进程、CLI 进程、adb server、adb 子进程、设备进程、MCP 宿主），禁止单独使用“进程 / server / daemon / client / 服务”。
 - 安全：开发机上禁止启动 KVM 模拟器，也不要碰 `/dev/kvm`。
-- 测试隔离：后台服务、控制目录（`os.UserCacheDir()/android-log-mcp`：`run/`、socket、`config.json`）和默认数据根目录都是每用户固定的，测试绝不能碰真实用户的这些东西。Go 测试用 `testhome.Run` 的 TestMain，多进程测试用 `isoEnv`；手动运行用 `XDG_CACHE_HOME`（Linux）/ `HOME`（macOS）/ `LocalAppData`（Windows）把整个缓存目录指向临时目录。只读查看数据集用 `--offline <目录>`。`scripts/service-e2e.sh` / `e2e-report.sh` 也要这样隔离，除非就是要测真实服务。`internal/fakeadb` 是可编程的假 adb，用来断言运行了哪些 adb 命令。
+- 测试隔离：后台服务进程、控制目录（`os.UserCacheDir()/android-log-mcp`：`run/`、socket、`config.json`）和默认数据根目录都是每用户固定的，测试绝不能碰真实用户的这些东西。Go 测试用 `testhome.Run` 的 TestMain，多进程测试用 `isoEnv`；手动运行用 `XDG_CACHE_HOME`（Linux）/ `HOME`（macOS）/ `LocalAppData`（Windows）把整个缓存目录指向临时目录。只读查看数据集用 `--offline <目录>`。`scripts/service-e2e.sh` / `e2e-report.sh` 也要这样隔离，除非就是要测真实服务。`internal/fakeadb` 是可编程的假 adb，用来断言运行了哪些 adb 命令。
 - 空闲的服务不运行任何 adb：录制按需开始（#11），服务里新增的 adb 调用必须属于已被工具调用、`report` 或 pin 启动的设备，并随它停止。
 - 绝不要杀 adb server。

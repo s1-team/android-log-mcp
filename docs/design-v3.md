@@ -1,8 +1,8 @@
-# Android 日志 MCP server：设计 v3（面向 AI agent 的批判性修订）
+# Android 日志 MCP stdio server：设计 v3（面向 AI agent 的批判性修订）
 
 - 日期：2026-10-10（Asia/Shanghai）。仍处于设计阶段，没有写代码。
 - 前提：调用方**永远是 AI agent**（Claude Code/Desktop、Codex、Cursor 等），不是人。
-- 承接 `research-v2.md`。v2 中 AS 语法、pid 映射、buffer 选择、daemon 存储的调研结论依然有效，本文只改“对 agent 暴露的接口”和相关行为。
+- 承接 `research-v2.md`。v2 中 AS 语法、pid 映射、buffer 选择、录制进程存储（v2 称 daemon，现为后台服务进程）的调研结论依然有效，本文只改“对 agent 暴露的接口”和相关行为。
 - 标注约定：**[源]** 有出处；**[推断]** 是我的判断，没有实测；**[未知]** 待验证。
 
 ## 0. 依据的最佳实践（均已核对原文）
@@ -19,7 +19,7 @@
    - 工具定义包含 `title`、`inputSchema`（无参数时推荐 `{"type":"object","additionalProperties":false}`）、可选的 `outputSchema`、`annotations`（readOnlyHint、destructiveHint、idempotentHint、openWorldHint）。
    - 返回 `structuredContent` 时，**SHOULD** 同时在 TextContent 中放序列化后的 JSON；声明了 outputSchema 就 **MUST** 遵守。
    - 业务错误用 `isError: true` 返回，“供模型自我纠正”。
-   - `InitializeResult.instructions` 可以放服务器级说明。
+   - `InitializeResult.instructions` 可以放 server 级说明（即本 MCP stdio server 的说明）。
 3. **Claude Code MCP 文档**：https://code.claude.com/docs/en/mcp
    - 输出超过 10,000 token 时告警，默认上限 25,000 token（环境变量 `MAX_MCP_OUTPUT_TOKENS`）。
    - 文本结果超过 **50,000 字符**会被转存为文件。
@@ -50,24 +50,24 @@
 | 11 | 没有去重 | 连续完全相同的行折叠为 `↳ ×37 identical until 01:20:09.001`。多行消息（堆栈）整体保留，不拆开 | 省 token，也保证堆栈完整 |
 | 12 | 只按 seq 或时间分页 | **不透明字符串 cursor**，含设备、boot、seq，跨 server 重启仍然有效。`before`/`after` 两个方向 | 无状态、可重放、幂等 |
 | 13 | get_crashes 只看日志 | 加 **ANR**（events `am_anr` + ActivityManager `ANR in` 块），并从 **dropbox** 补充 traces 和历史崩溃 | 用户已确认。dropbox 还能补回“MCP 启动前”和“日志已经滚掉”的崩溃 |
-| 14 | crash ID 没有定义 | 短 ID（`cr7`、`anr2`）。只有一个匹配时**自动返回详情**，包括同进程崩溃前 40 行日志 | Anthropic 指出语义化或短 ID 能减少幻觉；少一次调用 |
-| 15 | get_app_starts 返回原始证据 | `logcat_app_launches` **直接给出算好的时长**：请求→进程启动→onCreate→onResume、TTID、TTFD、冷热判定，并附证据行时间 | 让 agent 不必自己算；冷启动场景只需 1 次调用 |
+| 14 | crash ID 没有定义 | 短 ID（`cr7`、`anr2`）。只有一个匹配时**自动返回详情**，包括同一设备进程崩溃前 40 行日志 | Anthropic 指出语义化或短 ID 能减少幻觉；少一次调用 |
+| 15 | get_app_starts 返回原始证据 | `logcat_app_launches` **直接给出算好的时长**：请求→设备进程启动→onCreate→onResume、TTID、TTFD、冷热判定，并附证据行时间 | 让 agent 不必自己算；冷启动场景只需 1 次调用 |
 | 16 | 时间：`since` 接受 epoch、RFC3339 或相对时长 | `from`/`to` 接受**设备本地时间**（`2026-10-10 01:20:00` 或 `01:20:00`）、带偏移的 ISO、或相对时长（`30m`）。输出一律用设备本地时间，表头注明时区 | 设备日志本来就是设备本地时间。混用主机和设备时区是 agent 常见的错因 |
 | 17 | 长等待没有上限 | `wait_ms` 最大 **25,000**；默认 0 | Codex 的工具超时默认 60 秒 |
-| 18 | 所有工具都带 annotations（v2 没写） | 4 个工具都设 `readOnlyHint:true`、`openWorldHint:false` | 规范建议；客户端可以据此免确认（客户端行为 **[未知]**） |
+| 18 | 所有工具都带 annotations（v2 没写） | 4 个工具都设 `readOnlyHint:true`、`openWorldHint:false` | 规范建议；MCP 宿主可以据此免确认（MCP 宿主行为 **[未知]**） |
 
-**明确没有改的部分**：AS 语法本身照旧（键、运算符、优先级、同字段隐式 OR、大小写规则），只把出错时的行为改成报错。存储、daemon、设备发现、pid 映射沿用 v2。
+**明确没有改的部分**：AS 语法本身照旧（键、运算符、优先级、同字段隐式 OR、大小写规则），只把出错时的行为改成报错。存储、录制进程（v2 称 daemon，现为后台服务进程）、设备发现、pid 映射沿用 v2。
 
 ---
 
 ## 2. 最终工具集（4 个，都只读）
 
 **通用约定**
-- 工具名统一用 `logcat_` 前缀，模型熟悉 logcat 这个词。服务器名建议为 `android-log`，在 Claude Code 中呈现为 `mcp__android-log__logcat_search`。
+- 工具名统一用 `logcat_` 前缀，模型熟悉 logcat 这个词。MCP 宿主配置里的 server 名建议为 `android-log`，在 Claude Code 中呈现为 `mcp__android-log__logcat_search`。
 - 所有工具都有可选参数 `device`。只有一台有数据的设备时自动选中；有多台时如果没指定，返回可执行的错误并列出各设备的 serial。
 - 返回方式：v1 **只返回 TextContent**（紧凑文本），不声明 outputSchema。原因见第 7 节第 2 个开放问题。
 - annotations：`{"readOnlyHint": true, "openWorldHint": false}`，并设置 `title`。
-- server instructions（`InitializeResult.instructions`）放一段 ≤ 120 词的工作流说明，见 2.5。各客户端是否把它注入模型上下文 **[未知]**，所以每个工具的 description 也要能独立读懂。
+- server instructions（`InitializeResult.instructions`）放一段 ≤ 120 词的工作流说明，见 2.5。各 MCP 宿主是否把它注入模型上下文 **[未知]**，所以每个工具的 description 也要能独立读懂。
 - 工具 description 用**英文**写：模型对英文工具描述最熟，社区工具也基本是英文。本文档其余部分用中文。
 
 ### 2.1 `logcat_status`
@@ -173,7 +173,7 @@ top tags in all 1,284 matches: OkHttp 911, MyRepo 373 · narrow with e.g. -messa
 
 **行格式细则**
 - 时间只显示 `HH:MM:SS.mmm`，日期放在表头；跨天时插入 `--- 2026-10-11 ---` 分隔行。
-- process 列显示进程名（多进程 App 会显示 `com.foo:push`）；pid 未知时显示 `?`。
+- process 列显示设备进程名（多进程 App 会显示 `com.foo:push`）；pid 未知时显示 `?`。
 - 单条消息超过 2,000 字符时截断，标记为 `…[+N chars, use filter on this line's pid+time to get full]`。堆栈类消息上限放宽到 8,000 字符。
 - `context` 带出来的周边行以两个空格缩进，匹配行不缩进。
 - 折叠规则：同一 pid、tag、level，消息字节完全相同且相邻时才折叠，不做数字归一化，避免误伤。
@@ -252,7 +252,7 @@ more: logcat_crashes id="cr5" for full detail
 - `dumpsys dropbox` 的参数为 `[-p|--print] [-f|--file] [--proto] [timestamp]`，其余非 `-` 开头的参数作为 tag 或时间的搜索条件。
   - 权限检查是 `checkDumpAndUsageStatsPermission`，**SHELL_UID 直接放行**。[源]：`DropBoxManagerService.java`、`DumpUtils.java`（main 分支）
 - **[未知]**：老版本和各 OEM ROM 上 dropbox tag 是否开启、保留条数、traces 是否被截断，都需要实机验证。
-- 实现方式：daemon 定时（例如 60 秒一次）或在看到 `am_anr`/`am_crash` 后触发 `dumpsys dropbox --print data_app_anr`（crash 同理），解析后缓存到本地。agent 调用时不需要等待。
+- 实现方式：后台服务进程定时（例如 60 秒一次）或在看到 `am_anr`/`am_crash` 后触发 `dumpsys dropbox --print data_app_anr`（crash 同理），解析后缓存到本地。agent 调用时不需要等待。
 
 ### 2.4 `logcat_app_launches`
 
@@ -296,7 +296,7 @@ caveats: onX "returned" times are when the callback finished (event logged after
 **算法要点**
 - 锚点：ActivityTaskManager 的 `START u0 {… cmp=<pkg>/…}`。
 - 冷启动：锚点之后、首个 onResume 之前，出现了该 package 的 `am_proc_start`。
-- 温启动：进程已存在，但出现了 `wm_on_create_called`。
+- 温启动：设备进程已存在，但出现了 `wm_on_create_called`。
 - 热启动：只有 `wm_on_resume_called`，没有 onCreate。
 - `wm_on_*_called` 必须出自该包的 pid，并且组件名匹配。
 - `Displayed` 同时兼容 ActivityTaskManager 和 ActivityManager 两种 tag、是否带 ` for user N` 两种写法。
@@ -363,7 +363,7 @@ agent 可以借此发现自己写的 `message:foo message:bar` 实际被解释�
 **警告**（不算错误，写在表头 `note:` 行）
 - 可疑写法 `tag:foo|bar`：`note: value "foo|bar" contains "|" — if you meant OR write tag:foo | tag:bar`
 - 同字段多项被合并成 OR 时：`note: tag:A tag:B are ORed (same key)`
-- 结果为 0 条时给出最可能的原因：package 在该时间范围内没有进程；tag 大小写不匹配（`=:` 区分大小写）；时间窗在 history 起点之前；附近相似的 tag 名有哪些。
+- 结果为 0 条时给出最可能的原因：package 在该时间范围内没有设备进程；tag 大小写不匹配（`=:` 区分大小写）；时间窗在 history 起点之前；附近相似的 tag 名有哪些。
 
 ### 3.4 与 AS 的有意差异（全部写进 description 或文档）
 
@@ -442,7 +442,7 @@ agent 可以借此发现自己写的 `message:foo message:bar` 实际被解释�
   - 所有输出用设备本地时间，表头写 `tz <IANA> (+hh:mm)`。时区来源是 `getprop persist.sys.timezone`，具体命令 **[需实机]**。
   - 输入的绝对时间也按设备本地时间解释；带偏移的 ISO 时间按其偏移换算。
   - 主机与设备时区不同时，`logcat_status` 会提示：`note: host timezone differs (UTC-07:00)`。
-- **pid 内联名字**：每行都带进程名，名字在入库时解析（v2 的方案），已死进程也能正确显示。
+- **pid 内联名字**：每行都带设备进程名，名字在入库时解析（v2 的方案），已结束的设备进程也能正确显示。
 - **安全**：工具不执行任意 shell，不写设备。只调用固定的 `logcat`、`ps`、`dumpsys dropbox`、`getprop`、`pm list packages -U`、`date`。
 
 ---
@@ -450,10 +450,10 @@ agent 可以借此发现自己写的 `message:foo message:bar` 实际被解释�
 ## 7. 开放问题（需要用户决定或实测）
 
 1. **要不要提供一个带副作用的 `logcat_measure_launch(package, activity?, mode=cold|warm, runs=1..5)`**：它会 force-stop App 再 `am start -W`，然后返回汇总。
-   - 好处：没有 shell 的客户端（如 Claude Desktop）也能一键测冷启动；多次运行可以给出中位数。
+   - 好处：没有 shell 的 MCP 宿主（如 Claude Desktop）也能一键测冷启动；多次运行可以给出中位数。
    - 坏处：会杀掉 App（destructiveHint），并超出“只看日志”的边界。
    - 建议：v1 不做，或者用启动参数 `--enable-actions` 打开，默认关闭。
-2. **structuredContent 和 outputSchema**：各客户端把 text 还是 structuredContent 交给模型，**[未知]**，需要按客户端实测。规范要求返回 structuredContent 时 SHOULD 同时给出 JSON 文本，可能导致 token 翻倍。
+2. **structuredContent 和 outputSchema**：各 MCP 宿主把 text 还是 structuredContent 交给模型，**[未知]**，需要按 MCP 宿主实测。规范要求返回 structuredContent 时 SHOULD 同时给出 JSON 文本，可能导致 token 翻倍。
    - 建议：v1 只返回文本。v1.1 在 status、crashes、launches 这几个小结果上评测加 structuredContent 的效果。
 3. **自动记录所有设备**还是只记录一台。前者对 agent 最简单，但资源占用随设备数线性增长；上限 4 台是拍脑袋定的。
 4. **严格报错是否需要一个“AS 兼容的宽松模式”开关**。agent 场景下建议不提供。
@@ -467,38 +467,38 @@ agent 可以借此发现自己写的 `message:foo message:bar` 实际被解释�
 
 目的：用户把诊断数据发给维护者，用来回放、复现和补回归测试。用法和打码规则见 README「诊断包」一节，这里只记设计取舍。
 
-- **不是 MCP 工具，而是 CLI 子命令**：打包要写本地文件、可能启动 App（`--am-start`），不适合交给 agent 随手调用。子命令只用 `store.OpenReadOnly` 读数据目录，不抢 writer 锁、不开始录制，和正在运行的录制进程互不影响。
+- **不是 MCP 工具，而是 CLI 子命令**：打包要写本地文件、可能启动 App（`--am-start`），不适合交给 agent 随手调用。子命令只用 `store.OpenReadOnly` 读数据目录，不抢 writer 锁、不开始录制，和正在运行的录制进程（现为后台服务进程）互不影响。
 - **日志以两种形式放进包里**：
   - `store/v1/<device-id>/`（0.4 起，manifest `format` 为 `android-log-mcp-report/2`）：本工具自己的格式，按窗口 / 包名裁剪，序号重排为 1..N（崩溃的 `seq` 和会话的 `first_seq` 按下界映射过去），只写一个分段。`--offline <解压目录>/store` 只读加载（不录制、不清理、不创建文件），4 个工具照常可用。0.3 的 zip（`store/<serial>/`）不再能加载（issue #7）。
   - `devices/<serial>/logcat/<boot>.txt`：同一批记录按录制时的 `logcat -v threadtime -v epoch -v uid -v usec -v printable` 格式重新输出，每个 boot 一个文件；DropBox 条目保持 `dumpsys dropbox --print` 格式。回放测试的 `Pipeline.ReplayText` / `ApplyDropbox` 可以原样加载，崩溃识别和启动分析会重新跑一遍。已知限制：头部完全相同的相邻两条记录在回放时会被合并（与 README「合并多行消息」相同）。
-- **打码只作用于正文**：日志的 message、崩溃 / ANR / tombstone 文本、DropBox 正文、`am start` 输出和 note。时间、pid、tid、uid、级别、tag、包名、进程名和设备属性是结构化字段，不经过打码器，所以结构不可能被破坏；规则本身再排除时间戳、十六进制、堆栈帧、版本号等（单元测试 + API 29 全量 fixture 回归）。
+- **打码只作用于正文**：日志的 message、崩溃 / ANR / tombstone 文本、DropBox 正文、`am start` 输出和 note。时间、pid、tid、uid、级别、tag、包名、设备进程名和设备属性是结构化字段，不经过打码器，所以结构不可能被破坏；规则本身再排除时间戳、十六进制、堆栈帧、版本号等（单元测试 + API 29 全量 fixture 回归）。
 - **占位符 `[REDACTED:<类型>#n]`**：编号按首次出现顺序分配，同值同号；映射用每个包随机生成、用完即丢的 HMAC 密钥，内存里也只存 HMAC，包里不保存原值。`--redact-extra` 的正则、`--keep-domain` 的域名和 `--note` 的内容不写进 manifest（只记条数 / 是否有）。
 - **域名**：URL 里的主机不论顶级域名都打码（只换主机，保留 scheme / 端口 / 路径）；裸主机名只认精选公共顶级域名、且第一段不是反向域名前缀（`com.`、`android.`、`java.`、`ro.`、`persist.`…），以避免把包名、类名、文件名、属性名、intent action 当成域名。代价是以 `.so` `.md` `.sh` `.py` `.rs` `.id` `.top` `.online`… 这类既是文件扩展名 / 常用词又是 TLD 结尾的裸主机名会漏掉，URL 里的不受影响；可用 `--redact-extra` 补。在 API 29 全量 fixture 上，域名规则命中的只有 11 个真实主机（`connectivitycheck.gstatic.com`、`time.android.com`、`www.google.com` 等），测试里固定了这份清单，多出任何一个都算误判。
 - **大小上限**：按「未压缩的 JSONL + logcat 文本」计算，多台设备共用一个上限，从最旧的记录开始丢；丢弃数写进 manifest，并在包内 `meta.json` 加一个 `report size cap` 缺口，`logcat_status` 会显示。
-- **`--package`**：保留该 App 的记录（按 ingest 时解析出的包名 / 进程名），以及正文里提到包名的系统记录（`START u0`、`am_proc_start`、`Displayed`、`ANR in` 等），这样启动时间线和崩溃上下文在包里仍然完整。`packages.json` 也只保留该 App 的 uid，避免把整个已安装应用列表带出去。
-- **`--am-start`**：先执行再收集日志；执行后最多等 8 秒，直到录制进程落盘了 am start 开始之后的日志。没有录制进程时在 `am-start.txt` 里注明。组件名用正则校验，防止 shell 注入。
+- **`--package`**：保留该 App 的记录（按 ingest 时解析出的包名 / 设备进程名），以及正文里提到包名的系统记录（`START u0`、`am_proc_start`、`Displayed`、`ANR in` 等），这样启动时间线和崩溃上下文在包里仍然完整。`packages.json` 也只保留该 App 的 uid，避免把整个已安装应用列表带出去。
+- **`--am-start`**：先执行再收集日志；执行后最多等 8 秒，直到后台服务进程落盘了 am start 开始之后的日志。没有后台服务进程录制时在 `am-start.txt` 里注明。组件名用正则校验，防止 shell 注入。
 
 ## 9. 内存与磁盘上限（issue #2）
 
 起因：在 Codex 里长时间使用时，有用户反馈内存和磁盘占用偏高。原来的实现有这些问题：
 - 每台设备在内存里缓存最近 100k 条日志，只按条数计；
 - 历史查询会缓存最多 3 个完整的已解码分段（每段 16 MiB，解码后更大）；
-- 只读进程启动时也会预读整个窗口，而且从不释放；
+- 只读打开数据的 MCP 进程 / CLI 进程启动时也会预读整个窗口，而且从不释放；
 - 辅助文件只追加，不清理；
 - 数据目录没有总量上限，磁盘快满时也不会暂停录制。
 
 ### 9.1 内存
 
-- **最近窗口**：默认 20000 条，另外按估算字节数限制在 16 MiB 以内，取先到者。估算值 = 结构体 + 2 ×（message、tag、进程名、包名的长度），其中第二份对应过滤引擎缓存在记录上的规范行（`Record.Line`），所以是偏高的估计。超过上限 25% 时才裁剪一次，这样每次 append 不用复制整个窗口。
+- **最近窗口**：默认 20000 条，另外按估算字节数限制在 16 MiB 以内，取先到者。估算值 = 结构体 + 2 ×（message、tag、设备进程名、包名的长度），其中第二份对应过滤引擎缓存在记录上的规范行（`Record.Line`），所以是偏高的估计。超过上限 25% 时才裁剪一次，这样每次 append 不用复制整个窗口。
 - **历史读取改成按块**：
   - 每个分段第一次被读到时建一个块索引：只按行边界切成约 512 KiB 的块，每块记录 seq 范围和文件偏移；建索引时只解析行首的 `{"s":N`，不解码整行。
   - 正在写入的分段，索引会随文件增长往后延伸，未满的最后一块会被重新打开并接着填。
   - 查询只解码与 seq 区间重叠的块，解码结果进入按字节计的 LRU（默认 32 MiB）。比上限还大的单块照常返回，但不缓存。
   - 分段被删除时，它的索引和缓存块一起丢掉。
-  - 解码时，boot、tag、buffer、进程名、包名这类短字符串在块内驻留（intern），同一块的记录共用同一份字符串。
-- **空闲释放**：每次查询（`Scan`）重置一个空闲计时器，默认 2 分钟到期。到期后清空历史缓存；如果是只读实例，同时丢掉最近窗口，并调用 `debug.FreeOSMemory` 把内存还给系统。录制进程保留最近窗口，因为它本来就一直在往里追加。
+  - 解码时，boot、tag、buffer、设备进程名、包名这类短字符串在块内驻留（intern），同一块的记录共用同一份字符串。
+- **空闲释放**：每次查询（`Scan`）重置一个空闲计时器，默认 2 分钟到期。到期后清空历史缓存；如果是只读实例，同时丢掉最近窗口，并调用 `debug.FreeOSMemory` 把内存还给系统。录制方（现为后台服务进程）保留最近窗口，因为它本来就一直在往里追加。
 - **只读实例按需加载**：只读实例打开时，只从最后一个分段末尾倒着读出最后一行，拿到 lastSeq、最新时间和续读位置，不预读窗口。`Refresh` 在未加载状态下只推进 lastSeq，不积累记录。第一次 `Scan` 时再从块索引倒着加载窗口。`Stats` 读最早时间时直接读第一行，不经过缓存，所以 `logcat_status` 本身不会触发加载。
-- 仍然只有一个进程负责录制（`writer.lock`）。共享后台服务另见 issue #3。
+- 仍然只有一个进程负责录制（`writer.lock`）。共享的后台服务进程另见 issue #3。
 
 实测数据：300k 条日志、5 个分段、共 76 MB 的数据目录，`--offline` 模式，录制者（持有锁）和只读者各一个。每个进程先跑 5 个查询，其中包括全历史扫描；之后空闲 150 秒，再查询一次。RSS 和最近一次 GC 后的 live heap 如下：
 
@@ -517,16 +517,16 @@ agent 可以借此发现自己写的 `message:foo message:bar` 实际被解释�
 
 - **辅助文件压缩**（`device.CompactAux`，只由录制者执行，启动约 30 秒后一次，之后每 10 分钟一次）：
   - `procs.jsonl` 和 `crashes.jsonl` 每个条目只保留最新版本，位置放在该条目第一次出现的地方，所以 `LoadProcs` / `LoadCrashes` 的结果不变；
-  - 早于保留期（`ANDROID_LOG_MCP_MAX_AGE`，默认 1 天）的已结束进程、崩溃和 `dropbox_seen` 键被删除；
+  - 早于保留期（`ANDROID_LOG_MCP_MAX_AGE`，默认 1 天）的已结束设备进程、崩溃和 `dropbox_seen` 键被删除；
   - 设备端 DropBox 默认保留 3 天，比 1 天的默认保留期长，所以 `dropbox_seen` 键删掉后，设备上可能还有对应条目。为了不把这些旧崩溃当成新崩溃重新导入，`ApplyDropbox` 不导入早于「最新一条已存日志的时间 − 保留期」的条目（按设备时钟算，回放 fixture 也不会随日期漂移）；
   - 压缩时持有辅助文件锁，和 `AppendAux` 互斥，不会丢追加；只有变小时才重写。`*.tmp` 残留超过 10 分钟就删除。
 - **目录总量上限**（0.4 起由 `layout.Sweep` 实现，见第 10 节；默认 2 GiB，每分钟检查一次）：
   - 统计所有设备目录里所有文件的大小，按 mtime 从旧到新删除分段，每台设备的最后一段不删。
-  - 本进程负责录制的目录，通过它自己的 store 删除（同步内存里的段表）；没人录制的目录，先拿 `writer.lock` 再删；别的进程在录制的目录跳过，留给那个进程自己处理。
+  - 本进程负责录制的目录，通过它自己的 store 删除（同步内存里的段表）；没人录制的目录，先拿 `writer.lock` 再删；别的 android-log-mcp 进程在录制的目录跳过，留给那个进程自己处理。
 - **剩余空间低时暂停**（`store.DiskGuard`，每 10 秒检查一次）：
   - 剩余空间检查抽象成 `FreeSpaceFunc`：Linux 和 macOS 用 statfs，Windows 用 `GetDiskFreeSpaceEx`，测试注入假实现。
   - 剩余空间低于 512 MiB 时暂停；恢复到 2 倍阈值（1 GiB）以上才续录，留出回差，避免反复切换。
-  - 正在录制的会话会先把队列落盘，再记一个开放缺口，然后结束 logcat；暂停期间仍然持有 `writer.lock`，所以不会有别的进程接着录制。
+  - 正在录制的会话会先把队列落盘，再记一个开放缺口，然后结束 logcat；暂停期间仍然持有 `writer.lock`，所以不会有别的 android-log-mcp 进程接着录制。
   - 恢复时走 `logcat -T` 续录路径：第一条新记录会关闭这个缺口；如果设备 buffer 里还有已经存过的行（说明没丢数据），缺口直接删除。
   - `logcat_status` 会显示暂停原因和恢复阈值。
 
@@ -541,7 +541,7 @@ agent 可以借此发现自己写的 `message:foo message:bar` 实际被解释�
   - 只有换段时才检查保留期。
 - 现在的做法：
   1. 正在写入的分段，从它第一行算起，跨度超过 MaxAge/4 就换新段（重启后也不会续写这样的旧段），所以日志最长保留约 1.25 × MaxAge；
-  2. 录制进程每分钟跑一次 `Store.Prune()`。
+  2. 录制方（现为后台服务进程）每分钟跑一次 `Store.Prune()`。
 - 辅助文件清理和日志用同一个保留期（见 9.2）。
 - `logcat_status` 的 `stored …` 行显示生效的保留期和每台设备的上限。
 - `report` 的默认窗口仍然是 2 小时，在 1 天以内。`--since` 超出已保留的历史时，照旧在 manifest 和输出里注明 history 起点。
@@ -556,21 +556,21 @@ Goal (GOALS "Bounded", "Observe, never interfere"): one data root that owns ever
 ```
 <control> = os.UserCacheDir()/android-log-mcp       fixed per user; also the default data root
   run/                      0700 (Windows: protected DACL, user + SYSTEM)
-    service.lock            held by the one background service (§11)
+    service.lock            held by the one service process (§11)
     service.json            {pid, socket, version, proto, root, exe, embedded, started} (0600)
     service.sock            AF_UNIX socket (0600); long paths fall back to /tmp/alm-<uid>/<hash>.sock
-    spawn.lock              serializes clients starting the service
+    spawn.lock              serializes MCP / CLI processes starting the service process
     config.lock             serializes set-root
   config.json               {"root", "cleanup": [old roots with leftovers]} (set-root; absent = default)
 <root> (config.json root, else <control>)
   v1/<device-id>/           store format 1 (store.DataDir); other vN/ dirs are swept like unrecorded data
   tmp/                      scratch, expires after 1 h
-  bin/<version>-<sha12>/    the service binary (copied by the client that starts it)
+  bin/<version>-<sha12>/    the service binary (copied by the MCP or CLI process that starts it)
   log/service.log(.1)       service log, 1 MiB + one rotation; crash.log(.1) (debug.SetCrashOutput)
 ```
 
 Two ways to run:
-- **Normal (default):** MCP and `call` processes are thin clients of the background service (§11), which is the only process that opens the data root. `ANDROID_LOG_MCP_HOME` and `--home` were removed in #9; if either is still set, the process exits 2 with an error that names `set-root`, so a client configuration is never silently ignored.
+- **Normal (default):** MCP processes and CLI processes (`call`, …) record nothing and forward to the service process (§11), which is the only process that opens the data root. `ANDROID_LOG_MCP_HOME` and `--home` were removed in #9; if either is still set, the MCP or CLI process exits 2 with an error that names `set-root`, so an MCP host configuration is never silently ignored.
 - **`--offline <dir>`:** the only read-only mode, fully in-process. It opens `<dir>/v1/*` with no adb, never talks to the service and never records, prunes, migrates or creates a file (`Manager.NoADB`; `attach` and `MaintainOnce` return immediately). Used for unzipped reports and replay.
 
 Everything else under the root (pre-0.4 flat `<serial>/` dirs, `legacy/`) is ignored: not listed, not read, not counted, not deleted. A legacy `owners/` dir (0.4 dev builds) is removed by the sweep (known names only).
@@ -585,7 +585,7 @@ Known limitation: an API ≤ 29 emulator attached via `adb connect` has no AVD n
 
 ### 10.3 Attach
 
-On a new online adb serial the service's manager probes the identity asynchronously (retried every 10 s on failure), then `attach`: check for an ID collision; open `<root>/v1/<id>` as writer and record. If the store's `writer.lock` is held by another process (an older android-log-mcp, or a second service pointed at the same directory by hand), the device is shown as **NOT recorded** with that pid and is opened read-only; the maintenance tick retries. Since the service is the only writer per user, the per-device owner locks, follow mode and takeover logic of #5–#9 were removed (#3).
+On a new online adb serial the service's manager probes the identity asynchronously (retried every 10 s on failure), then `attach`: check for an ID collision; open `<root>/v1/<id>` as writer and record. If the store's `writer.lock` is held by another android-log-mcp process (an older version, or a second service process pointed at the same directory by hand), the device is shown as **NOT recorded** with that pid and is opened read-only; the maintenance tick retries. Since the service is the only writer per user, the per-device owner locks, follow mode and takeover logic of #5–#9 were removed (#3).
 
 ### 10.4 Sweep (`layout.Sweep`, in the service at start and every minute)
 
@@ -593,7 +593,7 @@ On a new online adb serial the service's manager probes the identity asynchronou
 2. Legacy `owners/`: lock files nobody holds, then the dir.
 3. `tmp/`: files older than 1 h.
 4. `bin/`: keep the running binary's dir (`Manager.KeepBin`) and the newest other one (by binary mtime; reuse touches it); delete older ones (known names only).
-5. Age: every device directory under `v<N>/` not recorded by this process and not busy (`writer.lock` held) loses segments older than MaxAge, including the newest; the directory is removed when nothing in it is newer. Recorded directories are pruned by their store (`Store.Prune`).
+5. Age: every device directory under `v<N>/` not recorded by this service process and not busy (`writer.lock` held) loses segments older than MaxAge, including the newest; the directory is removed when nothing in it is newer. Recorded directories are pruned by their store (`Store.Prune`).
 6. Total cap over all managed files (device dirs of every `v<N>/`, `tmp/`, `run/`, `bin/`, `log/`): delete the oldest files first; each current-format device keeps its newest segment.
 Only known file names are deleted. The sweep never runs with `--offline`.
 
@@ -615,26 +615,26 @@ Only known file names are deleted. The sweep never runs with `--offline`.
 
 Any failure before step 5 rolls back: carried state removed or restored from a backup, a target created by this switch removed, recording restarted in the old root, `config.json` untouched. Tests: `cmd/android-log-mcp/setroot_test.go` (no-service and service paths, keep/delete, validation, rollback injected at carry and commit, config-lock timeout, concurrent set-roots, deleting the default root keeps `run/` and `config.json`), `store/continue_test.go`, `device/carry_test.go`, `layout/setroot_test.go`; live in `scripts/service-e2e.sh` with markers around both switches.
 
-## 11. Background service (issue #3)
+## 11. Service process (issue #3)
 
-One long-lived process per user records the devices in use (issue #11) and answers every tool call; MCP processes are thin stdio proxies. GOALS "local only" holds: AF_UNIX only, no TCP fallback, no token.
+One long-lived service process per user records the devices in use (issue #11) and answers every tool call; MCP processes only forward between stdio and the service process. GOALS "local only" holds: AF_UNIX only, no TCP fallback, no token.
 
 ### 11.1 Processes and IPC
 
 - `internal/ipc`: newline-delimited JSON frames (≤ 4 MiB) `{id, op, body}` → `{id, body, error}`, request ids, `cancel` op, ≤ 64 connections. Socket in `run/` (0700, socket 0600, `SetUnlinkOnClose`); peer check `SO_PEERCRED` (Linux) / `LOCAL_PEERCRED` (macOS); on Windows a protected DACL `D:P(A;OICI;FA;;;<user SID>)(A;OICI;FA;;;SY)` on `run/`. Without AF_UNIX (Windows < 10 1803) `ipc.ErrUnsupported` carries the minimum-version message. Named pipes are a possible future option.
 - Ops: `hello {proto, version, pid, role}` → `{proto, min_proto, version, pid, root, embedded, tools, instructions, recording}`; `call`, `status`, `stop`, `handoff`, `report`, `set-root`, `record` (proto 2). Everything but `hello`/`status` needs a hello first. Tool calls take the op mutex shared; `set-root` takes it exclusively.
-- The client answers MCP `initialize` / `tools/list` from the tool definitions and instructions in the service's hello, so client and service never disagree on schemas (fallback: its own, if the service cannot be reached; every call then reports the problem and retries).
+- The MCP process answers MCP `initialize` / `tools/list` from the tool definitions and instructions in the service process's hello, so the MCP process and the service process never disagree on schemas (fallback: its own, if the service cannot be reached; every call then reports the problem and retries).
 
 ### 11.2 Start, fallback, recovery
 
 - `service.Client.ensure`: dial; on failure, under `run/spawn.lock`: copy the binary to `<root>/bin/<version>-<sha12>/` (`InstallBinary`, atomic rename; reuse touches it), start `service --detached` (unix `Setsid`; Windows `CREATE_NO_WINDOW|CREATE_NEW_PROCESS_GROUP|CREATE_BREAKAWAY_FROM_JOB` with SW_HIDE, retried without breakaway on ACCESS_DENIED; not `DETACHED_PROCESS`, which leaves the service without a console so every console child (adb) opens a visible window — fixed in 0.4.1. All child processes go through `procattr.Hide`), wait ≤ 10 s for the socket.
-- **In-process fallback:** if the spawn fails (or after 3 spawns within a minute), the client runs `service.Start` itself (`Embedded` reason, logs tee'd to stderr and the service log) and serves the same socket; other clients use it. When that process exits, the others reconnect and start a new service.
-- **Recovery:** a broken connection (`ipc.ErrClosed`) makes the client reconnect (starting a service if needed) and retry the call, up to 3 attempts; tools are read-only, so a retry is safe.
+- **In-process fallback:** if the spawn fails (or after 3 spawns within a minute), the MCP process runs `service.Start` itself (`Embedded` reason, logs tee'd to stderr and the service log) and serves the same socket; other MCP and CLI processes use it. When that MCP process exits, the others reconnect and start a new service process.
+- **Recovery:** a broken connection (`ipc.ErrClosed`) makes the MCP or CLI process reconnect (starting a service process if needed) and retry the call, up to 3 attempts; tools are read-only, so a retry is safe.
 - `service.lock` is the single-instance guarantee; a second `service` exits with "already running (pid, version)".
 
 ### 11.3 Versions
 
-`Proto`/`MinProto` (currently 2/1; 2 added `record`) are separate from the semver. On hello the client compares versions (`CompareVersions`: semver, pre-release < release, build metadata ignored): if the **service is older**, the client sends `handoff` (refused by the service unless the client is newer), waits ≤ 30 s for it to stop and starts its own. Otherwise it uses the service if `ProtoCompatible(client proto, service min, service proto)`; an older compatible client gets a note in `logcat_status`; an incompatible one fails with `ErrIncompatible` ("Upgrade this client…") and never replaces the newer service. `report`/`set-root` never hand off.
+`Proto`/`MinProto` (currently 2/1; 2 added `record`) are separate from the semver. On hello the MCP or CLI process (`service.Client`) compares versions (`CompareVersions`: semver, pre-release < release, build metadata ignored): if the **service process is older**, the MCP or CLI process sends `handoff` (refused by the service process unless the caller is newer), waits ≤ 30 s for it to stop and starts its own. Otherwise it uses the service if `ProtoCompatible(client proto, service min, service proto)`; an older compatible MCP or CLI process gets a note in `logcat_status`; an incompatible one fails with `ErrIncompatible` (output text: "Upgrade this client…") and never replaces the newer service process. `report`/`set-root` never hand off.
 
 ### 11.4 Lifecycle (issue #11)
 
@@ -644,11 +644,11 @@ One long-lived process per user records the devices in use (issue #11) and answe
 - **Backfill speed** (`device/stream.go`, `sideWork`): the stream is `adb exec-out logcat …` (raw: no pty, no shell-protocol framing or CRLF translation; several times faster than `adb logcat` over the emulator's transport). API < 21 (from the probe's `ro.build.version.sdk`), or an exec-out stream that ends with an error before its first line (not "device not found/offline"), falls back to `adb logcat` for the process lifetime (the reader strips CR). Killing the adb client closes the exec service and the device-side logcat exits (checked on API 29). Until caught up (at most `sideWorkWait`, 1 min) the recorder runs no other adb command on the device: `psLoop` (clock + `ps`), `pm list packages`, the buffer span and DropBox start afterwards. Crash lines in the backfill only note their DropBox tag; after catch-up each noted tag is fetched once, merged with the new-boot history tags, skipped if the last fetch of the tag succeeded < 5 min ago; a tag stays pending until its fetch completed (a live crash during a fetch queues one more). Unknown pids seed `ps` only for lines at or after the probe's device time (history is left to `psLoop`). The identity probe also reads the recorder probe (model, release, SDK, zone, boot id, clock; one adb shell): the recorder reuses it when it starts within 30 s; the clock is read before and after the slow `settings get secure android_id`, and that time is excluded from the round trip the offset is centred on.
 - **Clock rollback:** the probe reads `date +%s.%N`; if the last stored time is after the device's now (snapshot restore, manual clock change), the buffer is read without `-T` and lines already stored for this boot (time ≥ buffer start; hash of time, pid, tid, level, tag, message; ≤ 500k hashes) are skipped. `logcat_status` reports it; catch-up then matches T_end by equal millisecond time.
 - **Per-device idle stop (linger)** (`service/linger.go`, `Manager.CheckIdle`): a wanted device is released when `now − last call ≥ linger(device)` and it has no call in progress (a `wait_ms` call is busy while it waits) and no active pin. `linger(device) = max(10 min, 2 × that device's main-buffer span)`, at most 1 h, 10 min until measured (the global `linger:` line states the rule; each device shows its own value); `ANDROID_LOG_MCP_LINGER` overrides (`0` = after each call, `forever`). Clients connecting or disconnecting play no role. Release = stop logcat, wait for the reader, close the store and reopen it read-only (history stays queryable). The next use resumes with `-T` and dedup; buffer loss in between is a gap with the reason "recording was idle …".
-- **Service lifetime** (`lifeLoop`): the service exits `ExitGrace` (30 s) after there are no client connections (role `cli` status queries do not count, so polling `service status` cannot keep it alive), no active pin and no recorded device; tracking started by a call that recorded nothing stops after `TrackGrace` (30 s) (interpretation of decision 0 / "service idle": a device still within its linger keeps the service). Embedded services live as long as their client.
+- **Service lifetime** (`lifeLoop`): the service exits `ExitGrace` (30 s) after there are no MCP or CLI process connections (role `cli` status queries do not count, so polling `service status` cannot keep it alive), no active pin and no recorded device; tracking started by a call that recorded nothing stops after `TrackGrace` (30 s) (interpretation of decision 0 / "service idle": a device still within its linger keeps the service). Embedded services live as long as the MCP process that runs them.
 - **Carry-over:** `set-root` snapshots the wanted devices with their last-call times (`Manager.Snapshot`/`Restore`), so started devices, timers and pins survive it. A handoff or crash does not carry call-started devices; pins are carried (§11.7).
 - **Stop** (`service stop`, signal, handoff, lifetime): stop accepting, let in-flight requests finish and their replies be written (≤ 5 s), close connections, stop the manager (stores flushed), remove `service.json`, release the lock. A killed logcat is always reaped (`cmd.Wait`).
 - **adb:** `adb start-server` runs in its own process group (`Setpgid`) before `track-devices`, so the adb server is never a child of the service and is never killed. adb children of the service get `Pdeathsig=SIGKILL` on Linux and otherwise end on a broken pipe when the service exits. (A Windows Job Object was considered and not used, to rule out any risk to the adb server.)
-- **Stopping adb children (issue #24):** stopping a device or the service cancels its background work and waits up to 5 s for it. A cancelled adb call kills its adb child together with the child's descendants. Work still running after 5 s is logged, and its adb processes are killed the same way. These kills walk the host process table (`/proc` on Linux, `sysctl kern.proc.all` on macOS, a Toolhelp snapshot on Windows; `device/proctree*.go`) and kill the descendants pid by pid. They do not kill a process group or a Windows job object. The reason is that an adb client we start can itself start the adb server (`adb fork-server server`) when none is running. On unix that server can stay in the client's process group, which is ours. On Windows it would be in the same job object. Killing the group or the job would kill the server, which other tools and the user depend on. The walk instead treats any process named `adb` below our adb child as the server and skips it with its subtree; an adb client never starts another adb client. On Windows a parent id is never updated after the parent exits and pids are reused, so the walk only accepts a child that started after its parent (creation-time check). On unix orphans are re-parented, so the parent ids are current. `exec.Cmd.WaitDelay` (2 s) keeps a child process of adb that holds the output pipes from hanging a cancelled call.
+- **Stopping adb children (issue #24):** stopping a device or the service process cancels its background work and waits up to 5 s for it. A cancelled adb call kills its adb child together with the child's descendants. Work still running after 5 s is logged, and its adb processes are killed the same way. These kills walk the host process table (`/proc` on Linux, `sysctl kern.proc.all` on macOS, a Toolhelp snapshot on Windows; `device/proctree*.go`) and kill the descendants pid by pid. They do not kill a process group or a Windows job object. The reason is that an adb client we start can itself start the adb server (`adb fork-server server`) when none is running. On unix that server can stay in the client's process group, which is ours. On Windows it would be in the same job object. Killing the group or the job would kill the server, which other tools and the user depend on. The walk instead treats any process named `adb` below our adb child as the server and skips it with its subtree; an adb client never starts another adb client. On Windows a parent id is never updated after the parent exits and pids are reused, so the walk only accepts a child that started after its parent (creation-time check). On unix orphans are re-parented, so the parent ids are current. `exec.Cmd.WaitDelay` (2 s) keeps a child process of adb that holds the output pipes from hanging a cancelled call.
 
 ### 11.5 Report
 
@@ -666,4 +666,4 @@ Earlier unit tests: `ipc` (framing, cancel, limits, socket-path fallback, permis
 - Persisted in `<control>/run/record.json` (`{"v": 1, "pins": {id: {deadline, set_by, set_at, version, restarts, recent_crashes, suspended, last_error}}}`), written atomically under `run/record.lock`; `layout.SweepRun` keeps it (`KeepRun`). On read: past pins removed, deadlines > 24 h ahead clamped with a warning; an unknown `v` or unparsable file is ignored, never written, and `record --for` refuses.
 - The CLI starts the service detached for `--for` (never in-process) and returns without waiting for the backfill; `--stop` and the state never start one (offline they edit/read `record.json`). The service starts pinned devices on start (`startPinned`), keeps them past their linger, and stays alive while a pin is active.
 - **Crash accounting** (`service/record.go: loadPins`): a starting service that finds a `service.json` of a dead pid (read before the `run/` sweep) counts a crash for every active pin, with the last error from `crash.log` (`panic:` / `fatal error:` newer than the old start) or "service pid N (version V) ended without shutting down". 3 crashes within 1 min → `suspended: crash-loop`; more than 10 automatic restarts per (version, pin) → `suspended: crash-budget`. A new `record --for` clears both; a takeover by a different version resets the budget, the same version keeps it. Suspended pins start nothing and do not keep the service alive.
-- **Restart:** a connected MCP client watches its connection; when it breaks, `service.json` is stale and an unsuspended pin is active, it starts a new service at once (`ClientOptions.RestartPinned`). Without clients there is no supervisor (README "Known limitations").
+- **Restart:** a connected MCP process watches its connection; when it breaks, `service.json` is stale and an unsuspended pin is active, it starts a new service at once (`ClientOptions.RestartPinned`). Without connected MCP processes there is no supervisor (README "Known limitations").
