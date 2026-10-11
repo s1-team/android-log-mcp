@@ -112,30 +112,47 @@ func TestRetentionHonorsConfiguredMaxAge(t *testing.T) {
 }
 
 // A quiet device never fills a segment: the active segment is rotated once
-// it spans more than a quarter of MaxAge so retention can delete it.
+// it spans more than a quarter of MaxAge of host time so retention can
+// delete it. Device time plays no part (#48): records dated in 1970 or a
+// year ahead neither force nor prevent the rotation.
 func TestActiveSegmentRotatesByAge(t *testing.T) {
 	base := tempDir(t)
 	cfg := Config{MaxAge: 4 * time.Hour, IdleRelease: -1}
+	clock := time.Now()
+	hostNow = func() time.Time { return clock }
+	t.Cleanup(func() { hostNow = time.Now })
 	s, _ := Open(base, "d", cfg)
-	t0 := time.Now().Add(-3 * time.Hour).UnixNano()
-	s.Append(mk(3, t0))
-	s.Append(mk(3, t0+int64(30*time.Minute))) // within 1h: same segment
+	year := int64(365 * 24 * time.Hour)
+	s.Append(mk(3, time.Now().UnixNano()))
+	s.Append(mk(3, time.Now().UnixNano()+year)) // device clock a year ahead: no rotation
+	s.Append(mk(3, int64(5*time.Second)))       // device clock reset to 1970: no rotation
+	if segs, _ := s.listSegments(); len(segs) != 1 {
+		t.Fatalf("rotated on device time: %d segments", len(segs))
+	}
+	clock = clock.Add(30 * time.Minute) // within 1h of host time: same segment
+	s.Append(mk(3, time.Now().UnixNano()))
 	if segs, _ := s.listSegments(); len(segs) != 1 {
 		t.Fatalf("rotated too early: %d", len(segs))
 	}
-	s.Append(mk(3, t0+int64(2*time.Hour))) // > MaxAge/4 after the first line
+	clock = clock.Add(90 * time.Minute) // > MaxAge/4 of host time after the start
+	s.Append(mk(3, int64(10*time.Second)))
 	if segs, _ := s.listSegments(); len(segs) != 2 {
 		t.Fatalf("no age rotation: %d segments", len(segs))
 	}
 	s.Close()
-	// reopening does not append to an active segment that is already too old
+	// reopening does not append to an active segment that is already too
+	// old in host time: the previous segment's mtime marks its start
+	prev, _ := s.listSegments()
+	old := clock.Add(-3 * time.Hour)
+	os.Chtimes(prev[0].path, old, old)
+	clock = clock.Add(2 * time.Hour)
 	s2, _ := Open(base, "d", cfg)
 	t.Cleanup(s2.Close)
 	s2.Append(mk(1, time.Now().UnixNano()))
 	if segs, _ := s2.listSegments(); len(segs) != 3 {
 		t.Fatalf("reused an old segment after reopen: %d segments", len(segs))
 	}
-	if got := collect(s2, 0, 0, false, 100); len(got) != 10 || got[9] != 10 {
+	if got := collect(s2, 0, 0, false, 100); len(got) != 16 || got[15] != 16 {
 		t.Fatalf("records %v", got)
 	}
 }

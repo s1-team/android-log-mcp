@@ -113,7 +113,7 @@ type Store struct {
 	cur      *os.File
 	curW     *bufio.Writer
 	curSize  int64
-	curStart int64 // time of the first record in the active segment (0 = unknown)
+	curStart int64 // host time the active segment was started (0 = unknown); never device time (#48)
 	meta     Meta
 	metaMod  time.Time
 	dirty    bool
@@ -591,10 +591,11 @@ func (s *Store) Append(recs []*model.Record) error {
 	if !s.writer {
 		return errors.New("store: not the writer")
 	}
+	nowHost := hostNow().UnixNano()
 	for _, r := range recs {
 		s.lastSeq++
 		r.Seq = s.lastSeq
-		if s.cur == nil || s.curSize >= s.cfg.SegmentBytes || s.segmentTooOld(r.TimeNs) {
+		if s.cur == nil || s.curSize >= s.cfg.SegmentBytes || s.segmentTooOld(nowHost) {
 			if err := s.rotateLocked(r.Seq); err != nil {
 				return err
 			}
@@ -605,7 +606,7 @@ func (s *Store) Append(recs []*model.Record) error {
 		}
 		b = append(b, '\n')
 		if s.curSize == 0 {
-			s.curStart = r.TimeNs
+			s.curStart = nowHost
 		}
 		n, err := s.curW.Write(b)
 		s.curSize += int64(n)
@@ -659,8 +660,8 @@ func (s *Store) rotateLocked(first uint64) error {
 		f, err := os.OpenFile(s.segs[n-1].path, os.O_WRONLY|os.O_APPEND, 0o644)
 		if err == nil {
 			s.cur, s.curW, s.curSize = f, bufio.NewWriterSize(f, 256<<10), s.segs[n-1].size
-			s.curStart = firstRecordNs(s.segs[n-1].path)
-			if s.curSize < s.cfg.SegmentBytes && !s.segmentTooOld(time.Now().UnixNano()) {
+			s.curStart = segmentStartHostNs(s.segs, n-1)
+			if s.curSize < s.cfg.SegmentBytes && !s.segmentTooOld(hostNow().UnixNano()) {
 				return nil
 			}
 			f.Close()
@@ -729,9 +730,9 @@ func (s *Store) Close() {
 	s.hmu.Unlock()
 }
 
-// segmentTooOld: the active segment already spans a quarter of the
+// segmentTooOld (nowNs: host time): the active segment already spans a quarter of the
 // retention window, so start a new one. Retention deletes whole segments
-// once their newest line is older than MaxAge; capping the span keeps quiet
+// once their last write (file mtime, host time) is older than MaxAge; capping the span keeps quiet
 // devices (that never fill a segment) from keeping logs for much longer
 // than MaxAge (at most ~1.25 × MaxAge).
 func (s *Store) segmentTooOld(nowNs int64) bool {
@@ -1310,6 +1311,26 @@ func (s *Store) oldestNs() int64 {
 		}
 	}
 	return memT
+}
+
+// hostNow is the host clock for segment rotation (tests replace it).
+var hostNow = time.Now
+
+// segmentStartHostNs estimates the host time segment i was started after a
+// restart: the previous segment stopped being written when this one was
+// created, so its mtime is that moment; for the first segment, its own
+// mtime (later than its start, so rotation is late rather than early).
+// Host time only: the device clock may jump (#48).
+func segmentStartHostNs(segs []segment, i int) int64 {
+	for _, j := range []int{i - 1, i} {
+		if j < 0 {
+			continue
+		}
+		if fi, err := os.Stat(segs[j].path); err == nil {
+			return fi.ModTime().UnixNano()
+		}
+	}
+	return 0
 }
 
 // firstRecordNs is the time of the first complete line of a segment (0 if none).

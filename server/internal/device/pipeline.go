@@ -62,7 +62,7 @@ func NewPipeline(st *store.Store, boot string, loc *time.Location) *Pipeline {
 	}
 	p.Procs.Restore(ps)
 	// before SetPackages: entries it re-attributes are persisted (issue #41)
-	p.Procs.OnChange = func(x procs.Proc) { st.AppendAux("procs", x) }
+	p.Procs.OnChange = func(x procs.Proc) { appendProc(st, x) }
 	if pk := LoadPackages(st); len(pk) > 0 {
 		p.Procs.SetPackages(pk)
 	}
@@ -171,14 +171,16 @@ func (p *Pipeline) EmitCrash(c *analysis.Crash) {
 			}
 		})
 	}
-	p.Store.AppendAux("crashes", c)
+	p.Store.AppendAux("crashes", crashAuxLine{Crash: c, HostNs: time.Now().UnixNano()})
 }
 
 // ApplyDropbox merges `dumpsys dropbox --print <tag>` output into the crash list.
 func (p *Pipeline) ApplyDropbox(out string) {
 	seen := map[string]bool{}
 	for _, b := range p.Store.ReadAux("dropbox_seen") {
-		seen[string(b)] = true
+		if k, _, ok := parseSeen(b); ok {
+			seen[k] = true
+		}
 	}
 	entries := analysis.ParseDropbox(out, p.Loc)
 	// Entries older than the retention window are not imported: their
@@ -194,7 +196,7 @@ func (p *Pipeline) ApplyDropbox(out string) {
 		if e.TimeNs != 0 && e.TimeNs < cutoff {
 			continue
 		}
-		key := fmt.Sprintf("%q", e.Tag+"|"+strconv.FormatInt(e.TimeNs, 10))
+		key := e.Tag + "|" + strconv.FormatInt(e.TimeNs, 10)
 		if seen[key] {
 			continue
 		}
@@ -209,7 +211,7 @@ func (p *Pipeline) ApplyDropbox(out string) {
 			}
 			c, isNew = analysis.MatchDropbox([]*analysis.Crash{full}, e)
 		}
-		p.Store.AppendAux("dropbox_seen", json.RawMessage(key))
+		p.Store.AppendAux("dropbox_seen", seenLine{Key: key, HostNs: time.Now().UnixNano()})
 		if c == nil {
 			continue
 		}
@@ -323,7 +325,7 @@ func CloseOtherBoots(st *store.Store, boot string) {
 			e = max(p.StartNs, p.SeenNs)
 		}
 		p.EndNs, p.EndReason = e, "device rebooted"
-		st.AppendAux("procs", p)
+		appendProc(st, p)
 	}
 }
 
