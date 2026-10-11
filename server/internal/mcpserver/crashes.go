@@ -15,9 +15,12 @@ import (
 
 // crashPkgMatch: own maps a process name to its package (procs.NameOwner),
 // so crashes in dotted processes (com.google.android.gms.persistent) and
-// crashes stored with the process name as package match (issue #41).
-func crashPkgMatch(c *analysis.Crash, pkg string, own func(string) string) bool {
-	return pkg == "" || c.Package == pkg || own(c.Process) == pkg
+// crashes stored with the process name as package match (issue #41). su
+// (nil unless pkg is on a shared uid) adds crashes of the uid's shared
+// processes (issue #44); a stored "android" counts only for system_server
+// (issue #70).
+func crashPkgMatch(c *analysis.Crash, pkg string, own func(string) string, su *sharedUID) bool {
+	return pkg == "" || crashPackage(c.Package, c.Process) == pkg || own(c.Process) == pkg || su.process(c.Process)
 }
 
 func (t *Tools) crashes(ctx context.Context, a crashArgs) (out string, err error) {
@@ -73,10 +76,15 @@ func (t *Tools) crashes(ctx context.Context, a crashArgs) (out string, err error
 		}
 		return "", errf("no crash with id %q on %s. Recent ids: %s (call logcat_crashes without id to list)", a.ID, d.Serial, strings.Join(ids, ", "))
 	}
-	own := procs.NameOwner(d.Packages())
+	pk := d.Packages()
+	own := procs.NameOwner(pk)
+	var su *sharedUID
+	if a.Package != "" {
+		su = newSharedUID(a.Package, pk, d.Procs())
+	}
 	var sel []*analysis.Crash
 	for _, c := range all {
-		if !crashPkgMatch(c, a.Package, own) || (len(kinds) > 0 && !kinds[c.Kind]) {
+		if !crashPkgMatch(c, a.Package, own, su) || (len(kinds) > 0 && !kinds[c.Kind]) {
 			continue
 		}
 		if (fromNs != 0 && c.TimeNs < fromNs) || (toNs != 0 && c.TimeNs >= toNs) {
@@ -91,6 +99,9 @@ func (t *Tools) crashes(ctx context.Context, a crashArgs) (out string, err error
 	}
 	if len(sel) == 1 {
 		fmt.Fprintf(&b, "device %s · device time %s · %s · %s · 1 match → full detail\n", d.Serial, tzLabel(loc, d.TZName(), now), clockLine(ci), scope)
+		if su != nil {
+			b.WriteString("note: " + su.note() + "\n")
+		}
 		c := sel[0]
 		if full := d.CrashFull(c.ID)[0]; full != nil {
 			c = full
@@ -123,6 +134,9 @@ func (t *Tools) crashes(ctx context.Context, a crashArgs) (out string, err error
 		g.items = append(g.items, c)
 	}
 	fmt.Fprintf(&b, "device %s · device time %s · %s · %s · %d crash groups (%d events) in recorded history\n", d.Serial, tzLabel(loc, d.TZName(), now), clockLine(ci), scope, len(groups), len(sel))
+	if su != nil {
+		b.WriteString("note: " + su.note() + "\n")
+	}
 	if st := d.Store.Stats(); st.OldestNs != 0 {
 		fmt.Fprintf(&b, "history: logcat from %s; DropBox adds older entries when available (status: %s)\n", dateTime(st.OldestNs, loc), dropboxSummary(d))
 	}
@@ -312,8 +326,10 @@ func (t *Tools) crashDetail(d *device.Device, c *analysis.Crash, all []*analysis
 		who += " (thread " + c.Thread + ")"
 	}
 	fmt.Fprintf(&b, "%s %s · %s · %s · sources: %s\n", c.ID, kind, time.Unix(0, c.TimeNs).In(loc).Format("2006-01-02 15:04:05.000"), who, strings.Join(c.Sources, ", "))
-	if c.Package != "" {
-		fmt.Fprintf(&b, "package: %s\n", c.Package)
+	// the package line names an application id: not a process name that
+	// owns no installed package (android.process.acore: issues #44, #70)
+	if p := crashPackage(c.Package, c.Process); p != "" && (p != c.Process || isInstalled(d.Packages(), p)) {
+		fmt.Fprintf(&b, "package: %s\n", p)
 	}
 	switch c.Kind {
 	case "java":
@@ -424,3 +440,14 @@ func capStr(s string, n int) string {
 }
 
 var _ = sort.Strings
+
+func isInstalled(uidPkgs map[int][]string, pkg string) bool {
+	for _, l := range uidPkgs {
+		for _, p := range l {
+			if p == pkg {
+				return true
+			}
+		}
+	}
+	return false
+}

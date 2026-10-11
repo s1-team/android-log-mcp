@@ -492,10 +492,15 @@ func (t *Tools) packageStatus(d *device.Device, pkg string) string {
 	connected := d.Status().State == "device"
 	var alive, dead, prior []procs.Proc
 	own := procs.NameOwner(pk) // dotted process names (issue #41)
-	for _, p := range d.Procs() {
+	ps := d.Procs()
+	su := newSharedUID(pkg, pk, ps) // shared-uid processes (issue #44)
+	if su != nil {
+		b.WriteString("  note: " + su.note() + "\n")
+	}
+	for _, p := range ps {
 		// app processes only: helpers running with the app's uid
 		// (crash_dump64, sh …) have no package and are not listed
-		if !(p.Package == pkg || own(p.Name) == pkg) {
+		if !(p.Package == pkg || own(p.Name) == pkg || su.process(p.Name)) {
 			continue
 		}
 		switch {

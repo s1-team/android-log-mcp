@@ -712,7 +712,7 @@ func (d *devWork) write(zf *zipFile, red *redact.Redactor, o Options, dbx map[st
 	cs := device.LoadCrashes(d.st)
 	sort.SliceStable(cs, func(i, j int) bool { return cs[i].TimeNs < cs[j].TimeNs })
 	for _, c := range cs {
-		if !d.inWindow(c.TimeNs) || !(pkg == "" || c.Package == pkg || procMatch(c.Process, pkg)) {
+		if !d.inWindow(c.TimeNs) || !(pkg == "" || procs.CrashPackage(c.Package, c.Process) == pkg || procMatch(c.Process, pkg)) {
 			continue
 		}
 		x := *c
