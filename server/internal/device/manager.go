@@ -566,7 +566,13 @@ func (m *Manager) attach(id Identity) string {
 	if id.BootID != "" {
 		d.bootID = id.BootID
 	}
-	d.preProbe = id.Probe
+	d.preProbe = id.Probe // used once: a later attach probes again
+	m.mu.Lock()
+	if i, ok := m.idents[id.ID]; ok && i.Probe == id.Probe {
+		i.Probe = nil
+		m.idents[id.ID] = i
+	}
+	m.mu.Unlock()
 	m.swap(id.ID, d)
 	return id.ID
 }

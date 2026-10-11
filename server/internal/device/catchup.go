@@ -40,6 +40,9 @@ type catchState struct {
 type Progress struct {
 	// Pending: the backfill is still running (not caught up).
 	Pending bool
+	// Starting: the device's recording is (re)starting and has not begun
+	// reading its buffer yet (e.g. a call during an idle stop; Pending too).
+	Starting bool
 	// Lines stored since the backfill began; EarliestNs is the oldest of
 	// them (0 if none yet).
 	Lines      uint64
@@ -137,6 +140,9 @@ func (d *Device) caughtUp() <-chan struct{} {
 // of ~27,000 lines; earliest <time>)", or "(1,423 lines so far; ...)"
 // without an estimate.
 func (p Progress) BackfillText(loc *time.Location) string {
+	if p.Starting {
+		return "backfill in progress (recording is restarting; nothing read from the device buffer yet)"
+	}
 	var s string
 	if p.EstTotal > 0 {
 		s = fmt.Sprintf("backfill in progress (%s of ~%s lines", thousands(p.Lines), thousands(roughly(max(p.EstTotal, p.Lines))))
@@ -307,3 +313,7 @@ func (d *Device) noteRollback(lastNs, nowNs int64, loc *time.Location) {
 	d.rollback = msg
 	d.mu.Unlock()
 }
+
+// StartingProgress is the progress of a device whose recording has not
+// started yet (Manager.WaitRecording timed out).
+func StartingProgress() Progress { return Progress{Pending: true, Starting: true} }

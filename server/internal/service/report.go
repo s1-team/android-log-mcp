@@ -86,7 +86,7 @@ func startForReport(ctx context.Context, m *device.Manager, t *mcpserver.Tools, 
 		names = []string{""}
 	}
 	var notes []string
-	var started []*device.Device
+	var startedIDs []string
 	for _, n := range names {
 		id, _, err := t.Target(n)
 		if err != nil {
@@ -104,13 +104,19 @@ func startForReport(ctx context.Context, m *device.Manager, t *mcpserver.Tools, 
 			notes = append(notes, fmt.Sprintf("%s: not started: %v", id, err))
 			continue
 		}
-		if d := m.Get(id); d != nil {
-			started = append(started, d)
-		}
+		startedIDs = append(startedIDs, id)
 	}
 	deadline := time.Now().Add(device.CatchUpWait)
-	for _, d := range started {
-		p := d.WaitCaughtUp(ctx, max(0, time.Until(deadline)))
+	for _, id := range startedIDs {
+		// a device being stopped right now is re-attached first (issue #15)
+		d, ok := m.WaitRecording(ctx, id, max(0, time.Until(deadline)))
+		if d == nil {
+			continue
+		}
+		p := device.StartingProgress()
+		if ok {
+			p = d.WaitCaughtUp(ctx, max(0, time.Until(deadline)))
+		}
 		if p.Pending {
 			notes = append(notes, fmt.Sprintf("backfill incomplete: %s: %s when the report was packed (waited %s)", d.Serial, p.BackfillText(d.Loc()), device.CatchUpWait))
 		}

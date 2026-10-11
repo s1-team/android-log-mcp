@@ -152,7 +152,7 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 		stopped = id
 	} else {
 		start := time.Now()
-		d, done, err := t.use(a.Device)
+		d, done, starting, err := t.use(a.Device, start)
 		defer done()
 		switch {
 		case errors.As(err, &several):
@@ -182,7 +182,11 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 				until.Add(time.Duration(target.Store.Meta().ClockOffsetNs)).In(target.Loc()).Format("2006-01-02 15:04:05"), time.Until(until).Round(time.Second))
 		}
 		if target != nil {
-			prog = target.WaitCaughtUp(ctx, waitLeft(start))
+			if starting {
+				prog = device.StartingProgress()
+			} else {
+				prog = target.WaitCaughtUp(ctx, waitLeft(start))
+			}
 		}
 	}
 	var b strings.Builder

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"sync/atomic"
 	"time"
 
 	"github.com/s1crab/android-log-mcp/server/internal/store"
@@ -218,6 +219,37 @@ func (m *Manager) Unwant(id, reason string) {
 	m.activity()
 }
 
+// unwantIdle is Unwant for an idle stop: under the lock it re-checks that
+// the device is still idle (no call in flight or since CheckIdle decided,
+// no pin) and keeps it recording otherwise (issue #15).
+func (m *Manager) unwantIdle(id, reason string) {
+	m.wantMu.Lock()
+	defer m.wantMu.Unlock()
+	if m.PinnedUntil != nil && m.PinnedUntil(id).After(time.Now()) {
+		return
+	}
+	if m.IdleIn(id, time.Now()) != 0 {
+		return // used meanwhile
+	}
+	m.unwantLocked(id, reason)
+	m.mu.Lock()
+	n := len(m.wanted)
+	m.mu.Unlock()
+	if n == 0 {
+		m.stopTracking()
+	}
+	m.activity()
+}
+
+// beforeIdleStop (tests) runs between CheckIdle's decision to stop a device
+// and the stop.
+var beforeIdleStop atomic.Value // func(id string)
+
+// ReleasePause (tests) delays release() after the recorder stopped, before
+// the store is reopened read-only and tracking stops: the window a call
+// can hit while a device is being stopped (slow on Windows; issue #15).
+var ReleasePause = newDur(0)
+
 func (m *Manager) unwantLocked(id, reason string) {
 	m.mu.Lock()
 	_, ok := m.wanted[id]
@@ -242,6 +274,9 @@ func (m *Manager) release(id string, d *Device) {
 	case <-done:
 	case <-time.After(10 * time.Second):
 		log.Printf("%s: recorder did not stop within 10 s", id)
+	}
+	if p := ReleasePause.Get(); p > 0 {
+		time.Sleep(p)
 	}
 	m.attachMu.Lock()
 	defer m.attachMu.Unlock()
@@ -360,7 +395,10 @@ func (m *Manager) CheckIdle(now time.Time) {
 		if m.LastCall(id).IsZero() {
 			reason = "its pin ended"
 		}
-		m.Unwant(id, reason)
+		if h, _ := beforeIdleStop.Load().(func(string)); h != nil {
+			h(id) // tests: a call arriving between the decision and the stop
+		}
+		m.unwantIdle(id, reason)
 	}
 	// tracking without any recorded device (e.g. a call that found no
 	// device or several) stops after TrackGrace
@@ -414,5 +452,28 @@ func (m *Manager) Restore(ws WantState) {
 			w.last, w.since = e.Last, e.Since
 		}
 		m.mu.Unlock()
+	}
+}
+
+// WaitRecording waits up to timeout until the wanted device id is attached
+// by this process and its recorder session runs (catch-up then tells
+// whether the backfill is done). It returns the device to use and whether
+// it records; a device being stopped or re-attached (issue #15) returns
+// false after the timeout, never silently the old read-only device as
+// if it were current.
+func (m *Manager) WaitRecording(ctx context.Context, id string, timeout time.Duration) (*Device, bool) {
+	deadline := time.Now().Add(timeout)
+	for {
+		d := m.Get(id)
+		if d != nil && d.started() {
+			return d, true
+		}
+		if !m.Wanted(id) || ctx.Err() != nil || !time.Now().Before(deadline) {
+			return d, false
+		}
+		select {
+		case <-ctx.Done():
+		case <-time.After(10 * time.Millisecond):
+		}
 	}
 }
