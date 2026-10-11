@@ -245,8 +245,9 @@ const holeWindowStart = 20
 // before and after them in buffer order are: the lines the stream
 // skipped. The stored lines compared span the whole read: newest first,
 // back until the first dumped records are covered (or the session start).
-// Records before the first stored one and after the last one (not
-// streamed yet) are never returned, so nothing is stored twice. Each
+// Records after the last stored one (not streamed yet) are never
+// returned, nor records before the first stored one unless the compared
+// lines reach the session's first line, so nothing is stored twice. Each
 // stored line matches one dumped copy (identical lines count per copy);
 // a stored line with the same header but split or merged differently
 // matches too.
@@ -260,7 +261,12 @@ func holes(recs []*model.Record, st *store.Store) []*model.Record {
 	}
 	known, headers := multiset{}, multiset{}
 	seen, extra := 0, 0
-	st.Scan(sessionFirst(st), st.LastSeq()+1, true, func(r *model.Record) bool {
+	sf := sessionFirst(st)
+	reachedStart := false
+	st.Scan(sf, st.LastSeq()+1, true, func(r *model.Record) bool {
+		if r.Seq == sf+1 {
+			reachedStart = true
+		}
 		h := recHash(r)
 		known[h]++
 		headers[headerHash(r)]++
@@ -290,6 +296,13 @@ func holes(recs []*model.Record, st *store.Store) []*model.Record {
 			}
 			last = i
 		}
+	}
+	if reachedStart {
+		// the compared lines reach the first line of the boot session
+		// (still stored): the session began with the whole device buffer,
+		// so a dumped line before the first stored one was skipped too
+		// (logd kicked the catch-up read)
+		first = -1
 	}
 	var out []*model.Record
 	for i := first + 1; i < last; i++ {
