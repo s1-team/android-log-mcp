@@ -25,6 +25,12 @@ Read [docs/GOALS.md](docs/GOALS.md) first, and check every change against its pr
 5. **Open a pull request** from the branch with `Closes #N` in the PR body (and in the commit message), so the issue closes on merge. A squash merge uses the PR title and body as the commit message.
 6. **Wait for CI to be fully green on the PR**: the required checks are `test` (ubuntu, macos, windows) and `npm-pack`, and the branch must be up to date with `main`. The npx-compat jobs and every other job must pass too. If anything fails, fix it on the branch. If `main` moved, rebase the branch on `origin/main` and push it again (`git push --force-with-lease` on your own feature branch is fine; never on `main`).
 7. **Merge with rebase or squash** (`gh pr merge --rebase` or `--squash`; merge commits are disabled). No review approval is required, so you can merge your own PR once the checks are green. Then delete the branch.
+8. **Scheduling: the implementing agent owns it.** The implementing agent schedules all code work; the release owner only sets priorities and milestones, reviews designs and decides releases.
+   - Model the open work as a **dependency graph**: nodes are issues or tasks; edges are shared code areas (two changes to the same files), the single emulator, design approvals and release gates.
+   - Run independent nodes in parallel, each in its own git worktree from the latest `main`.
+   - **Never sit blocked.** While a node waits for a review, CI or the emulator, take the next unblocked node.
+   - Design reviews still go to the release owner, but unrelated nodes continue in the meantime; only the nodes that depend on the design wait.
+   - Keep the graph current in the pinned tracking issue [#67](https://github.com/s1crab/android-log-mcp/issues/67): update a node's status (and its PR) when it starts, blocks or merges.
 
 ## 3. Releases
 
@@ -87,6 +93,7 @@ Repository artifacts (docs, issues, commit messages, release notes) are **Englis
   3. 不直接提交到 main（main 有分支保护，禁止直接 push 和 force-push）：在功能分支上提交，开 PR，PR 正文写 `Closes #N`；
   4. 等 PR 的 CI 全绿（必需检查：三个系统的 `test` 和 `npm-pack`，分支要与 main 同步；npx-compat 等其他 job 也要通过），main 有更新就 rebase 后再推；
   5. 用 rebase 或 squash 合并（`gh pr merge --rebase` / `--squash`，不允许 merge commit），不需要审批。
+  6. 排期由实现的 agent 负责：把未完成的工作建成依赖图（边 = 共用的代码区域、唯一的模拟器、设计审批、发版关口），互不依赖的节点在各自的 worktree 里并行；等审查、CI 或模拟器时不要干等，去做下一个不受阻的节点；依赖图在置顶的跟踪 issue #67 里保持最新。发布负责人只定优先级和里程碑、审设计、决定发版；设计审查仍交给发布负责人，但无关的节点照常推进。
 - 发版：必须先得到用户明确同意。
   1. 改 `npm/VERSION` 和 `server.go` 里的默认版本号，同样走 PR 合并；
   2. CI 绿了以后打 `vX.Y.Z` tag，`release.yml` 会发布 npm 包并创建 GitHub Release；
