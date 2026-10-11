@@ -10,10 +10,12 @@ on:
 permissions:
   contents: read
 
-# A new push to a pull request cancels its older run; runs on main never are
-# (issue #25).
+# A new push to a pull request cancels its older run (issue #25). Every other
+# run (push to main, nightly) gets a group of its own: a shared group would
+# make main runs wait for each other and cancel a pending one when a third
+# arrives, even without cancel-in-progress.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
