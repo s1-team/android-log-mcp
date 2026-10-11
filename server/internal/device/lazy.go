@@ -272,8 +272,8 @@ func (m *Manager) release(id string, d *Device) {
 	go func() { d.runWG.Wait(); close(done) }()
 	select {
 	case <-done:
-	case <-time.After(10 * time.Second):
-		log.Printf("%s: recorder did not stop within 10 s", id)
+	case <-time.After(recorderStopWait.Get()):
+		log.Printf("%s: recorder did not stop within %s", id, recorderStopWait.Get())
 	}
 	d.waitBackground()
 	if p := ReleasePause.Get(); p > 0 {

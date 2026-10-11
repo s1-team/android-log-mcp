@@ -26,8 +26,13 @@ var CatchUpWait = 10 * time.Second
 // TEndCmd measures T_end (the same buffers the recorder streams).
 const TEndCmd = "logcat -d -t 1 -b main,system,crash,events -v epoch"
 
+// The state belongs to one recording session (issue #30): a session that
+// was stopped (disconnect) can still be returning while the next one has
+// begun, so every update names its session and updates from an older
+// session are ignored.
 type catchState struct {
 	mu       sync.Mutex
+	session  uint64        // the recording session the state belongs to
 	pending  bool          // a recording session is backfilling
 	done     chan struct{} // closed when the pending backfill ends
 	startSeq uint64        // last stored seq when the backfill began
@@ -56,10 +61,24 @@ type Progress struct {
 	EstTotal uint64
 }
 
-func (d *Device) catchBegin() {
+// catchStart hands the catch-up state to recording session sess and begins
+// its backfill (setState: a call right after attach waits for it).
+func (d *Device) catchStart(sess uint64) {
+	c := &d.catch
+	c.mu.Lock()
+	c.session = sess
+	c.mu.Unlock()
+	d.catchBegin(sess)
+}
+
+// catchBegin (re)begins the backfill of session sess (each recordOnce).
+func (d *Device) catchBegin(sess uint64) {
 	c := &d.catch
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.session != sess {
+		return // an older session
+	}
 	if !c.pending {
 		c.pending = true
 		c.done = make(chan struct{})
@@ -70,18 +89,35 @@ func (d *Device) catchBegin() {
 	c.estTotal = 0
 }
 
-func (d *Device) catchSetEnd(tEnd int64, note string) {
+func (d *Device) catchSetEnd(sess uint64, tEnd int64, note string) {
 	c := &d.catch
 	c.mu.Lock()
-	c.tEndNs, c.note = tEnd, note
+	if c.session == sess {
+		c.tEndNs, c.note = tEnd, note
+	}
 	c.mu.Unlock()
 }
 
-// catchDone ends the pending backfill: caught up, or the session ended.
-func (d *Device) catchDone() {
+// catchDone ends the pending backfill of session sess: caught up, or the
+// session ended. An older session's call changes nothing.
+func (d *Device) catchDone(sess uint64) {
 	c := &d.catch
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.session == sess {
+		c.endLocked()
+	}
+}
+
+// catchStop ends the pending backfill of the current session (stop).
+func (d *Device) catchStop() {
+	c := &d.catch
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.endLocked()
+}
+
+func (c *catchState) endLocked() {
 	if c.pending {
 		c.pending = false
 		close(c.done)
@@ -201,6 +237,7 @@ func parseStatsTotal(out string) uint64 {
 
 // measureTotal estimates the backfill's line count (Progress.EstTotal).
 func (d *Device) measureTotal(ctx context.Context) {
+	sess := sessionOf(ctx)
 	if !d.CatchUp().Pending {
 		return
 	}
@@ -211,7 +248,7 @@ func (d *Device) measureTotal(ctx context.Context) {
 	if n := parseStatsTotal(out); n > 0 {
 		c := &d.catch
 		c.mu.Lock()
-		if c.pending {
+		if c.pending && c.session == sess {
 			c.estTotal = n
 		}
 		c.mu.Unlock()
