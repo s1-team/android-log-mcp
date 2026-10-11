@@ -83,7 +83,7 @@ args = ["/c", "npx", "-y", "android-log-mcp"]
 
 Trade-offs on Windows: every MCP session runs a chain of `npx.cmd` → `cmd.exe` → `node` → the binary, i.e. three extra processes between the MCP host and the MCP process and a slower start (npx resolves the package first). Whether `cmd.exe` gets a console window depends on how the MCP host starts it. Path B starts the binary directly.
 
-**Upgrading:** `npx -y android-log-mcp` uses the newest version npx has cached and may not check for a new one every time. To upgrade, pin the version in `args` (`"android-log-mcp@0.5.2"`) and change it on upgrades, or use `android-log-mcp@latest`; then restart the MCP host. The new MCP process replaces an older running service process by itself.
+**Upgrading:** `npx -y android-log-mcp` uses the newest version npx has cached and may not check for a new one every time. To upgrade, pin the version in `args` (`"android-log-mcp@0.6.0"`) and change it on upgrades, or use `android-log-mcp@latest`; then restart the MCP host. The new MCP process replaces an older running service process by itself.
 
 ### B. Without npx: the native binary (recommended on Windows)
 
@@ -368,9 +368,14 @@ Values are replaced by `[REDACTED:<type>#n]`. The same original value gets the s
 
 Full history: [CHANGELOG.md](CHANGELOG.md).
 
-### Unreleased (breaking)
+### To 0.6.0 (breaking)
 
 - **`logcat_search` returns 50 lines by default** instead of 200, and **Java stacks are short by default**: each exception and `Caused by` keeps its first 3 frames, and a stack already shown in the same response becomes `↳ same K frames as <time>` ([#23](https://github.com/s1crab/android-log-mcp/issues/23)). To get the previous output, pass `limit: 200` and `stack: "full"`. `logcat_crashes(id=…)` still shows a crash's whole stack.
+- **Device time and host time are named everywhere** ([#48](https://github.com/s1crab/android-log-mcp/issues/48)). Response headers read `device now … · host now … · clock offset …`, `logcat_status` labels host times, and its cursor line reads `cursor (newest line, <serial>)`. Update anything that parses these lines.
+- **`host:` window values are rejected** (`from="host:5m"`, `age:host:5m`): windows are device time only. For "from here on", pass the `logcat_status` cursor as `after`.
+- **Relative windows end at device now + 2 s** (`age:`, `from="5m"`, the `logcat_app_launches` default). Lines dated later are counted in a note with the absolute `from`/`to` that shows them.
+- **`logcat_status` shows `root:`, `linger:`, `lifetime:`, `service log:`, `adb:` and `store:` once per connection** and again when they change. Pass `verbose: true` to always get them.
+- **Shared-uid device processes** whose name matches none of the uid's packages (e.g. `android.process.acore`) belong to no package; `package=` includes them for every package of the uid ([#44](https://github.com/s1crab/android-log-mcp/issues/44)).
 
 ### To 0.5.0 (breaking)
 
@@ -504,6 +509,7 @@ android-log-mcp 是一个 MCP stdio server，让 AI agent（MCP 宿主，如 Cla
 - **数据根目录**：默认 `<用户缓存目录>/android-log-mcp`（`android-log-mcp root` 查看）；用 `android-log-mcp set-root <绝对路径> --keep-old|--delete-old` 为所有 MCP 进程和 CLI 进程统一切换，失败会回滚；切换前的历史留在旧目录里，不再被查询。
 - **上限**：每台设备保留 1 天、最多 512 MiB；整个根目录最多 2 GiB；剩余磁盘低于 512 MiB 时暂停录制。
 - **诊断包**：`android-log-mcp report` 生成 zip（没有后台服务进程时会以 detached 方式启动它并先回填），默认打码 token、密码、邮箱、手机号、身份证、银行卡、设备 ID、IP、MAC、域名等；打码基于模式，分享前请检查。
+- **升级到 0.6.0（破坏性变更）**：`logcat_search` 默认返回 50 行（需要旧行为时用 `limit: 200`），行内 Java 堆栈默认截短（用 `stack: "full"` 看完整堆栈）；响应头和状态输出统一使用"设备时间 / 主机时间"的说法；不再接受 `host:` 时间窗口；相对时间窗口截止于设备当前时间 + 2 秒；`logcat_status` 中不常变化的行每次连接只显示一次（`verbose: true` 总是显示）。
 - **升级到 0.5.0（破坏性变更）**：录制改为按需开始、空闲后停止；未录制期间被设备缓冲区覆盖的日志不会出现在历史里，需要时用 `record --for`。`ANDROID_LOG_MCP_LINGER` 改为按设备、从最后一次日志工具调用开始计时；`report` 会启动后台服务进程；`ANDROID_LOG_MCP_CALL_WAIT` 已弃用并被忽略。
 - **升级到 0.4.0（破坏性变更）**：旧数据不迁移、不读取（旧 `<serial>/` 目录被忽略，请手动删除）；移除 `ANDROID_LOG_MCP_HOME` 和 `--home`（仍设置时会报错退出）；开发版遗留的 `owners/` 目录会被自动删除。升级到 0.3.0 时默认保留期从 7 天改为 1 天。
 - **`package` 参数**：精确的应用 id。共享 uid 的设备进程若名称不对应其中任何包（如 `android.process.acore`），其日志、崩溃和进程不归属任何包；对该 uid 的每个包，`package=` 都会包含它们，并在 `note:` 中列出这些包。过滤语法中的 `package:` 仍是 Android Studio 语义（进程名前缀）。
