@@ -104,7 +104,9 @@ Recorded 2026-10-11 on the dev box: linux/amd64, Intel Xeon, 8 vCPUs shared with
 | Query | ms |
 |---|---:|
 | `logcat_status {}` / `{package}` | 0.1 / 33 |
-| `logcat_search {}`, `{package}`, `tag=:`, `min_level`, regex, negation | ≈ 1,515 each |
+| `logcat_search {}` (exact total from the record range, #20) | 0.9 (was ≈ 1,515) |
+| `logcat_search {package}`, `tag=:`, `min_level`, negation (count stops 100 ms after the page is full, #20) | ≈ 106–112 (was ≈ 1,515) |
+| `logcat_search` regex (sparse matches: filling the page takes most of the time) | 1,191 (was ≈ 1,515) |
 | `logcat_search {filter: "age:5m level:warn"}` | 1,661 |
 | `logcat_search` 5-minute window at the oldest end (cold / warm) | 1,819 / 1,714 |
 | `logcat_search` full scan, no match (cold / warm) | 2,879 / 2,836 (completes, at the edge of the 2.5 s scan budget) |
@@ -122,7 +124,7 @@ Recorded 2026-10-11 on the dev box: linux/amd64, Intel Xeon, 8 vCPUs shared with
 
 ## Findings worth optimising
 
-1. **Searches cost about 1.5 s once the history is large.** On a one-day history, every search without `from`/`to` takes about 1.5 s, even when the 200 newest matches are found within a few ms (3 ms on a 75k-line history). After collecting the matches, the scan keeps going to count all matches ("matched N lines") until the 1.5 s count budget runs out, and then reports a lower bound (`matched ≥430,079 lines`). A cheaper count (an estimate, or stopping at e.g. 10× limit) would make the common calls several hundred times faster.
+1. ~~**Searches cost about 1.5 s once the history is large.**~~ Fixed in #20. The scan used to keep counting matches for up to 1.5 s after the page was full and then reported a lower bound (`matched ≥430,079 lines`). Now a search without a filter or time window takes its exact total from the stored record range (`Store.Count`, 0.9 ms on the one-day history), and a filtered search stops counting 100 ms after the page is full (≈ 110 ms) and says which span the lower bound covers (`count: … count_exact=false counted_from=…`). The perf metric `query.<name>.count_exact` records whether each count is exact; `search_default` must stay exact.
 2. **`age:` and old windows do not bound the scan.** `age:5m` is evaluated per record, but it does not stop the newest-first scan the way `from` does (1.7 s). A 5-minute window at the old end scans the whole newer history first (1.8 s). A time → seq lookup over the block index would make both proportional to the window.
 3. **Full-history scans are at the edge of the 2.5 s scan budget.** JSON decoding limits the scan to about 210k–260k records/s, so one call can cover at most about 600k records. A no-match search over the synthetic day still completes, in about 2.8–3.0 s: about 2.1 s of scanning, and the zero-result hints take the rest. On a busier day, or a slower machine, the same search returns "scan stopped … incomplete".
 4. **Ingest slows down as crashes accumulate.** `Pipeline.EmitCrash` calls `LoadCrashes`, which re-reads and JSON-decodes the whole `crashes.jsonl`, for every crash. That is O(crashes²). On the synthetic day (several hundred crashes and ANRs) it takes 80 % of the ingest CPU: 47k lines/s and 8.1 KB allocated per line, against about 330k lines/s (3.0 µs per line) and 0.9 KB per line on a fresh store. An in-memory crash index would fix it. `logcat_crashes` itself allocates 1.5 MB per call on the fixture for the same reason.
@@ -156,7 +158,7 @@ Recorded 2026-10-11 on the dev box: linux/amd64, Intel Xeon, 8 vCPUs shared with
 - **CI**：`perf` job（ubuntu）在 main 推送和每晚运行 `scripts/perf.sh --check`（完整规模），在 PR 上运行 `scripts/perf.sh --check --pr`（20 份数据，对比 `perf/baseline-pr.json`），结果作为 artifact 上传。
 - **更新基线**：有意改变指标时运行 `scripts/perf.sh --update && scripts/perf.sh --update --pr`（两个基线一起更新）（或用 CI artifact 里的 `merged.json`），在同一个 PR 里提交并说明原因。
 - **发现的问题**：
-  1. 历史一大，不带时间范围的搜索都要约 1.5 s：为了统计匹配总数，会一直扫到计数预算用完；
+  1. （#20 已修复）历史一大，不带时间范围的搜索都要约 1.5 s。现在不带过滤条件时，总数直接从记录范围精确得出（约 1 ms）；带过滤条件时，页满后只再计数 100 ms（约 110 ms），并注明计数范围；
   2. `age:` 和旧时间窗不会让扫描提前结束；
   3. 全量扫描约每秒 25 万条，扫完一天的历史已接近 2.5 s 的扫描预算；
   4. 每次发现崩溃都会重读整个 `crashes.jsonl`，复杂度 O(n²)，崩溃一多，写入速度降到约七分之一；

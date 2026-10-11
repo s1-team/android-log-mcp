@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -509,6 +510,7 @@ func scaleMetrics(t *testing.T, r *Results) {
 		r.Set("query."+q.name+".ms", Metric{Value: median(runs), Unit: "ms", Kind: Time, Budget: 3500,
 			Desc: fmt.Sprintf("%s %s, median of 5 (warm)", q.tool, q.args)})
 		noteIncomplete(t, r, q.name, out)
+		noteCountExact(r, q.name, out)
 		r.Set("query."+q.name+".bytes", Metric{Value: float64(len(out)), Unit: "bytes", Kind: Info,
 			Desc: "output size at scale (≈ tokens × 4)"})
 		if os.Getenv("ALM_PERF_DUMP") != "" {
@@ -564,6 +566,28 @@ func scanMetrics(t *testing.T, r *Results, st *store.Store) {
 		Desc: "the same scan right after (blocks still cached up to the 32 MiB limit)"})
 	r.Set("scan.filtered_records_per_sec_cold", Metric{Value: rate(coldF), Unit: "records/s", Kind: Rate,
 		Desc: "cold scan plus filter evaluation (-tag:chatty -message:binder level:info)"})
+}
+
+var countExactRe = regexp.MustCompile(`(?m)^count: total=\d+ count_exact=(true|false)`)
+
+// noteCountExact records whether a search's match count is exact (1) or a
+// lower bound (0) (issue #20). A search without a filter must stay exact
+// (Store.Count): budget 1, any machine.
+func noteCountExact(r *Results, name, out string) {
+	m := countExactRe.FindStringSubmatch(out)
+	if m == nil {
+		return // not a lines search
+	}
+	v := 0.0
+	if m[1] == "true" {
+		v = 1
+	}
+	met := Metric{Value: v, Unit: "flag", Kind: Info, Desc: "1: the match count is exact; 0: a lower bound (count stopped 100 ms after the page was full)"}
+	if name == "search_default" {
+		met.Kind, met.Budget = Rate, 1
+		met.Desc += "; must be exact without a filter"
+	}
+	r.Set("query."+name+".count_exact", met)
 }
 
 // noteIncomplete records whether a query hit the scan time budget (its

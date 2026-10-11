@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+### Changed
+
+- `logcat_search` answers in milliseconds on large histories ([#20](https://github.com/s1crab/android-log-mcp/issues/20)). It used to keep counting matches for up to 1.5 s after the page was full (about 1.5 s per call on a one-day history). Now:
+  - Without a filter or time window, the total is exact and comes from the stored record range, without scanning.
+  - With a filter, counting stops 100 ms after the page is full. The total is then a lower bound, and the response says which span was counted and how to get an exact count: `matched ≥14,043 lines (counted the newest 21 min only, since 23:32:09; older history not counted — narrow with from/to, e.g. from="1h", for an exact count)`.
+  - Every lines response has a machine-readable `count:` line: `total`, `count_exact` and, for a lower bound, `counted_from` / `counted_to`.
+  - The top-tags line says when it covers only the counted matches, or only the page.
+  - On a one-day history, `logcat_search {}` takes about 1 ms instead of 1.5 s, and filtered searches whose page fills quickly about 110 ms.
+
 ## [0.5.2] - 2026-10-11
 
 ### Fixed

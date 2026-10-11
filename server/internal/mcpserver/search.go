@@ -18,7 +18,6 @@ import (
 const (
 	timeSlackNs   = int64(5 * time.Minute) // logcat output is time-ordered except for small reorderings
 	scanBudget    = 2500 * time.Millisecond
-	countBudget   = 1500 * time.Millisecond
 	maxWaitMs     = 25000
 	defaultLimit  = 200
 	contextScanMx = 20000
@@ -220,11 +219,21 @@ func (t *Tools) buildQuery(d *device.Device, a commonArgs) (*query, error) {
 	return q, nil
 }
 
+// countBudget bounds how long a search keeps counting matches once its
+// page (limit) is full (issue #20); the count is then a lower bound over
+// the records scanned so far, and the output says which time span that
+// covers. A variable for tests.
+var countBudget = 100 * time.Millisecond
+
 type scanResult struct {
 	matches    []*model.Record // in scan order
 	total      int             // matches counted (≥ len(matches))
 	countDone  bool            // total is exact
-	tagCount   map[string]int
+	tagCount   map[string]int  // tags of the matches visited (tagN of them)
+	tagN       int
+	byRange    bool   // total counted from the store's record range (no filter), tags only of the page
+	firstNs    int64  // time of the first record scanned (desc: newest)
+	lastNs     int64  // time of the last record scanned (where counting stopped)
 	scannedTo  uint64 // asc: highest seq examined; desc: lowest seq examined
 	upper      uint64 // exclusive upper bound used
 	incomplete bool   // scan stopped by budget before covering the range
@@ -239,13 +248,19 @@ func (q *query) scan(limit int, desc bool) *scanResult {
 		res.upper = st.LastSeq() + 1
 	}
 	start := time.Now()
+	var fullAt time.Time // when the page filled up
+	byRange := q.countByRange()
 	n := 0
 	st.Scan(q.afterSeq, res.upper, desc, func(r *model.Record) bool {
 		n++
 		res.scannedTo = r.Seq
+		if n == 1 {
+			res.firstNs = r.TimeNs
+		}
+		res.lastNs = r.TimeNs
 		if n&4095 == 0 {
 			el := time.Since(start)
-			if len(res.matches) >= limit && el > countBudget {
+			if !fullAt.IsZero() && time.Since(fullAt) > countBudget {
 				res.countDone = false
 				return false
 			}
@@ -266,12 +281,32 @@ func (q *query) scan(limit int, desc bool) *scanResult {
 		}
 		res.total++
 		res.tagCount[r.Tag]++
+		res.tagN++
 		if len(res.matches) < limit {
 			res.matches = append(res.matches, r)
+			if len(res.matches) == limit {
+				fullAt = time.Now()
+				if byRange {
+					res.byRange = true
+					return false // the total comes from the record range
+				}
+			}
 		}
 		return true
 	})
+	if res.byRange {
+		res.total = int(st.Count(q.afterSeq, res.upper))
+		res.countDone = true
+	}
 	return res
+}
+
+// countByRange: every record in the seq range matches (no filter, no time
+// window), so the exact total is the number of stored records in the range
+// (Store.Count) and the scan can stop once the page is full (issue #20).
+func (q *query) countByRange() bool {
+	_, empty := q.pred.(filter.Empty)
+	return empty && q.fromNs == 0 && q.toNs == 0
 }
 
 func (t *Tools) search(ctx context.Context, a searchArgs) (out string, err error) {
@@ -442,7 +477,8 @@ func (t *Tools) renderLines(q *query, res *scanResult, a searchArgs, desc, waite
 	}
 	t.rangeNotes(&b, q, sel)
 	totalStr := commas(res.total)
-	if !res.countDone {
+	partial := !res.countDone
+	if partial {
 		totalStr = "≥" + totalStr
 	}
 	switch {
@@ -454,10 +490,11 @@ func (t *Tools) renderLines(q *query, res *scanResult, a searchArgs, desc, waite
 			b.WriteString(t.zeroHints(q))
 		}
 	case desc:
-		fmt.Fprintf(&b, "matched %s lines; showing newest %d (%s–%s)\n", totalStr, len(sel), clock(sel[0].TimeNs, q.loc), clock(sel[len(sel)-1].TimeNs, q.loc))
+		fmt.Fprintf(&b, "matched %s lines%s; showing newest %d (%s–%s)\n", totalStr, countScope(res, q.loc, desc), len(sel), clock(sel[0].TimeNs, q.loc), clock(sel[len(sel)-1].TimeNs, q.loc))
 	default:
-		fmt.Fprintf(&b, "matched %s new lines; showing oldest %d (%s–%s)\n", totalStr, len(sel), clock(sel[0].TimeNs, q.loc), clock(sel[len(sel)-1].TimeNs, q.loc))
+		fmt.Fprintf(&b, "matched %s new lines%s; showing oldest %d (%s–%s)\n", totalStr, countScope(res, q.loc, desc), len(sel), clock(sel[0].TimeNs, q.loc), clock(sel[len(sel)-1].TimeNs, q.loc))
 	}
+	b.WriteString(countFields(res, q.loc, desc))
 	if len(sel) > 0 {
 		b.WriteString("format: time level pid/tid process tag: message\n")
 		for _, l := range w.lines {
@@ -487,9 +524,62 @@ func (t *Tools) renderLines(q *query, res *scanResult, a searchArgs, desc, waite
 		fmt.Fprintf(&b, "note: scan stopped after %s to stay responsive (range not fully searched); continue: before=%q, or narrow from/to\n", scanBudget, t.cursor(q, res.scannedTo))
 	}
 	if res.total > len(sel) && len(res.tagCount) > 0 {
-		fmt.Fprintf(&b, "top tags in all %s matches: %s · narrow with e.g. -message:<noise>, min_level=info, or a smaller from/to\n", totalStr, topN(res.tagCount, 5))
+		which := "all " + totalStr + " matches"
+		switch {
+		case res.byRange:
+			which = fmt.Sprintf("the newest %s matches only", commas(res.tagN))
+		case partial && desc:
+			which = fmt.Sprintf("the %s counted matches only (newest %s)", commas(res.tagN), spanText(res.firstNs-res.lastNs))
+		case partial:
+			which = fmt.Sprintf("the %s counted matches only (oldest %s)", commas(res.tagN), spanText(res.lastNs-res.firstNs))
+		}
+		fmt.Fprintf(&b, "top tags in %s: %s · narrow with e.g. -message:<noise>, min_level=info, or a smaller from/to\n", which, topN(res.tagCount, 5))
 	}
 	return b.String()
+}
+
+// countScope explains a partial count (issue #20): which part of the range
+// was counted and how to get an exact count. Empty when the count is exact.
+func countScope(res *scanResult, loc *time.Location, desc bool) string {
+	if res.countDone || res.lastNs == 0 {
+		return ""
+	}
+	if desc {
+		return fmt.Sprintf(" (counted the newest %s only, since %s; older history not counted — narrow with from/to, e.g. from=\"1h\", for an exact count)",
+			spanText(res.firstNs-res.lastNs), clock(res.lastNs, loc))
+	}
+	return fmt.Sprintf(" (counted the oldest %s only, up to %s; newer lines not counted — page with the after cursor, or narrow with from/to for an exact count)",
+		spanText(res.lastNs-res.firstNs), clock(res.lastNs, loc))
+}
+
+// countFields is the machine-readable count line: total, whether it is
+// exact, and for a lower bound where counting stopped (device-local).
+func countFields(res *scanResult, loc *time.Location, desc bool) string {
+	s := fmt.Sprintf("count: total=%d count_exact=%t", res.total, res.countDone)
+	if !res.countDone && res.lastNs != 0 {
+		key := "counted_from"
+		if !desc {
+			key = "counted_to"
+		}
+		s += fmt.Sprintf(" %s=%q", key, time.Unix(0, res.lastNs).In(loc).Format("2006-01-02 15:04:05.000"))
+	}
+	return s + "\n"
+}
+
+// spanText renders a counted span: "40 s", "21 min", "3 h 5 min".
+func spanText(d int64) string {
+	t := time.Duration(max(d, 0))
+	switch {
+	case t < time.Minute:
+		return fmt.Sprintf("%d s", int(t.Seconds()))
+	case t < time.Hour:
+		return fmt.Sprintf("%d min", int(t.Minutes()))
+	}
+	h := int(t.Hours())
+	if m := int(t.Minutes()) - 60*h; m > 0 {
+		return fmt.Sprintf("%d h %d min", h, m)
+	}
+	return fmt.Sprintf("%d h", h)
 }
 
 func (t *Tools) rangeNotes(b *strings.Builder, q *query, sel []*model.Record) {

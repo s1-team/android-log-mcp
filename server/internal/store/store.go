@@ -1036,6 +1036,76 @@ func (s *Store) Scan(after, before uint64, desc bool, fn func(*model.Record) boo
 	}
 }
 
+// Count returns the number of records with after < seq < before
+// (before==0: no upper bound), exactly what Scan would visit, without
+// decoding them (issue #20): the in-memory window is contiguous, and older
+// records are counted from the per-segment block index; only blocks that
+// straddle the range bounds are decoded.
+func (s *Store) Count(after, before uint64) uint64 {
+	s.touch()
+	s.mu.RLock()
+	loaded := s.loaded
+	s.mu.RUnlock()
+	if !loaded {
+		s.mu.Lock()
+		if !s.loaded {
+			s.loadWindowLocked()
+		}
+		s.mu.Unlock()
+	}
+	s.mu.RLock()
+	mem := s.mem
+	segs := append([]segment(nil), s.segs...)
+	last := s.lastSeq
+	s.mu.RUnlock()
+	if before == 0 || before > last+1 {
+		before = last + 1
+	}
+	if after+1 >= before {
+		return 0
+	}
+	lo, hi := after+1, before
+	var n uint64
+	memFirst := uint64(0)
+	if len(mem) > 0 {
+		memFirst = mem[0].Seq
+		if mlo, mhi := max(lo, memFirst), min(hi, memFirst+uint64(len(mem))); mhi > mlo {
+			n += mhi - mlo
+		}
+		hi = min(hi, memFirst) // the rest is on disk
+	}
+	if lo >= hi {
+		return n
+	}
+	for i, sg := range segs {
+		end := uint64(1<<63 - 1)
+		if i+1 < len(segs) {
+			end = segs[i+1].first
+		}
+		if sg.first >= hi || end <= lo {
+			continue
+		}
+		ix := s.segIndexFor(sg.path)
+		if ix == nil {
+			continue
+		}
+		for _, b := range ix.blocks {
+			switch {
+			case b.n == 0 || b.first >= hi || b.last < lo:
+			case b.first >= lo && b.last < hi:
+				n += uint64(b.n)
+			default: // straddles a bound: count its records
+				for _, r := range s.blockRecords(sg.path, b) {
+					if r.Seq >= lo && r.Seq < hi {
+						n++
+					}
+				}
+			}
+		}
+	}
+	return n
+}
+
 // Get returns the record with the given seq, or nil.
 func (s *Store) Get(seq uint64) *model.Record {
 	var out *model.Record

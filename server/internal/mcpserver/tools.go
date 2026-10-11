@@ -71,6 +71,7 @@ func toolDefs() []toolDef {
 				"Examples:\n  tag=:OkHttp tag=:MyRepo level:debug\n  is:crash | tag~:\"^am_(anr|crash)$\"\n  message~:\"Displayed com\\.foo\" -tag:chatty\n" +
 				"Invalid filters return an error with the position and a fix; nothing is guessed. The response echoes how the filter was interpreted — check it.\n" +
 				"The `package` param is an EXACT application id covering all its processes (filter's package: is a substring match).\n" +
+				"Counts: the `count:` line has total and count_exact; count_exact=false means total is a lower bound counted back to counted_from (or up to counted_to): narrow with from/to for an exact count.\n" +
 				"Paging: response gives `before`/`after` cursors. To wait for new lines (e.g. while the user reproduces), pass `after` plus `wait_ms` (≤25000).\n" +
 				"The first call for a device starts recording it and backfills its log buffer (waits up to 10 s); a \"backfill in progress\" note means results may be incomplete: call again.\n" +
 				"Use view=\"summary\" first for broad or unknown time ranges (counts by level/tag/package, top repeated messages).",
