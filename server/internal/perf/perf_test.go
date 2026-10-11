@@ -16,6 +16,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/s1crab/android-log-mcp/server/internal/analysis"
 	"github.com/s1crab/android-log-mcp/server/internal/device"
 	"github.com/s1crab/android-log-mcp/server/internal/filter"
 	"github.com/s1crab/android-log-mcp/server/internal/logcat"
@@ -610,6 +611,7 @@ func TestPerfInProcess(t *testing.T) {
 	outputMetrics(t, r)
 	allocMetrics(t, r)
 	scaleMetrics(t, r)
+	crashMetrics(t, r)
 	if err := r.Save(filepath.Join(dir, "inprocess.json")); err != nil {
 		t.Fatal(err)
 	}
@@ -620,4 +622,52 @@ func TestPerfDumpOutputs(t *testing.T) {
 		t.Skip("set ALM_PERF_DUMP=1 to print the scenario outputs")
 	}
 	outputMetrics(t, New())
+}
+
+// crashMetrics: crash ingest and listing with a long crash history (issue
+// #22). Each EmitCrash used to re-read and decode the whole crashes.jsonl
+// (twice), so the cost per crash grew with the number of stored crashes.
+func crashMetrics(t *testing.T, r *Results) {
+	const stored = 2000
+	st, p := newStore(t, t.TempDir(), store.Config{IdleRelease: -1})
+	defer st.Close()
+	base := time.Now().Add(-time.Hour).UnixNano()
+	mk := func(i int) *analysis.Crash {
+		var body strings.Builder
+		fmt.Fprintf(&body, "java.lang.IllegalStateException: synthetic crash %d\n", i)
+		for f := 0; f < 40; f++ {
+			fmt.Fprintf(&body, "\tat com.example.logtest.Module%d.call%d(Module%d.java:%d)\n", f, i%17, f, 100+f)
+		}
+		return &analysis.Crash{Kind: "java", Boot: "boot", TimeNs: base + int64(i)*1e9, Seq: uint64(i + 1), PID: 2000 + i%300,
+			Process: "com.example.logtest", Package: "com.example.logtest", Headline: fmt.Sprintf("java.lang.IllegalStateException: synthetic crash %d", i),
+			Body: body.String(), Signature: fmt.Sprintf("sig%d", i%40), Sources: []string{"logcat"}}
+	}
+	for i := 0; i < stored; i++ {
+		p.EmitCrash(mk(i))
+	}
+	var runs []float64
+	var m0, m1 runtime.MemStats
+	const emits = 20
+	runtime.GC()
+	runtime.ReadMemStats(&m0)
+	for i := 0; i < emits; i++ {
+		t0 := time.Now()
+		p.EmitCrash(mk(stored + i))
+		runs = append(runs, round(float64(time.Since(t0).Microseconds())/1000, 3))
+	}
+	runtime.ReadMemStats(&m1)
+	r.Set("ingest.crash_emit_ms_at_2000", Metric{Value: median(runs), Unit: "ms", Kind: Time, Budget: 10,
+		Desc: "EmitCrash (new crash, DropBox adoption check) with 2,000 stored crashes, median of 20"})
+	r.Set("allocs.crash_emit_at_2000.bytes", Metric{Value: round(float64(m1.TotalAlloc-m0.TotalAlloc)/emits, 0), Unit: "B/op", Kind: Allocs,
+		Desc: "bytes allocated per EmitCrash with 2,000 stored crashes (grows with the crash history if ingest re-reads the file)"})
+	runs = runs[:0]
+	for i := 0; i < 5; i++ {
+		t0 := time.Now()
+		if n := len(device.CrashSummaries(st)); n != stored+emits {
+			t.Fatalf("%d crashes, want %d", n, stored+emits)
+		}
+		runs = append(runs, round(float64(time.Since(t0).Microseconds())/1000, 3))
+	}
+	r.Set("query.crash_list_at_2000.ms", Metric{Value: median(runs), Unit: "ms", Kind: Time, Budget: 50,
+		Desc: "crash list (summaries of 2,020 crashes) as logcat_crashes / logcat_status read it, median of 5 (warm)"})
 }

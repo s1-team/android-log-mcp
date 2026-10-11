@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -148,13 +147,17 @@ func (p *Pipeline) EmitCrash(c *analysis.Crash) {
 	p.crashMu.Lock()
 	defer p.crashMu.Unlock()
 	if c.ID == "" && !strings.HasPrefix(firstSource(c), "dropbox:") {
-		analysis.AdoptDropbox(LoadCrashes(p.Store), c)
-	} else if c.ID != "" {
-		for _, old := range LoadCrashes(p.Store) {
-			if old.ID == c.ID {
-				analysis.KeepDropbox(c, old)
-				break
+		// pick the DropBox-only crash to adopt from the summaries, then
+		// adopt from its full version (one decode, not the whole file)
+		probe := *c
+		if analysis.AdoptDropbox(CrashSummaries(p.Store), &probe) {
+			if full := CrashFull(p.Store, probe.ID)[0]; full != nil {
+				analysis.AdoptDropbox([]*analysis.Crash{full}, c)
 			}
+		}
+	} else if c.ID != "" {
+		if old := CrashFull(p.Store, c.ID)[0]; old != nil {
+			analysis.KeepDropbox(c, old)
 		}
 	}
 	if c.ID == "" {
@@ -178,9 +181,6 @@ func (p *Pipeline) ApplyDropbox(out string) {
 		seen[string(b)] = true
 	}
 	entries := analysis.ParseDropbox(out, p.Loc)
-	p.crashMu.Lock()
-	list := LoadCrashes(p.Store)
-	p.crashMu.Unlock()
 	// Entries older than the retention window are not imported: their
 	// dropbox_seen keys may already have been cleaned up (the device keeps
 	// DropBox for ~3 days, the default retention is 1 day), and re-importing
@@ -198,7 +198,17 @@ func (p *Pipeline) ApplyDropbox(out string) {
 		if seen[key] {
 			continue
 		}
-		c, isNew := analysis.MatchDropbox(list, e)
+		// match against the summaries; for an existing crash, merge into
+		// its full version (MatchDropbox copies the match and keeps its
+		// traces / DropBox text)
+		c, isNew := analysis.MatchDropbox(CrashSummaries(p.Store), e)
+		if c != nil && !isNew {
+			full := CrashFull(p.Store, c.ID)[0]
+			if full == nil {
+				continue
+			}
+			c, isNew = analysis.MatchDropbox([]*analysis.Crash{full}, e)
+		}
 		p.Store.AppendAux("dropbox_seen", json.RawMessage(key))
 		if c == nil {
 			continue
@@ -213,15 +223,6 @@ func (p *Pipeline) ApplyDropbox(out string) {
 			c.Package = p.Procs.OwnerOf(c.Process) // dotted process names (issue #41)
 		}
 		p.EmitCrash(c)
-		if isNew {
-			list = append(list, c)
-		} else {
-			for i := range list {
-				if list[i].ID == c.ID {
-					list[i] = c
-				}
-			}
-		}
 	}
 }
 
@@ -262,28 +263,6 @@ func (p *Pipeline) ReplayText(text string) error {
 	p.Tick(clock.Add(time.Minute).UnixNano())
 	p.Store.Flush()
 	return nil
-}
-
-// LoadCrashes reads all crashes (last version of each ID wins), newest first.
-func LoadCrashes(st *store.Store) []*analysis.Crash {
-	byID := map[string]*analysis.Crash{}
-	var order []string
-	for _, b := range st.ReadAux("crashes") {
-		c := new(analysis.Crash)
-		if json.Unmarshal(b, c) != nil || c.ID == "" {
-			continue
-		}
-		if _, ok := byID[c.ID]; !ok {
-			order = append(order, c.ID)
-		}
-		byID[c.ID] = c
-	}
-	out := make([]*analysis.Crash, 0, len(order))
-	for _, id := range order {
-		out = append(out, byID[id])
-	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].TimeNs > out[j].TimeNs })
-	return out
 }
 
 // LoadProcs reads process lifetimes (last version of each entry wins).
