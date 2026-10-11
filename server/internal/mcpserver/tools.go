@@ -25,6 +25,7 @@ type searchArgs struct {
 	Before   string   `json:"before"`
 	After    string   `json:"after"`
 	WaitMs   int      `json:"wait_ms"`
+	Stack    string   `json:"stack"`
 }
 
 type crashArgs struct {
@@ -76,6 +77,7 @@ func toolDefs() []toolDef {
 				"Counts: the `count:` line has total and count_exact; count_exact=false means total is a lower bound counted back to counted_from (or up to counted_to): narrow with from/to for an exact count.\n" +
 				"Paging: response gives `before`/`after` cursors. To wait for new lines (e.g. while the user reproduces), pass `after` plus `wait_ms` (≤25000).\n" +
 				"The first call for a device starts recording it and backfills its log buffer (waits up to 10 s); a \"backfill in progress\" note means results may be incomplete: call again.\n" +
+				"Java stacks in lines are short by default: each exception and Caused by keeps its first 3 frames (\"↳ K more frames\"), and a stack already shown in the response is \"↳ same K frames as <time>\"; stack=\"full\" shows every frame.\n" +
 				"Use view=\"summary\" first for broad or unknown time ranges (counts by level/tag/package, top repeated messages).",
 			schema: `{"type":"object","properties":{
 "device":{"type":"string","description":"adb serial. Omit when only one device has logs."},
@@ -86,7 +88,8 @@ func toolDefs() []toolDef {
 "from":{"type":"string","description":"Start time, inclusive. Device-local ` + "`2026-10-10 01:20:00`" + ` or ` + "`01:20:00`" + ` (= device's today), ISO-8601 with offset, or relative like ` + "`30m`, `2h`" + ` (= device now minus that)."},
 "to":{"type":"string","description":"End time, exclusive. Same formats as ` + "`from`" + `. Default: now."},
 "view":{"type":"string","enum":["lines","summary"],"default":"lines"},
-"limit":{"type":"integer","minimum":1,"maximum":1000,"default":200,"description":"Max matching lines to return (output is also capped at ~30k chars)."},
+"limit":{"type":"integer","minimum":1,"maximum":1000,"default":50,"description":"Max matching lines to return (output is also capped at ~30k chars). For an overview of a range, view=\"summary\" is about 2k chars."},
+"stack":{"type":"string","enum":["short","full"],"default":"short","description":"How Java stacks inside a line are shown: short = each exception and Caused by with its first 3 frames, a repeated stack shown once, at most 2,000 chars per line; full = every frame (up to 8,000 chars per line)."},
 "context":{"type":"integer","minimum":0,"maximum":20,"default":0,"description":"Also show N lines before/after each match from the same process (like grep -C)."},
 "before":{"type":"string","description":"Cursor: return matches older than this (from a previous response)."},
 "after":{"type":"string","description":"Cursor: return matches newer than this (from a previous response or logcat_status)."},

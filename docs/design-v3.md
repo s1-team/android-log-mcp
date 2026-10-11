@@ -136,7 +136,8 @@ Use view="summary" first for broad or unknown time ranges (counts by level/tag/p
     "from":      {"type": "string", "description": "Start time, inclusive. Device-local `2026-10-10 01:20:00` or `01:20:00` (= device's today), ISO-8601 with offset, or relative like `30m`, `2h` (= device now minus that)."},
     "to":        {"type": "string", "description": "End time, exclusive. Same formats as `from`. Default: now."},
     "view":      {"type": "string", "enum": ["lines", "summary"], "default": "lines"},
-    "limit":     {"type": "integer", "minimum": 1, "maximum": 1000, "default": 200, "description": "Max matching lines to return (output is also capped at ~30k chars)."},
+    "limit":     {"type": "integer", "minimum": 1, "maximum": 1000, "default": 50, "description": "Max matching lines to return (output is also capped at ~30k chars). For an overview of a range, view=\"summary\" is about 2k chars."},
+    "stack":     {"type": "string", "enum": ["short", "full"], "default": "short", "description": "How Java stacks inside a line are shown: short = each exception and Caused by with its first 3 frames, a repeated stack shown once, at most 2,000 chars per line; full = every frame (up to 8,000 chars per line)."},
     "context":   {"type": "integer", "minimum": 0, "maximum": 20, "default": 0, "description": "Also show N lines before/after each match from the same process (like grep -C)."},
     "before":    {"type": "string", "description": "Cursor: return matches older than this (from a previous response)."},
     "after":     {"type": "string", "description": "Cursor: return matches newer than this (from a previous response or logcat_status)."},
@@ -157,7 +158,7 @@ Use view="summary" first for broad or unknown time ranges (counts by level/tag/p
 ```
 device emulator-5554 · times are device-local Asia/Shanghai (+08:00) · date 2026-10-10
 filter parsed as: package == com.foo AND (tag = "OkHttp" OR tag = "MyRepo") AND level >= DEBUG AND time in [01:20:00, 01:30:00)
-matched 1,284 lines; showing newest 200 (01:27:41.002–01:29:58.731)
+matched 1,284 lines; showing newest 50 (01:29:12.002–01:29:58.731)
 count: total=1284 count_exact=true
 format: time level pid/tid process tag: message
 01:27:41.002 D 23011/23090 com.foo OkHttp: --> GET https://api.foo.com/v1/feed
@@ -166,10 +167,22 @@ format: time level pid/tid process tag: message
   ↳ ×37 identical until 01:27:49.001
 01:27:50.120 W 23102/23110 com.foo:push MyRepo: token refresh failed
     java.net.UnknownHostException: Unable to resolve host "push.foo.com"
-        at java.net.Inet6AddressImpl.lookupHostByName(Inet6AddressImpl.java:156)
-        ... (whole multi-line message kept)
+    	at java.net.Inet6AddressImpl.lookupHostByName(Inet6AddressImpl.java:156)
+    	at java.net.Inet6AddressImpl.lookupAllHostAddr(Inet6AddressImpl.java:103)
+    	at java.net.InetAddress.getAllByName(InetAddress.java:1152)
+    	↳ 21 more frames
+    Caused by: android.system.GaiException: android_getaddrinfo failed: EAI_NODATA (No address associated with hostname)
+    	at libcore.io.Linux.android_getaddrinfo(Native Method)
+    	at libcore.io.ForwardingOs.android_getaddrinfo(ForwardingOs.java:74)
+    	at java.net.Inet6AddressImpl.lookupHostByName(Inet6AddressImpl.java:135)
+    	↳ 27 more frames
+01:28:20.311 W 23102/23110 com.foo:push MyRepo: token refresh failed
+    java.net.UnknownHostException: Unable to resolve host "push.foo.com"
+    Caused by: android.system.GaiException: android_getaddrinfo failed: EAI_NODATA (No address associated with hostname)
+    	↳ same 54 frames as 01:27:50.120
 …
-[truncated: 1,084 older matches not shown]
+stacks: 2 shortened (102 frames hidden) · stack="full" shows every frame
+[truncated: 1,234 older matches not shown · view="summary" shows what the whole range contains]
 more: before="c1.ZW11LTU1NTQ.9f2a.1188020"  ·  newer/wait: after="c1.ZW11LTU1NTQ.9f2a.1190311"
 top tags in all 1,284 matches: OkHttp 911, MyRepo 373 · narrow with e.g. -message:heartbeat, min_level=info, or a smaller from/to
 ```
@@ -433,12 +446,14 @@ agent 可以借此发现自己写的 `message:foo message:bar` 实际被解释�
 - **无隐藏会话状态**：所有工具都是纯查询，同样的参数加同样的 cursor 得到同样的结果（`wait_ms` 和“最新 N 条”除外，它们随时间变化）。cursor 是不透明字符串 `c1.<base64 serial>.<boot>.<seq>`，可以跨 server 重启、跨 agent 共享。
 - **零参数调用都有用**：
   - `logcat_status()`：设备、录制状态、cursor。
-  - `logcat_search()`：最新 200 行，附 top tags 摘要。
+  - `logcat_search()`：最新 50 行（#23 之前是 200），附 top tags 摘要。
   - `logcat_crashes()`：全部 App 的近期崩溃。
   - `logcat_app_launches()`：最近 30 分钟内的启动。
 - **大小控制**：
   - 每次响应的硬预算是 30,000 字符，留出 Claude Code 50,000 字符转存阈值以下的余量，大约 8–10k token。
-  - limit 默认 200。超出时按 2.2 的截断格式输出。
+  - limit 默认 50（#23；之前是 200，默认输出约 27.5k 字符，被 30k 预算截在约 175 行）。超出时按 2.2 的截断格式输出，`[truncated: …]` 行提示 `view="summary"`；30k 预算放不下 `limit` 条时多一行 `[output cap: …]`。
+  - **Short stacks (#23).** A Java stack logged with a line is one record of 20–40 frame lines (~1 KB); shown in full it dominated the response whatever `limit` was. With `stack="short"` (default) each exception and each `Caused by` keeps its head and first 3 frames (`↳ K more frames`, Java's `... N more` and the frames of a `Suppressed:` exception included); a stack whose frames were already printed in the same response becomes `↳ same K frames as HH:MM:SS.mmm`; a line holding a stack is cut at 2,000 chars, keeping every `Caused by` head and its first frame first (the last `Caused by` is usually the root cause). A `stacks: N shortened (M frames hidden)` line says when anything was left out. `stack="full"` shows every frame (8,000-char cap), as before. When the context lines overflow the budget, whole records are dropped so a `same frames` reference never points at a line that was cut.
+  - Per-line caps (2,000 chars, 8,000 for a full stack) apply to every query; the cut marker says so (`…[+N chars; lines are cut at 2,000 chars in every query, narrowing does not show more]`).
   - 可以考虑给 Claude Code 声明 `anthropic/maxResultSizeChars`，**[未知]** 是否值得做。
 - **Match counts (issue #20).** `logcat_search` stops counting 100 ms after its page (`limit`) is full. The total is then a lower bound, and the text says which span was counted and how to get an exact count: `matched ≥14,043 lines (counted the newest 21 min only, since 23:32:09; older history not counted — narrow with from/to, e.g. from="1h", for an exact count)`. Without a filter or time window, the exact total comes from the store's record range (`Store.Count`: the in-memory window plus the per-block line counts of the segment index), without decoding records. Every lines response has one machine-readable line, `count: total=N count_exact=true|false [counted_from|counted_to="<device-local time>"]`, so agents need not parse the prose. The top-tags line says when it covers only the counted matches (or only the page). These fields are a text line rather than MCP `structuredContent`, because Claude Code passes only `structuredContent` to the model when both are present, which would drop the log lines (see §7 Q2).
 - **超时**：只有 `wait_ms` 会阻塞，上限 25 秒。其他查询目标是 1 秒内返回（内存索引加分段扫描）。冷查询扫描大段历史时，返回已扫描的部分，并给出 `continue: before=<cursor>`，不做长时间阻塞。
