@@ -17,3 +17,7 @@ func Alive(pid int) bool {
 	}
 	return code == 259 // STILL_ACTIVE
 }
+
+// Exiting is always false: Alive already reports a process whose exit code
+// is set as not running.
+func Exiting(int) bool { return false }

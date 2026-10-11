@@ -24,6 +24,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -536,6 +537,24 @@ func (e Env) Running() []int {
 		}
 	}
 	return out
+}
+
+// RunningSettled is Running for an immediate assertion after the caller
+// killed and waited for its children: a killed grandchild that is still
+// exiting (Exiting: it already closed its files and never runs user code
+// again) is re-parented and reaped by the reaper of orphans, not by the
+// caller, so this waits up to max while every running process is exiting.
+// A process that is not exiting is returned at once, so a real hang still
+// fails without delay.
+func (e Env) RunningSettled(max time.Duration) []int {
+	end := time.Now().Add(max)
+	for {
+		pids := e.Running()
+		if len(pids) == 0 || time.Now().After(end) || slices.ContainsFunc(pids, func(p int) bool { return !Exiting(p) }) {
+			return pids
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 }
 
 // Hanging reports whether a hang grandchild was started.
