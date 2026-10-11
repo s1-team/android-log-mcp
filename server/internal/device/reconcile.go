@@ -119,6 +119,7 @@ func (d *Device) reconcileLoop(ctx context.Context, caught <-chan struct{}, out 
 	// lines sent but maybe not stored yet (the pipeline holds lines for
 	// its Delay): not sent again
 	sent := multiset{}
+	var idx sessionIndex // the stored lines of the session, per repair mode
 	t := time.NewTimer(0)
 	defer t.Stop()
 	for {
@@ -131,6 +132,7 @@ func (d *Device) reconcileLoop(ctx context.Context, caught <-chan struct{}, out 
 		if !backJumpAfter(d.Store, sessionFirst(d.Store)) {
 			d.setRepair(false, "")
 			prev = 0
+			idx = sessionIndex{}
 			continue
 		}
 		if bufAt.IsZero() || time.Since(bufAt) > 10*time.Minute {
@@ -144,6 +146,7 @@ func (d *Device) reconcileLoop(ctx context.Context, caught <-chan struct{}, out 
 			if prev == 0 {
 				d.setRepair(false, "no line dated after device now is left in the device buffer")
 				clear(sent)
+				idx = sessionIndex{}
 				continue
 			}
 			// one more read: lines skipped since the previous one
@@ -162,7 +165,15 @@ func (d *Device) reconcileLoop(ctx context.Context, caught <-chan struct{}, out 
 			continue
 		}
 		var missing []*model.Record
-		for _, r := range holes(recs, d.Store) {
+		// lines the dump printed that the stream still holds (pipeline
+		// Delay) are stored before the compare
+		select {
+		case <-time.After(reconcileSettle.Get()):
+		case <-ctx.Done():
+			return
+		}
+		idx.update(d.Store)
+		for _, r := range idx.holes(recs) {
 			if sent[recHash(r)] == 0 {
 				missing = append(missing, r)
 			}
@@ -183,6 +194,10 @@ func (d *Device) reconcileLoop(ctx context.Context, caught <-chan struct{}, out 
 		}
 	}
 }
+
+// reconcileSettle: wait this long after a read before comparing it, so
+// lines the stream delivered meanwhile are stored (pipeline Delay 800 ms).
+var reconcileSettle = newDur(2 * time.Second)
 
 // reconcileSize is how many entries to dump. A skip only hits entries
 // logged after the stream's position, so a read must cover the entries
@@ -237,57 +252,74 @@ func headerHash(r *model.Record) uint64 {
 	return h.Sum64()
 }
 
-// holeWindowStart: the compared stored lines reach back until this many of
-// the first dumped records are among them (the start of the read).
-const holeWindowStart = 20
+// sessionIndex counts the stored lines of the boot session (newest
+// maxResumeHashes at most) by record hash and by header hash, per copy. A
+// repair read can hold any stored line of the session, in any order
+// relative to the store (one buffer can keep boot lines while another
+// rotated many times), so it is compared with all of them (issue #75). The
+// index is built once per repair mode and extended with new seqs, so a
+// read does not rescan the store.
+type sessionIndex struct {
+	first      uint64 // sessionFirst when built
+	next       uint64 // the next seq to add
+	recs, hdrs multiset
+	complete   bool // holds the session's first line
+}
+
+func (x *sessionIndex) add(r *model.Record) {
+	x.recs[recHash(r)]++
+	x.hdrs[headerHash(r)]++
+}
+
+// update brings the index up to the store's newest line.
+func (x *sessionIndex) update(st *store.Store) {
+	sf := sessionFirst(st)
+	last := st.LastSeq()
+	if x.recs == nil || x.first != sf || len(x.recs) > 2*maxResumeHashes {
+		*x = sessionIndex{first: sf, next: last + 1, recs: multiset{}, hdrs: multiset{}}
+		seen := 0
+		st.Scan(sf, last+1, true, func(r *model.Record) bool {
+			if r.Seq == sf+1 {
+				x.complete = true
+			}
+			x.add(r)
+			seen++
+			return seen < maxResumeHashes
+		})
+		return
+	}
+	if last < x.next {
+		return
+	}
+	st.Scan(x.next-1, last+1, false, func(r *model.Record) bool {
+		x.add(r)
+		return true
+	})
+	x.next = last + 1
+}
 
 // holes returns the dumped records that are not stored although records
 // before and after them in buffer order are: the lines the stream
-// skipped. The stored lines compared span the whole read: newest first,
-// back until the first dumped records are covered (or the session start).
-// Records after the last stored one (not streamed yet) are never
-// returned, nor records before the first stored one unless the compared
-// lines reach the session's first line, so nothing is stored twice. Each
-// stored line matches one dumped copy (identical lines count per copy);
-// a stored line with the same header but split or merged differently
-// matches too.
-func holes(recs []*model.Record, st *store.Store) []*model.Record {
-	if len(recs) == 0 {
-		return nil
-	}
-	want := map[uint64]bool{}
-	for _, r := range recs[:min(holeWindowStart, len(recs))] {
-		want[recHash(r)] = true
-	}
-	known, headers := multiset{}, multiset{}
-	seen, extra := 0, 0
-	sf := sessionFirst(st)
-	reachedStart := false
-	st.Scan(sf, st.LastSeq()+1, true, func(r *model.Record) bool {
-		if r.Seq == sf+1 {
-			reachedStart = true
-		}
-		h := recHash(r)
-		known[h]++
-		headers[headerHash(r)]++
-		delete(want, h)
-		if len(want) == 0 {
-			// a few lines past the start of the read: logd interleaves
-			// its buffers, so the stream order differs a little
-			extra++
-		}
-		seen++
-		return seen < maxResumeHashes && extra < 1000
-	})
+// skipped. Each stored line of the session matches one dumped copy
+// (identical lines count per copy); a stored line with the same header but
+// split or merged differently matches too. Records after the last stored
+// one (not streamed yet) are never returned, nor records before the first
+// stored one unless the index holds the session's first line (the session
+// began with the whole device buffer, so a dumped line before the first
+// stored one was skipped too: logd kicked the catch-up read).
+func (x *sessionIndex) holes(recs []*model.Record) []*model.Record {
+	used, usedH := multiset{}, multiset{}
 	present := make([]bool, len(recs))
 	first, last := -1, -1
 	for i, r := range recs {
-		hh := headerHash(r)
-		ok := known.take(recHash(r))
+		h, hh := recHash(r), headerHash(r)
+		ok := used[h] < x.recs[h]
 		if ok {
-			headers.take(hh)
-		} else {
-			ok = headers.take(hh)
+			used[h]++
+		}
+		if usedH[hh] < x.hdrs[hh] {
+			usedH[hh]++
+			ok = true
 		}
 		if ok {
 			present[i] = true
@@ -297,11 +329,7 @@ func holes(recs []*model.Record, st *store.Store) []*model.Record {
 			last = i
 		}
 	}
-	if reachedStart {
-		// the compared lines reach the first line of the boot session
-		// (still stored): the session began with the whole device buffer,
-		// so a dumped line before the first stored one was skipped too
-		// (logd kicked the catch-up read)
+	if x.complete {
 		first = -1
 	}
 	var out []*model.Record
@@ -311,6 +339,13 @@ func holes(recs []*model.Record, st *store.Store) []*model.Record {
 		}
 	}
 	return out
+}
+
+// holes compares recs with all stored lines of the session (tests).
+func holes(recs []*model.Record, st *store.Store) []*model.Record {
+	x := &sessionIndex{}
+	x.update(st)
+	return x.holes(recs)
 }
 
 // setRepair switches the repair mode, logging the change (service log)

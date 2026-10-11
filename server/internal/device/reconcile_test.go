@@ -17,7 +17,8 @@ import (
 
 func fastReconcile(t *testing.T) {
 	reconcileEvery.Set(100 * time.Millisecond)
-	t.Cleanup(func() { reconcileEvery.Set(20 * time.Second) })
+	reconcileSettle.Set(200 * time.Millisecond)
+	t.Cleanup(func() { reconcileEvery.Set(20 * time.Second); reconcileSettle.Set(2 * time.Second) })
 }
 
 func backJumps(st *store.Store) int {
