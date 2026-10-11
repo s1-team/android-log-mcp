@@ -9,6 +9,8 @@ go build -ldflags "-X main.version=0.5.0" ./cmd/android-log-mcp   # 写入版本
 REPLAY_DUMP=1 go test ./internal/mcpserver -run ReplayExplore -v  # 打印 fixture 回放后各工具的完整输出
 ../scripts/e2e-report.sh emulator-5556 [证据目录]          # 真机 / 模拟器上的 report 打码端到端检查（需要 adb）
 ../scripts/service-e2e.sh emulator-5556                  # live check of the background service through the npm launcher
+../scripts/perf.sh [--check|--update|--run]              # performance metrics vs perf/baseline.json (docs/performance.md)
+go test -run '^$' -bench . ./internal/perf               # ad-hoc micro-benchmarks (parser, ingest, filter, tool calls)
 ```
 
 | 包 | 职责 |
@@ -29,5 +31,6 @@ REPLAY_DUMP=1 go test ./internal/mcpserver -run ReplayExplore -v  # 打印 fixtu
 | `internal/compat` | `compat` 子命令：只读探测设备的 logcat / ps / pm / dumpsys 功能，并用录制时的解析器评估 |
 | `internal/redact` | 敏感信息打码规则（`[REDACTED:<类型>#n]`，同值同号，HMAC 随机密钥） |
 | `internal/report` | `report` 子命令：按窗口 / 包名 / 大小裁剪、打码、生成 zip 和 manifest |
+| `internal/perf` | Performance baseline and regression guard (issue #13): result files, comparison rules, synthetic history from the fixtures, CPU calibration; measurements in `perf_test.go` (and `cmd/android-log-mcp/perf_test.go`), `cmd/perfcheck`; run `../scripts/perf.sh`, see [docs/performance.md](../docs/performance.md) |
 | `internal/testdata/api29` | 真实设备 fixture，见其中的 README |
 | `third_party_ref` | AOSP / Android Studio 参考源码（Apache-2.0，不参与编译） |
