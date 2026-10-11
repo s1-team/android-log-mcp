@@ -12,13 +12,57 @@ import (
 	"github.com/s1crab/android-log-mcp/server/internal/store"
 )
 
+// Aux lines carry the host time they were written ("ht"), so retention of
+// the aux files runs on host time like segment retention (#48, #50): a
+// device clock set to 1970 or a year ahead must neither drop fresh entries
+// nor keep old ones. Readers decode into the plain types and ignore "ht".
+type crashAuxLine struct {
+	*analysis.Crash
+	HostNs int64 `json:"ht,omitempty"`
+}
+
+type procLine struct {
+	procs.Proc
+	HostNs int64 `json:"ht,omitempty"`
+}
+
+// seenLine is a dropbox_seen entry: the DropBox entry key "tag|timeNs"
+// (device time, as the device lists it) and the host time it was seen.
+// Older files hold bare JSON strings.
+type seenLine struct {
+	Key    string `json:"k"`
+	HostNs int64  `json:"ht,omitempty"`
+}
+
+func appendProc(st *store.Store, p procs.Proc) {
+	st.AppendAux("procs", procLine{Proc: p, HostNs: time.Now().UnixNano()})
+}
+
+// parseSeen reads a dropbox_seen line in either format.
+func parseSeen(b []byte) (key string, hostNs int64, ok bool) {
+	if len(b) > 0 && b[0] == '{' {
+		var l seenLine
+		if json.Unmarshal(b, &l) != nil || l.Key == "" {
+			return "", 0, false
+		}
+		return l.Key, l.HostNs, true
+	}
+	if json.Unmarshal(b, &key) != nil || key == "" {
+		return "", 0, false
+	}
+	return key, 0, true
+}
+
 // CompactAux trims the append-only auxiliary files of a device directory
 // (writer only) and returns the bytes saved:
 //   - procs.jsonl and crashes.jsonl keep only the newest version of each
 //     entry (the readers already use "last version wins"), in the order the
 //     entries first appeared, so LoadProcs / LoadCrashes return the same;
-//   - ended processes, crashes and dropbox_seen keys older than the
-//     retention window (Config.MaxAge, ANDROID_LOG_MCP_MAX_AGE) are dropped.
+//   - ended processes, crashes and dropbox_seen keys whose newest version
+//     was written longer ago than the retention window (Config.MaxAge,
+//     ANDROID_LOG_MCP_MAX_AGE) are dropped. "Ago" is host time (now is the
+//     host clock); entries written before host times were stored fall back
+//     to their device time.
 //
 // Leftover *.tmp files from interrupted rewrites are removed too.
 func CompactAux(st *store.Store, now time.Time) int64 {
@@ -32,33 +76,46 @@ func CompactAux(st *store.Store, now time.Time) int64 {
 
 	add(st.CompactAux("procs", func(lines [][]byte) [][]byte {
 		return lastVersions(lines, func(b []byte) (string, bool) {
-			var p procs.Proc
-			if json.Unmarshal(b, &p) != nil {
+			var l procLine
+			if json.Unmarshal(b, &l) != nil {
 				return "", false
 			}
+			p := l.Proc
 			k := p.ID
 			if k == "" {
 				k = fmt.Sprintf("%s|%d|%d|%s", p.Boot, p.PID, p.StartNs, p.Name)
 			}
-			return k, !(p.EndNs > 0 && p.EndNs < ageCut)
+			if p.EndNs <= 0 {
+				return k, true // alive
+			}
+			if l.HostNs > 0 {
+				return k, l.HostNs >= ageCut
+			}
+			return k, p.EndNs >= ageCut // legacy line
 		})
 	}))
 	add(st.CompactAux("crashes", func(lines [][]byte) [][]byte {
 		return lastVersions(lines, func(b []byte) (string, bool) {
-			var c analysis.Crash
-			if json.Unmarshal(b, &c) != nil || c.ID == "" {
+			l := crashAuxLine{Crash: new(analysis.Crash)}
+			if json.Unmarshal(b, &l) != nil || l.ID == "" {
 				return "", false
 			}
-			return c.ID, c.TimeNs == 0 || c.TimeNs >= ageCut
+			if l.HostNs > 0 {
+				return l.ID, l.HostNs >= ageCut
+			}
+			return l.ID, l.TimeNs == 0 || l.TimeNs >= ageCut // legacy line
 		})
 	}))
 	add(st.CompactAux("dropbox_seen", func(lines [][]byte) [][]byte {
 		return lastVersions(lines, func(b []byte) (string, bool) {
-			var key string // "tag|timeNs"
-			if json.Unmarshal(b, &key) != nil {
+			key, host, ok := parseSeen(b)
+			if !ok {
 				return "", false
 			}
-			if i := strings.LastIndexByte(key, '|'); i >= 0 {
+			if host > 0 {
+				return key, host >= ageCut
+			}
+			if i := strings.LastIndexByte(key, '|'); i >= 0 { // legacy line
 				if ns, err := strconv.ParseInt(key[i+1:], 10, 64); err == nil && ns < ageCut {
 					return key, false
 				}

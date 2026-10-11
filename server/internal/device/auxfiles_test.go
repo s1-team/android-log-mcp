@@ -213,3 +213,66 @@ func TestApplyDropboxSkipsEntriesOutsideRetention(t *testing.T) {
 		st.Close()
 	}
 }
+
+// Aux retention runs on host time (#48, #50): a device clock reset to 1970
+// must not drop fresh entries, and one set a year ahead must not keep old
+// ones. Lines written before host times were stored keep the old rule.
+func TestCompactAuxUsesHostTime(t *testing.T) {
+	st, err := store.Open(t.TempDir(), "d", store.Config{MaxAge: 24 * time.Hour, IdleRelease: -1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	p := NewPipeline(st, "b1", time.UTC)
+	epoch := int64(3605e9)                                   // device clock 1970-01-01 01:00:05
+	ahead := time.Now().Add(365 * 24 * time.Hour).UnixNano() // device clock a year ahead
+	p.EmitCrash(&analysis.Crash{Kind: "java", Boot: "b1", TimeNs: epoch, PID: 10, Headline: "fresh crash on a 1970 device clock"})
+	p.EmitCrash(&analysis.Crash{Kind: "java", Boot: "b1", TimeNs: ahead, PID: 11, Headline: "crash a year ahead"})
+	appendProc(st, procs.Proc{ID: "p1", Boot: "b1", PID: 10, Name: "com.a", StartNs: epoch - 1e9, EndNs: epoch, Source: "am_proc_start"})
+	st.AppendAux("dropbox_seen", seenLine{Key: "data_app_crash|" + fmt.Sprint(epoch), HostNs: time.Now().UnixNano()})
+	// legacy lines (no host time): device-time rule as before
+	st.AppendAux("crashes", &analysis.Crash{ID: "cr99", Kind: "java", Boot: "b1", TimeNs: epoch, PID: 12, Headline: "legacy"})
+	st.AppendAux("dropbox_seen", json.RawMessage(fmt.Sprintf("%q", "data_app_anr|"+fmt.Sprint(epoch))))
+
+	CompactAux(st, time.Now())
+	var heads []string
+	for _, c := range LoadCrashes(st) {
+		heads = append(heads, c.Headline)
+	}
+	if len(heads) != 2 {
+		t.Fatalf("after compaction now: crashes %v, want the 1970 and the year-ahead crash (legacy one dropped)", heads)
+	}
+	if n := len(LoadProcs(st)); n != 1 {
+		t.Fatalf("ended 1970 process dropped: %d procs", n)
+	}
+	seen := st.ReadAux("dropbox_seen")
+	if len(seen) != 1 {
+		t.Fatalf("dropbox_seen %q, want only the host-stamped key", seen)
+	}
+	if k, _, ok := parseSeen(seen[0]); !ok || k != "data_app_crash|"+fmt.Sprint(epoch) {
+		t.Fatalf("dropbox_seen key %q", seen[0])
+	}
+	// a day and a bit later in host time everything ages out, also the
+	// crash dated a year ahead
+	CompactAux(st, time.Now().Add(25*time.Hour))
+	if c := LoadCrashes(st); len(c) != 0 {
+		t.Fatalf("crashes kept by device time: %d", len(c))
+	}
+	if n := len(LoadProcs(st)); n != 0 {
+		t.Fatalf("ended procs kept: %d", n)
+	}
+	if n := len(st.ReadAux("dropbox_seen")); n != 0 {
+		t.Fatalf("dropbox_seen kept: %d", n)
+	}
+}
+
+// ApplyDropbox reads dropbox_seen in both formats: a key seen before the
+// upgrade (bare JSON string) is not imported again.
+func TestDropboxSeenBothFormats(t *testing.T) {
+	for _, legacy := range []bool{true, false} {
+		k, h, ok := parseSeen([]byte(map[bool]string{true: `"data_app_crash|123"`, false: `{"k":"data_app_crash|123","ht":5}`}[legacy]))
+		if !ok || k != "data_app_crash|123" || (h != 0) != !legacy {
+			t.Fatalf("legacy=%v: %q %d %v", legacy, k, h, ok)
+		}
+	}
+}
