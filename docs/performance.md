@@ -8,10 +8,11 @@ Issue #13. This document explains which numbers we track, why they matter to AI 
 scripts/perf.sh            # measure and compare with perf/baseline.json (exit 1 on a regression)
 scripts/perf.sh --run      # measure only and print every metric as a table
 scripts/perf.sh --update   # measure and record a new perf/baseline.json
+scripts/perf.sh --pr …     # the same with the small pull-request history against perf/baseline-pr.json
 cd server && go test -run '^$' -bench . ./internal/perf    # ad-hoc micro-benchmarks
 ```
 
-A full run takes about 2–3 minutes. Everything runs in temporary directories with the fake adb (`internal/fakeadb`) and an isolated per-user cache dir. It never touches the real data root, control dir, background service, adb server or a device. `go test ./...` is not slowed down: the measurements skip unless `ALM_PERF_OUT` is set, which `scripts/perf.sh` does.
+A full run takes about 2–3 minutes. Everything runs in temporary directories with the fake adb (`internal/fakeadb`) and an isolated per-user cache dir. It never touches the real data root, control dir, service process, adb server or a device. `go test ./...` is not slowed down: the measurements skip unless `ALM_PERF_OUT` is set, which `scripts/perf.sh` does.
 
 ## What is measured, and why
 
@@ -51,14 +52,16 @@ Clear improvements are listed as `improved`. A metric not in the baseline is lis
 
 ## CI
 
-The `perf` job in `.github/workflows/ci.yml` (ubuntu-latest) runs `scripts/perf.sh --check` and uploads the result files as the `perf-results` artifact (`merged.json`, `table.md`). Only Linux is guarded, because RSS comes from `/proc`. The deterministic metrics would be the same elsewhere. The test files still compile, and skip, on all three OSes.
+The `perf` job in `.github/workflows/ci.yml` (ubuntu-latest) runs `scripts/perf.sh --check` on pushes to `main` and nightly, and `scripts/perf.sh --check --pr` on pull requests (issue #25), and uploads the result files as the `perf-results` artifact (`merged.json`, `table.md`). Only Linux is guarded, because RSS comes from `/proc`. The deterministic metrics would be the same elsewhere. The test files still compile, and skip, on all three OSes.
+
+`--pr` builds a smaller synthetic history (`ALM_PERF_COPIES=20`, about 151k lines instead of about 604k) so the job takes about a minute. Query latency and the history-averaged ingest metrics depend on the history size, so it has its own baseline, [`perf/baseline-pr.json`](../perf/baseline-pr.json). The fixture-based metrics (allocations, output bytes per call) do not depend on the size and are guarded the same way in both.
 
 ## Updating the baseline
 
 Re-record the baseline when a change intentionally moves a metric: a richer output, a new metric, a deliberate trade-off, or an optimisation you want to lock in.
 
-1. Run `scripts/perf.sh --update` on a quiet machine. For timing-heavy changes, run it twice and keep the second run. Or download `merged.json` from the CI `perf-results` artifact and copy it over `perf/baseline.json`.
-2. Review `git diff perf/baseline.json`. Every changed exact / allocs value should be explained by the change.
+1. Run `scripts/perf.sh --update && scripts/perf.sh --update --pr` on a quiet machine: always re-record both baselines together. For timing-heavy changes, run it twice and keep the second run. Or download `merged.json` from the CI `perf-results` artifact and copy it over `perf/baseline.json` (a pull request's artifact is the small size: copy it over `perf/baseline-pr.json`).
+2. Review `git diff perf/`. Every changed exact / allocs value should be explained by the change.
 3. Commit it in the same PR, with the reason in the commit message or PR body. Update the numbers below if a core metric moved.
 
 ## Current numbers
@@ -150,8 +153,8 @@ Recorded 2026-10-11 on the dev box: linux/amd64, Intel Xeon, 8 vCPUs shared with
   - 内存 +50% 且 +16 MiB 才算回归；
   - 另有与机器无关的绝对预算（如查询 < 3.5 s、历史缓存 ≤ 32 MiB）；
   - 失败时会自动重测一次，以排除噪声。
-- **CI**：`perf` job（ubuntu）运行 `scripts/perf.sh --check`，结果作为 artifact 上传。
-- **更新基线**：有意改变指标时运行 `scripts/perf.sh --update`（或用 CI artifact 里的 `merged.json`），在同一个 PR 里提交并说明原因。
+- **CI**：`perf` job（ubuntu）在 main 推送和每晚运行 `scripts/perf.sh --check`（完整规模），在 PR 上运行 `scripts/perf.sh --check --pr`（20 份数据，对比 `perf/baseline-pr.json`），结果作为 artifact 上传。
+- **更新基线**：有意改变指标时运行 `scripts/perf.sh --update && scripts/perf.sh --update --pr`（两个基线一起更新）（或用 CI artifact 里的 `merged.json`），在同一个 PR 里提交并说明原因。
 - **发现的问题**：
   1. 历史一大，不带时间范围的搜索都要约 1.5 s：为了统计匹配总数，会一直扫到计数预算用完；
   2. `age:` 和旧时间窗不会让扫描提前结束；
