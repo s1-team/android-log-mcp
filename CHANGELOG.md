@@ -31,6 +31,7 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 - `logcat_status` / `service status`: the global `linger:` line no longer says "(not measured yet)"; it states the rule, each recorded device shows its own value.
 - Recording resumes without losing or duplicating lines after the device clock went back (e.g. an emulator snapshot restore): the buffer is read without `-T` and already stored lines are skipped; `logcat_status` reports it.
+- A log tool call (or `report`) that arrived while its device was being stopped for idleness could answer from the stored data alone: no new lines, no backfill note, and `logcat_status` returned a cursor from before the stop ([#15](https://github.com/s1crab/android-log-mcp/issues/15); seen on Windows CI). Such a call now waits (within the same 10 s) until the device is recorded again; otherwise it says "backfill in progress (recording is restarting …)" and `logcat_status` returns no cursor. An idle stop re-checks under its lock that no call used the device in the meantime and is skipped if one did. A device restarted within 30 s of its identity probe no longer reuses that probe's clock reading: each saved probe is used once, and its clock is advanced by its age.
 
 ## [0.4.1] - 2026-10-10
 

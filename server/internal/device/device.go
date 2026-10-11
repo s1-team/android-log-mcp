@@ -335,7 +335,9 @@ func (d *Device) probe(ctx context.Context) error {
 	p := d.preProbe
 	d.preProbe = nil
 	d.mu.Unlock()
+	reused := true
 	if p == nil || time.Since(p.T1) > probeReuse.Get() || p.Props["boot_id"] == "" {
+		reused = false
 		t0 := time.Now()
 		out, err := d.adb.Shell(ctx, d.Addr(), 15*time.Second, probeCmd(false))
 		t1 := time.Now()
@@ -351,6 +353,12 @@ func (d *Device) probe(ctx context.Context) error {
 	tz, zone := pr["persist.sys.timezone"], pr["zone"]
 	d.applyTZ(tz, zone)
 	if now, coarse, mid, ok := p.Clock(); ok {
+		if reused {
+			// the saved probe is up to probeReuse old: its device clock
+			// reading would be stale (rollback check, liveFrom; issue #15)
+			now = now.Add(time.Since(mid))
+			mid = time.Now()
+		}
 		est := now
 		if coarse {
 			// date +%s truncates: add 0.5 s to center the estimate.
@@ -1032,4 +1040,12 @@ func parseDate(s string) (time.Time, bool, bool) {
 		return time.Unix(sec, ns), false, true
 	}
 	return time.Unix(sec, 0), true, true
+}
+
+// started reports whether this process records the device and its
+// recorder session runs (setState started it; catch-up began then).
+func (d *Device) started() bool {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.owned && d.cancel != nil
 }

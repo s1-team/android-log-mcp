@@ -118,38 +118,44 @@ func (t *Tools) target(name string) (id string, d *device.Device, err error) {
 
 // use resolves the device of a log-tool call and starts recording it (a
 // call refreshes its idle timer and keeps it busy until done is called).
-// A device that is not connected only serves its stored data.
-func (t *Tools) use(name string) (d *device.Device, done func(), err error) {
+// A device that is not connected only serves its stored data. It waits
+// (within the 10 s budget from start) until a started device actually
+// records: a call during an idle stop must not be answered from the old
+// read-only device (issue #15); starting reports that it still did not.
+func (t *Tools) use(name string, start time.Time) (d *device.Device, done func(), starting bool, err error) {
 	done = func() {}
 	id, sd, err := t.target(name)
 	if err != nil || id == "" {
-		return sd, done, err
+		return sd, done, false, err
 	}
 	if err := t.M.Want(id, true); err != nil {
 		var me *device.ErrMaxDevices
 		if errors.As(err, &me) {
-			return nil, done, errf("%v", err)
+			return nil, done, false, errf("%v", err)
 		}
-		return nil, done, errf("starting %s: %v", id, err)
+		return nil, done, false, errf("starting %s: %v", id, err)
 	}
 	done = t.M.Begin(id)
-	d = t.M.Get(id)
+	d, ok := t.M.WaitRecording(context.Background(), id, waitLeft(start))
 	if d == nil {
 		done()
-		return nil, func() {}, errf("device %s is connected but could not be opened for recording; see logcat_status", id)
+		return nil, func() {}, false, errf("device %s is connected but could not be opened for recording; see logcat_status", id)
 	}
-	return d, done, nil
+	return d, done, !ok, nil
 }
 
 // useAndWait is use plus the catch-up wait (§5): it returns the device
 // and a backfill note ("" when caught up).
 func (t *Tools) useAndWait(ctx context.Context, name string) (*device.Device, func(), string, error) {
 	start := time.Now()
-	d, done, err := t.use(name)
+	d, done, starting, err := t.use(name, start)
 	if err != nil {
 		return nil, done, "", err
 	}
-	p := d.WaitCaughtUp(ctx, waitLeft(start))
+	p := device.StartingProgress()
+	if !starting {
+		p = d.WaitCaughtUp(ctx, waitLeft(start))
+	}
 	if !p.Pending {
 		return d, done, "", nil
 	}

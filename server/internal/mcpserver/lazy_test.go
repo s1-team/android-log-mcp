@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,6 +22,8 @@ type lazyEnv struct {
 	m     *device.Manager
 	tools *Tools
 	pins  *fakePins
+	// linger is the idle linger (default 1 min); tests may change it
+	linger *atomic.Int64
 }
 
 type fakePins struct {
@@ -82,13 +85,15 @@ func newLazy(t *testing.T, buffered int, serials ...string) *lazyEnv {
 	m := device.NewManager(t.TempDir(), store.Config{})
 	m.Lazy = true
 	m.IdleTick = 20 * time.Millisecond
-	m.Linger = func(*device.Device) time.Duration { return time.Minute }
+	linger := new(atomic.Int64)
+	linger.Store(int64(time.Minute))
+	m.Linger = func(*device.Device) time.Duration { return time.Duration(linger.Load()) }
 	pins := &fakePins{until: map[string]time.Time{}}
 	m.PinnedUntil = pins.Until
 	ctx, cancel := context.WithCancel(context.Background())
 	m.Start(ctx)
 	t.Cleanup(func() { cancel(); m.Close() })
-	return &lazyEnv{e: e, m: m, tools: &Tools{M: m, Pins: pins}, pins: pins}
+	return &lazyEnv{e: e, m: m, tools: &Tools{M: m, Pins: pins}, pins: pins, linger: linger}
 }
 
 func (l *lazyEnv) call(t *testing.T, name, args string) (string, bool) {
