@@ -48,7 +48,9 @@ func TestCloseWaitsForSideWorkAdb(t *testing.T) {
 	cancel()
 	m.Close()
 	took := time.Since(t0)
-	if pids := e.Running(); len(pids) > 0 {
+	// Strict: only a killed process that is already exiting gets a short
+	// grace to become a zombie (#61); anything else still running fails.
+	if pids := e.RunningSettled(200 * time.Millisecond); len(pids) > 0 {
 		t.Fatalf("Close returned after %s with fake adb processes still running: %v", took, pids)
 	}
 	if took > bgStopWait.Get()+3*time.Second {
