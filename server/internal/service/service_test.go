@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -23,9 +24,16 @@ func testControl(t *testing.T) Control {
 	return Control{Dir: filepath.Join(d, "c")}
 }
 
-func startTest(t *testing.T, ctrl Control, version string) *Service {
+// startTest starts a service in ctrl; opts adjust its Options (exitAfter,
+// lingerEnv, the adb of installFake) instead of package globals or the
+// process environment, so tests can run in parallel (#26).
+func startTest(t *testing.T, ctrl Control, version string, opts ...func(*Options)) *Service {
 	t.Helper()
-	s, err := Start(Options{Control: ctrl, Version: version, Drain: time.Second})
+	o := Options{Control: ctrl, Version: version, Drain: time.Second}
+	for _, f := range opts {
+		f(&o)
+	}
+	s, err := Start(o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,6 +42,7 @@ func startTest(t *testing.T, ctrl Control, version string) *Service {
 }
 
 func TestServiceSingleInstanceAndOps(t *testing.T) {
+	t.Parallel()
 	ctrl := testControl(t)
 	s := startTest(t, ctrl, "0.4.0")
 	if _, err := Start(Options{Control: ctrl, Version: "0.4.0"}); !errors.Is(err, ErrRunning) {
@@ -99,6 +108,7 @@ func TestServiceSingleInstanceAndOps(t *testing.T) {
 }
 
 func TestHandoffOnlyToNewer(t *testing.T) {
+	t.Parallel()
 	ctrl := testControl(t)
 	s := startTest(t, ctrl, "0.4.0")
 	for _, v := range []string{"0.4.0", "0.3.9", "0.4.0-rc.1"} {
@@ -127,6 +137,7 @@ func TestHandoffOnlyToNewer(t *testing.T) {
 }
 
 func TestCompareVersions(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		a, b string
 		want int
@@ -145,6 +156,7 @@ func TestCompareVersions(t *testing.T) {
 }
 
 func TestLogFileRotation(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	l, err := OpenLog(root)
 	if err != nil {
@@ -168,6 +180,7 @@ func TestLogFileRotation(t *testing.T) {
 }
 
 func TestLingerFor(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		span time.Duration
 		env  string
@@ -192,23 +205,44 @@ func TestLingerFor(t *testing.T) {
 	}
 	// the global line names the rule, not a value for an unmeasured span
 	for _, env := range []string{"", "bogus"} {
-		t.Setenv(LingerEnv, env)
-		if txt := lingerText(); strings.Contains(txt, "not measured") || !strings.Contains(txt, "max(10m0s, 2 × the device's log buffer span), at most 1h0m0s") {
+		s := &Service{}
+		lingerEnv(env)(&s.opt)
+		if txt := s.lingerText(); strings.Contains(txt, "not measured") || !strings.Contains(txt, "max(10m0s, 2 × the device's log buffer span), at most 1h0m0s") {
 			t.Errorf("%q: %q", env, txt)
 		}
 	}
-	t.Setenv(LingerEnv, "30m")
-	if txt := lingerText(); !strings.HasSuffix(txt, "30m0s ("+LingerEnv+")") {
+	s := &Service{}
+	lingerEnv("30m")(&s.opt)
+	if txt := s.lingerText(); !strings.HasSuffix(txt, "30m0s ("+LingerEnv+")") {
 		t.Errorf("%q", txt)
 	}
 }
 
-// shortExit makes the service exit quickly when unused (tests).
-func shortExit(t *testing.T, grace time.Duration) {
-	t.Helper()
-	og, ot := ExitGrace, exitTick
-	ExitGrace, exitTick = grace, 20*time.Millisecond
-	t.Cleanup(func() { ExitGrace, exitTick = og, ot })
+// exitAfter makes the service exit quickly when unused (tests).
+func exitAfter(grace time.Duration) func(*Options) {
+	return func(o *Options) { o.ExitGrace, o.ExitTick = grace, 20*time.Millisecond }
+}
+
+// lingerVal is an ANDROID_LOG_MCP_LINGER value a test can change while the
+// service runs (Options.Getenv).
+type lingerVal struct{ v atomic.Value }
+
+func (l *lingerVal) Set(s string) { l.v.Store(s) }
+
+func (l *lingerVal) opt(o *Options) {
+	o.Getenv = func(k string) string {
+		if k != LingerEnv {
+			return os.Getenv(k)
+		}
+		s, _ := l.v.Load().(string)
+		return s
+	}
+}
+
+func lingerEnv(s string) func(*Options) {
+	l := &lingerVal{}
+	l.Set(s)
+	return l.opt
 }
 
 // Issue #11 §6: the service never exits while clients are connected (an
@@ -216,10 +250,9 @@ func shortExit(t *testing.T, grace time.Duration) {
 // no clients, no pin and no recorded device; ANDROID_LOG_MCP_LINGER only
 // concerns devices.
 func TestServiceLifetime(t *testing.T) {
-	t.Setenv(LingerEnv, "0")
-	shortExit(t, 500*time.Millisecond)
+	t.Parallel()
 	ctrl := testControl(t)
-	s := startTest(t, ctrl, "0.5.0")
+	s := startTest(t, ctrl, "0.5.0", lingerEnv("0"), exitAfter(500*time.Millisecond))
 	time.Sleep(200 * time.Millisecond)
 	select {
 	case <-s.Done():
@@ -257,7 +290,7 @@ func TestServiceLifetime(t *testing.T) {
 		t.Fatal("did not stop after the last client")
 	}
 	// and without any client it stops after the grace
-	s2 := startTest(t, ctrl, "0.5.0")
+	s2 := startTest(t, ctrl, "0.5.0", lingerEnv("0"), exitAfter(500*time.Millisecond))
 	select {
 	case <-s2.Done():
 	case <-time.After(5 * time.Second):
@@ -268,7 +301,7 @@ func TestServiceLifetime(t *testing.T) {
 // An active pin keeps the service alive with no clients; once it ends the
 // service exits.
 func TestPinKeepsServiceAlive(t *testing.T) {
-	shortExit(t, 300*time.Millisecond)
+	t.Parallel()
 	ctrl := testControl(t)
 	if err := os.MkdirAll(ctrl.Run(), 0o700); err != nil {
 		t.Fatal(err)
@@ -277,7 +310,7 @@ func TestPinKeepsServiceAlive(t *testing.T) {
 	if err := WritePins(ctrl, pf); err != nil {
 		t.Fatal(err)
 	}
-	s := startTest(t, ctrl, "0.5.0")
+	s := startTest(t, ctrl, "0.5.0", exitAfter(300*time.Millisecond))
 	time.Sleep(time.Second)
 	select {
 	case <-s.Done():
@@ -297,10 +330,9 @@ func TestPinKeepsServiceAlive(t *testing.T) {
 // Polling `service status` (role "cli") does not keep an unused service
 // alive.
 func TestStatusPollingDoesNotKeepAlive(t *testing.T) {
-	t.Setenv(LingerEnv, "0")
-	shortExit(t, time.Second)
+	t.Parallel()
 	ctrl := testControl(t)
-	s := startTest(t, ctrl, "0.5.0")
+	s := startTest(t, ctrl, "0.5.0", lingerEnv("0"), exitAfter(time.Second))
 	for end := time.Now().Add(10 * time.Second); time.Now().Before(end); time.Sleep(200 * time.Millisecond) {
 		select {
 		case <-s.Done():

@@ -47,6 +47,14 @@ type Options struct {
 	// CatchUpWait overrides the log-tool catch-up wait; 0 = the default
 	// (tests shorten it per service, #26).
 	CatchUpWait time.Duration
+	// ExitGrace and ExitTick override the package defaults ExitGrace and
+	// exitTick when > 0 (tests, #26).
+	ExitGrace, ExitTick time.Duration
+	// Getenv reads the service's environment settings (ANDROID_LOG_MCP_LINGER);
+	// nil = os.Getenv. Tests pass their own instead of t.Setenv (#26).
+	Getenv func(string) string
+	// ADBPath is the adb binary for the device manager; "" = device.FindADB.
+	ADBPath string
 }
 
 // Service is a running service.
@@ -209,6 +217,12 @@ func Start(opt Options) (*Service, error) {
 		return nil, ErrRunning
 	}
 	s := &Service{opt: opt, lock: lock, started: time.Now(), stopping: make(chan struct{}), done: make(chan struct{}), exitGrace: ExitGrace, exitTick: exitTick}
+	if opt.ExitGrace > 0 {
+		s.exitGrace = opt.ExitGrace
+	}
+	if opt.ExitTick > 0 {
+		s.exitTick = opt.ExitTick
+	}
 	s.exe, _ = os.Executable()
 	root := opt.Root
 	if root == "" {
@@ -253,7 +267,10 @@ func (s *Service) startManager(root string) {
 	}
 	// lazy recording (issue #11): no adb until a log tool call or a pin
 	m.Lazy = true
-	m.Linger = deviceLinger
+	m.Linger = s.deviceLinger
+	if s.opt.ADBPath != "" {
+		m.ADBPath = s.opt.ADBPath
+	}
 	m.PinnedUntil = s.pinUntil
 	if s.opt.CatchUpWait > 0 {
 		m.CatchUpWait = s.opt.CatchUpWait
@@ -348,7 +365,7 @@ func (s *Service) Info() Info {
 	if s.opt.Log != nil {
 		i.Log = s.opt.Log.Path()
 	}
-	i.Linger = lingerText()
+	i.Linger = s.lingerText()
 	i.Lifetime = s.lifeText()
 	i.Recording, i.Devices = s.recordingText()
 	i.Pins = s.pinTexts()

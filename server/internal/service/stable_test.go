@@ -12,6 +12,7 @@ import (
 )
 
 func TestStableExeOutsideDataRoot(t *testing.T) {
+	t.Parallel()
 	c := DefaultControl()
 	if got, want := c.StableExe(), filepath.Join(layout.DefaultDir(), "exe", exeName()); got != want {
 		t.Fatalf("StableExe = %s, want %s", got, want)
@@ -25,6 +26,7 @@ func TestStableExeOutsideDataRoot(t *testing.T) {
 // aside), and the next install removes the renamed copy: bounded to one
 // binary plus at most one leftover.
 func TestInstallFileReplacesRunningCopy(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	dst := filepath.Join(dir, "exe", exeName())
 	if _, up, err := installFile(os.Args[0], dst); err != nil || !up {

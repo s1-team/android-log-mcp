@@ -43,12 +43,20 @@ func lingerFor(span time.Duration, env string) (time.Duration, string) {
 	return d, fmt.Sprintf("%s (default: max(%s, 2 × the device's log buffer span %s), at most %s)", d, LingerMin, span.Round(time.Second), LingerMax)
 }
 
-func deviceLinger(d *device.Device) time.Duration {
+// getenv reads a setting of the service's environment (Options.Getenv).
+func (s *Service) getenv(k string) string {
+	if s.opt.Getenv != nil {
+		return s.opt.Getenv(k)
+	}
+	return os.Getenv(k)
+}
+
+func (s *Service) deviceLinger(d *device.Device) time.Duration {
 	var span time.Duration
 	if d != nil {
 		span = d.ReplaySpan()
 	}
-	l, _ := lingerFor(span, os.Getenv(LingerEnv))
+	l, _ := lingerFor(span, s.getenv(LingerEnv))
 	return l
 }
 
@@ -138,8 +146,8 @@ func (s *Service) lifeText() string {
 }
 
 // lingerText describes the per-device idle time.
-func lingerText() string {
-	d, how := lingerFor(0, os.Getenv(LingerEnv))
+func (s *Service) lingerText() string {
+	d, how := lingerFor(0, s.getenv(LingerEnv))
 	if d < 0 {
 		return "per device: " + how + " (devices never stop by themselves)"
 	}
