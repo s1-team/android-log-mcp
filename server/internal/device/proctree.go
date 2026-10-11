@@ -30,7 +30,9 @@ func isADBName(name string) bool {
 
 // descendants of root in procs, parents before children, without adb
 // processes and their subtrees; child(parent, pid) confirms a parent link
-// (Windows: pids are reused and parent ids are never updated).
+// (Windows: pids are reused and parent ids are never updated). Skipping by
+// name is what keeps the adb server alive: it is the only adb process an
+// adb client starts; everything else below our adb child is ours to kill.
 func descendants(root int, procs []procEntry, child func(parent, pid int) bool) []int {
 	kids := map[int][]procEntry{}
 	for _, p := range procs {
@@ -59,6 +61,12 @@ func descendants(root int, procs []procEntry, child func(parent, pid int) bool) 
 // killTree kills p and its descendants (except adb servers). The tree is
 // read before p dies (its orphans would be re-parented). Errors listing
 // the tree only leave the descendants alive; p is killed regardless.
+//
+// Not a process group or a Windows job object: the adb server started by
+// one of our adb clients would be in that group (unix: it can stay in our
+// process group) or in the job (Windows), and killing the group or the job
+// would kill the server too. Pids are killed one by one instead, after the
+// walk above has excluded every adb process (see docs/design-v3.md §11.4).
 func killTree(p *os.Process) error {
 	var desc []int
 	if procs, err := listProcs(); err == nil {

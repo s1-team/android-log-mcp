@@ -26,6 +26,9 @@ func listProcs() ([]procEntry, error) {
 
 // isChild confirms that pid was started after parent: Windows keeps the
 // parent id of an orphan, and the id may belong to a newer process by now.
+// Without this check a reused pid could make an unrelated process look
+// like a descendant of our adb child, and it would be killed. A process
+// whose start time cannot be read is not taken for a child (not killed).
 func isChild(parent, pid int) bool {
 	pc, ok := created(parent)
 	if !ok {
