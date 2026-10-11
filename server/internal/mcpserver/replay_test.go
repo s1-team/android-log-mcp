@@ -431,7 +431,8 @@ func TestReplayProcesses(t *testing.T) {
 		"pid 7815 com.example.logtest (since")
 	dump(t, out)
 	// 7765 = debuggerd's short-lived fork of the crashing 7736 (same name, no am_proc_start)
-	notContains(t, out, "<pre-initialized>", "pid reused", "crash_dump64", "before recording", "7765", "7763")
+	// pid N (not a bare number: the store path names a random temp dir)
+	notContains(t, out, "<pre-initialized>", "pid reused", "crash_dump64", "before recording", "pid 7765", "pid 7763")
 	if regexp.MustCompile(`running[^\n]*(7765|6713|7763)`).MatchString(out) {
 		t.Errorf("dead/helper pid listed as running:\n%s", out)
 	}
