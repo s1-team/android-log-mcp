@@ -17,7 +17,7 @@ import (
 // testManager records into base.
 func testManager(t *testing.T, base string) *Manager {
 	t.Helper()
-	m := NewManager(base, store.Config{IdleRelease: -1})
+	m := newTestManager(t, base, store.Config{IdleRelease: -1})
 	m.ctx = context.Background()
 	m.Version = "test"
 	m.Root.Ensure()
@@ -38,6 +38,7 @@ func recs(n int, t0 int64, boot string) []*model.Record {
 // is not written: the device is attached but not recorded, and status can
 // name that process.
 func TestWriterLockHeldElsewhereIsNotRecorded(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	id := Identity{ID: "avd-a", Source: "avd_name", Addr: "emulator-5554", BootID: "b1"}
 	other, err := store.OpenDir(layout.DeviceDir(root, "avd-a"), "avd-a", store.Config{IdleRelease: -1}, true)
@@ -70,7 +71,8 @@ func TestWriterLockHeldElsewhereIsNotRecorded(t *testing.T) {
 // The default root (os.UserCacheDir()/android-log-mcp, redirected to a temp
 // dir by TestMain) records.
 func TestDefaultRootRecords(t *testing.T) {
-	m := NewManager(layout.DefaultDir(), store.Config{IdleRelease: -1})
+	// serial: records into the shared default root of the test home
+	m := newTestManager(t, layout.DefaultDir(), store.Config{IdleRelease: -1})
 	m.ctx = context.Background()
 	m.Version = "test"
 	m.Root.Ensure()
@@ -108,6 +110,7 @@ func snapshot(t *testing.T, dirs ...string) map[string]string {
 // migrated or created, not even for expired data, over-cap data, old
 // layouts.
 func TestOfflineNeverWrites(t *testing.T) {
+	t.Parallel()
 	ds := filepath.Join(t.TempDir(), "store")
 	st, err := store.OpenDir(layout.DeviceDir(ds, "avd-r"), "avd-r", store.Config{IdleRelease: -1}, true)
 	if err != nil {
@@ -121,7 +124,7 @@ func TestOfflineNeverWrites(t *testing.T) {
 	os.WriteFile(filepath.Join(ds, "emulator-5554", "meta.json"), []byte(`{"serial":"emulator-5554"}`), 0o644)
 	before := snapshot(t, ds)
 
-	m := NewManager(ds, store.Config{IdleRelease: -1, MaxAge: time.Hour})
+	m := newTestManager(t, ds, store.Config{IdleRelease: -1, MaxAge: time.Hour})
 	m.NoADB = true
 	m.MaxTotalBytes = 1
 	ctx, cancel := context.WithCancel(context.Background())
@@ -147,6 +150,7 @@ func TestOfflineNeverWrites(t *testing.T) {
 // Old layouts (pre-0.4 flat <serial>/ dirs, legacy/, android-log-mcp.*
 // siblings) are ignored: not read, not migrated, not deleted.
 func TestOldLayoutIgnored(t *testing.T) {
+	t.Parallel()
 	parent := t.TempDir()
 	root := filepath.Join(parent, "android-log-mcp")
 	flat := filepath.Join(root, "emulator-5556")
@@ -184,6 +188,7 @@ func TestOldLayoutIgnored(t *testing.T) {
 // Same ID on two connected devices with different boots (e.g. one AVD
 // launched twice with -read-only): never one directory.
 func TestIDCollisionGetsOwnDirectory(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	m := testManager(t, root)
 	m.states = map[string]string{"emulator-5554": "device", "emulator-5556": "device"}
@@ -210,6 +215,7 @@ func TestIDCollisionGetsOwnDirectory(t *testing.T) {
 
 // The same device over USB and Wi-Fi at once (same boot) is one device.
 func TestSameDeviceTwoTransportsIsNotACollision(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	m := testManager(t, root)
 	m.states = map[string]string{"R58M123ABCD": "device", "192.168.1.20:5555": "device"}
@@ -223,6 +229,7 @@ func TestSameDeviceTwoTransportsIsNotACollision(t *testing.T) {
 // A reboot (new boot id) or a reconnect on another port after the old
 // address went away is the same device, not a collision.
 func TestRebootOrReconnectIsNotACollision(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	m := testManager(t, root)
 	m.states = map[string]string{"emulator-5554": "device"}

@@ -27,6 +27,7 @@ func countMsg(st *store.Store, msg string) int {
 // A whole-buffer resume after a clock jump compares with every stored line
 // of the session, not the newest 1.5 × the buffer's entries.
 func TestWholeResumeKeepsOldestBufferLines(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 0, "FAKEA")
 	now := time.Now()
@@ -63,6 +64,7 @@ func TestWholeResumeKeepsOldestBufferLines(t *testing.T) {
 // dump's first records stored recently and the next ones stored long ago
 // (1000s of lines before) are all stored; only the real hole is returned.
 func TestHolesWholeSession(t *testing.T) {
+	t.Parallel()
 	st, err := store.Open(t.TempDir(), "d", store.Config{MaxAge: 24 * time.Hour, IdleRelease: -1})
 	if err != nil {
 		t.Fatal(err)

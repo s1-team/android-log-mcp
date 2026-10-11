@@ -17,6 +17,7 @@ import (
 )
 
 func TestCompactAuxKeepsLastVersionsAndDropsExpired(t *testing.T) {
+	t.Parallel()
 	st, err := store.Open(t.TempDir(), "d", store.Config{MaxAge: 24 * time.Hour, IdleRelease: -1})
 	if err != nil {
 		t.Fatal(err)
@@ -96,6 +97,7 @@ func TestCompactAuxKeepsLastVersionsAndDropsExpired(t *testing.T) {
 }
 
 func TestLowDiskPausesAndResumes(t *testing.T) {
+	t.Parallel()
 	st, err := store.Open(t.TempDir(), "d", store.Config{IdleRelease: -1})
 	if err != nil {
 		t.Fatal(err)
@@ -140,13 +142,14 @@ func TestLowDiskPausesAndResumes(t *testing.T) {
 }
 
 func TestManagerDiskDefaultsFromEnv(t *testing.T) {
-	m := NewManager(t.TempDir(), store.Config{})
+	// serial: t.Setenv (it tests reading the environment)
+	m := newTestManager(t, t.TempDir(), store.Config{})
 	if m.MaxTotalBytes != 2<<30 || m.Disk.MinFree != 512<<20 {
 		t.Fatalf("defaults %d %d", m.MaxTotalBytes, m.Disk.MinFree)
 	}
 	t.Setenv("ANDROID_LOG_MCP_MAX_TOTAL_MB", "1024")
 	t.Setenv("ANDROID_LOG_MCP_MIN_FREE_MB", "0")
-	m = NewManager(t.TempDir(), store.Config{})
+	m = newTestManager(t, t.TempDir(), store.Config{})
 	if m.MaxTotalBytes != 1<<30 || m.Disk.MinFree != 0 {
 		t.Fatalf("env %d %d", m.MaxTotalBytes, m.Disk.MinFree)
 	}
@@ -154,6 +157,7 @@ func TestManagerDiskDefaultsFromEnv(t *testing.T) {
 
 // The aux cleanup follows the configured retention (ANDROID_LOG_MCP_MAX_AGE).
 func TestCompactAuxFollowsConfiguredRetention(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	twoDays := now.Add(-48 * time.Hour).UnixNano()
 	for _, tc := range []struct {
@@ -188,6 +192,7 @@ func TestCompactAuxFollowsConfiguredRetention(t *testing.T) {
 // stored line) are not imported, so cleaned-up dropbox_seen keys cannot
 // bring old crashes back as new ones.
 func TestApplyDropboxSkipsEntriesOutsideRetention(t *testing.T) {
+	t.Parallel()
 	loc := time.UTC
 	entry := func(ts, pid string) string {
 		return "========================================\n" + ts + " data_app_crash (text, 100 bytes)\nProcess: com.example.app\nPID: " + pid + "\n\njava.lang.RuntimeException: boom\n\tat com.example.app.Main.run(Main.java:1)\n"
@@ -218,6 +223,7 @@ func TestApplyDropboxSkipsEntriesOutsideRetention(t *testing.T) {
 // must not drop fresh entries, and one set a year ahead must not keep old
 // ones. Lines written before host times were stored keep the old rule.
 func TestCompactAuxUsesHostTime(t *testing.T) {
+	t.Parallel()
 	st, err := store.Open(t.TempDir(), "d", store.Config{MaxAge: 24 * time.Hour, IdleRelease: -1})
 	if err != nil {
 		t.Fatal(err)
@@ -269,6 +275,7 @@ func TestCompactAuxUsesHostTime(t *testing.T) {
 // ApplyDropbox reads dropbox_seen in both formats: a key seen before the
 // upgrade (bare JSON string) is not imported again.
 func TestDropboxSeenBothFormats(t *testing.T) {
+	t.Parallel()
 	for _, legacy := range []bool{true, false} {
 		k, h, ok := parseSeen([]byte(map[bool]string{true: `"data_app_crash|123"`, false: `{"k":"data_app_crash|123","ht":5}`}[legacy]))
 		if !ok || k != "data_app_crash|123" || (h != 0) != !legacy {

@@ -12,6 +12,7 @@ func physical(serial string) map[string]string {
 
 // The same phone over USB, Wi-Fi adb (ip:port) and mDNS adb maps to one ID.
 func TestResolveIDUSBAndWirelessSameDevice(t *testing.T) {
+	t.Parallel()
 	p := physical("R58M123ABCD")
 	var ids []string
 	for _, addr := range []string{"R58M123ABCD", "192.168.1.20:5555", "adb-R58M123ABCD-AbCdEf._adb-tls-connect._tcp"} {
@@ -29,6 +30,7 @@ func TestResolveIDUSBAndWirelessSameDevice(t *testing.T) {
 // Two AVDs started one after the other on the same console port get
 // different IDs (ro.serialno is the same on both).
 func TestResolveIDTwoAVDsSamePort(t *testing.T) {
+	t.Parallel()
 	a := map[string]string{"ro.kernel.qemu": "1", "ro.serialno": "EMULATOR35X1X11X0", "ro.boot.qemu.avd_name": "Pixel_6_API_34"}
 	b := map[string]string{"ro.kernel.qemu": "1", "ro.serialno": "EMULATOR35X1X11X0", "ro.boot.qemu.avd_name": "Pixel_3a_API_30"}
 	ida, _ := ResolveID("emulator-5554", a, "")
@@ -51,6 +53,7 @@ func TestResolveIDTwoAVDsSamePort(t *testing.T) {
 }
 
 func TestResolveIDFallback(t *testing.T) {
+	t.Parallel()
 	for _, serial := range []string{"", "unknown", "0123456789ABCDEF", "0000000000", "null"} {
 		p := physical(serial)
 		id, src := ResolveID("192.168.1.9:5555", p, "")
@@ -82,6 +85,7 @@ func TestResolveIDFallback(t *testing.T) {
 }
 
 func TestParseIdentityOutput(t *testing.T) {
+	t.Parallel()
 	out := "ro.serialno=EMULATOR37X2X12X0\r\nro.kernel.qemu=1\nro.boot.qemu.avd_name=\nandroid_id=11bd2c287e04663c\nboot_id=ccb368e7-f2c9\n"
 	p := ParseIdentityProps(out)
 	if p["ro.serialno"] != "EMULATOR37X2X12X0" || p["ro.kernel.qemu"] != "1" || p["boot_id"] != "ccb368e7-f2c9" || p["ro.boot.qemu.avd_name"] != "" {

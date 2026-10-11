@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/s1crab/android-log-mcp/server/internal/device"
 	"github.com/s1crab/android-log-mcp/server/internal/fakeadb"
 )
 
@@ -16,13 +15,12 @@ import (
 // read-only device: they see the new line or the backfill note, and
 // logcat_status returns no cursor before the catch-up.
 func TestCallDuringIdleStop(t *testing.T) {
-	// serial: sets device.ReleasePause (package global)
+	t.Parallel()
 	l := newLazy(t, 3, "FAKEA")
 	if out, isErr := l.call(t, "logcat_status", `{"device":"FAKEA"}`); isErr || !strings.Contains(out, "cursor (newest line") {
 		t.Fatalf("first status:\n%s", out)
 	}
-	device.ReleasePause.Set(1500 * time.Millisecond)
-	t.Cleanup(func() { device.ReleasePause.Set(0) })
+	l.m.Timing.ReleasePause.Set(1500 * time.Millisecond)
 	l.linger.Store(int64(200 * time.Millisecond))
 	waitUntil(t, "the idle stop", 10*time.Second, func() bool { return !l.e.LogcatRunning("FAKEA") })
 	l.linger.Store(int64(time.Minute))

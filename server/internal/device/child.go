@@ -3,6 +3,7 @@ package device
 import (
 	"context"
 	"os/exec"
+	"time"
 
 	"github.com/s1crab/android-log-mcp/server/internal/procattr"
 )
@@ -19,12 +20,12 @@ import (
 // server: the tree is walked instead of killing a process group or job
 // object, because the server an adb client starts may be in those), and
 // Wait gives up on output pipes still held open by a grandchild after
-// adbWaitDelay, so a cancelled call cannot hang (#24).
-func adbCmd(ctx context.Context, path string, args ...string) *exec.Cmd {
+// waitDelay (Timing.AdbWaitDelay), so a cancelled call cannot hang (#24).
+func adbCmd(ctx context.Context, path string, waitDelay time.Duration, args ...string) *exec.Cmd {
 	cmd := procattr.Hide(exec.CommandContext(ctx, path, args...))
 	tieToParent(cmd)
 	cmd.Cancel = func() error { return killTree(cmd.Process) }
-	cmd.WaitDelay = adbWaitDelay.Get()
+	cmd.WaitDelay = waitDelay
 	return cmd
 }
 

@@ -84,6 +84,7 @@ func testCrash(i, version int, base int64) *analysis.Crash {
 }
 
 func TestCrashIndexMatchesFullDecode(t *testing.T) {
+	t.Parallel()
 	st, err := store.Open(t.TempDir(), "d", store.Config{MaxAge: 24 * time.Hour, IdleRelease: -1})
 	if err != nil {
 		t.Fatal(err)
@@ -127,6 +128,7 @@ func TestCrashIndexMatchesFullDecode(t *testing.T) {
 }
 
 func TestCrashIndexReloadsAfterCompaction(t *testing.T) {
+	t.Parallel()
 	st, err := store.Open(t.TempDir(), "d", store.Config{MaxAge: time.Hour, IdleRelease: -1})
 	if err != nil {
 		t.Fatal(err)
@@ -170,6 +172,7 @@ func TestCrashIndexReloadsAfterCompaction(t *testing.T) {
 // Ingest stays linear: emitting n crashes decodes O(n) index lines, not
 // O(n²) (each EmitCrash used to re-read the whole file twice).
 func TestEmitCrashLinear(t *testing.T) {
+	// serial: reads the package-wide crashLinesIndexed counter
 	st, err := store.Open(t.TempDir(), "d", store.Config{MaxAge: 24 * time.Hour, IdleRelease: -1})
 	if err != nil {
 		t.Fatal(err)
@@ -201,6 +204,7 @@ func TestEmitCrashLinear(t *testing.T) {
 
 // The recorder appends while tool readers list and decode (go test -race).
 func TestCrashIndexConcurrentReaders(t *testing.T) {
+	t.Parallel()
 	st, err := store.Open(t.TempDir(), "d", store.Config{MaxAge: 24 * time.Hour, IdleRelease: -1})
 	if err != nil {
 		t.Fatal(err)

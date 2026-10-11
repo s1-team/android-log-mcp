@@ -31,6 +31,7 @@ type Device struct {
 	Serial string
 	Store  *store.Store
 	adb    *ADB
+	tm     *Timing // its Manager's (nil: DefaultTiming)
 
 	addr   string
 	owned  bool   // this process (the service) records the device
@@ -315,11 +316,6 @@ func (d *Device) stop() {
 	d.catchStop()
 }
 
-// recorderStopWait bounds the wait for a stopped recorder goroutine (the
-// last drain into the store, reaping logcat): release() and the start of
-// the next recording session (handOver).
-var recorderStopWait = newDur(10 * time.Second)
-
 // sessionEndHook (tests only) runs when a recording session's goroutine
 // is about to return, e.g. to hold a stopping recorder.
 var sessionEndHook atomic.Pointer[func(*Device, uint64)]
@@ -341,14 +337,14 @@ func sessionOf(ctx context.Context) uint64 {
 // disconnect/reconnect must not overlap the previous session, whose
 // recorder may still be draining into the store and whose background work
 // may still be returning. It waits (bounded) for the previous session's
-// goroutine (prev, recorderStopWait), then for the background work (the
-// #24 wait: bgStopWait, then the adb children are killed with their
+// goroutine (prev, Timing.RecorderStopWait), then for the background work (the
+// #24 wait: Timing.BgStopWait, then the adb children are killed with their
 // trees). When a wait times out, the session starts anyway; the service
 // log and logcat_status (HandoffNote) say so.
 func (d *Device) handOver(ctx context.Context, sess uint64, prev <-chan struct{}) {
 	var problems []string
 	if prev != nil {
-		w := recorderStopWait.Get()
+		w := d.timing().RecorderStopWait.Get()
 		t := time.NewTimer(w)
 		select {
 		case <-prev:
@@ -364,8 +360,8 @@ func (d *Device) handOver(ctx context.Context, sess uint64, prev <-chan struct{}
 	if ctx.Err() == nil {
 		if names := d.waitBackground(); len(names) > 0 {
 			log.Printf("%s: recording session %d: starting although background work of an earlier session did not stop within %s: %s",
-				d.Serial, sess, bgStopWait.Get(), strings.Join(names, ", "))
-			problems = append(problems, fmt.Sprintf("background work of an earlier session did not stop within %s (%s; its adb children were killed)", bgStopWait.Get(), strings.Join(names, ", ")))
+				d.Serial, sess, d.timing().BgStopWait.Get(), strings.Join(names, ", "))
+			problems = append(problems, fmt.Sprintf("background work of an earlier session did not stop within %s (%s; its adb children were killed)", d.timing().BgStopWait.Get(), strings.Join(names, ", ")))
 		}
 	}
 	if prev == nil && len(problems) == 0 {
@@ -399,7 +395,7 @@ func (d *Device) probe(ctx context.Context) error {
 	d.preProbe = nil
 	d.mu.Unlock()
 	reused := true
-	if p == nil || time.Since(p.T1) > probeReuse.Get() || p.Props["boot_id"] == "" {
+	if p == nil || time.Since(p.T1) > d.timing().ProbeReuse.Get() || p.Props["boot_id"] == "" {
 		reused = false
 		t0 := time.Now()
 		out, err := d.adb.Shell(ctx, d.Addr(), 15*time.Second, probeCmd(false))
@@ -417,7 +413,7 @@ func (d *Device) probe(ctx context.Context) error {
 	d.applyTZ(tz, zone)
 	if now, coarse, mid, ok := p.Clock(); ok {
 		if reused {
-			// the saved probe is up to probeReuse old: its device clock
+			// the saved probe is up to Timing.ProbeReuse old: its device clock
 			// reading would be stale (rollback check, liveFrom; issue #15)
 			now = now.Add(time.Since(mid))
 			mid = time.Now()
@@ -652,7 +648,7 @@ func (d *Device) recordOnce(ctx context.Context) error {
 	// Note: never rely on `logcat --uid` (missing on API 29) or multiple
 	// `--pid` (only one is honoured); all filtering happens on our side.
 	execOut := d.useExecOut()
-	cmd := adbCmd(cctx, d.adb.Path, streamArgs(d.Addr(), resume, execOut)...)
+	cmd := adbCmd(cctx, d.adb.Path, d.timing().AdbWaitDelay.Get(), streamArgs(d.Addr(), resume, execOut)...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
@@ -954,20 +950,15 @@ func (d *Device) readPackages(ctx context.Context) bool {
 	return true
 }
 
-// packagesRefreshEvery: the package list is re-read for a device process
-// whose application uid it does not contain (an app installed after it was
-// read) at most this often (issue #41).
-var packagesRefreshEvery = newDur(60 * time.Second)
-
 // maybeRefreshPackages re-reads the package list for an unknown application
-// uid, at most once per packagesRefreshEvery, as the session's side work
+// uid, at most once per Timing.PackagesRefreshEvery, as the session's side work
 // (an idle service process runs no adb).
 func (d *Device) maybeRefreshPackages(ctx context.Context, uid int) {
 	if !d.sideWorkOn() {
 		return // sideWork reads the list once caught up
 	}
 	d.mu.Lock()
-	if !d.pkgRefreshAt.IsZero() && time.Since(d.pkgRefreshAt) < packagesRefreshEvery.Get() {
+	if !d.pkgRefreshAt.IsZero() && time.Since(d.pkgRefreshAt) < d.timing().PackagesRefreshEvery.Get() {
 		d.mu.Unlock()
 		return
 	}
@@ -995,17 +986,10 @@ func (d *Device) Procs() []procs.Proc { return LoadProcs(d.Store) }
 
 // DropBox fetch states of a tag (Device.dbxPending).
 const (
-	dbxQueued  = 1 // a fetch will start after dropboxDelay
+	dbxQueued  = 1 // a fetch will start after Timing.DropboxDelay
 	dbxRunning = 2 // a fetch is running
 	dbxAgain   = 3 // running, and a crash after it started wants another
 )
-
-// dropboxDelay lets AMS write a crash's DropBox entry before it is read.
-var dropboxDelay = newDur(4 * time.Second)
-
-// dropboxRecent: after catch-up, a tag fetched successfully this recently
-// is not fetched again for crashes found in the backfill.
-var dropboxRecent = newDur(5 * time.Minute)
 
 // requestDropbox asks for a DropBox fetch of tag (a crash line wants its
 // evidence). Before the session's side work starts (backfill) the tag is
@@ -1036,13 +1020,13 @@ func (d *Device) requestDropbox(tag string) {
 	}
 }
 
-// dropboxWorker fetches a queued tag after dropboxDelay, again while
+// dropboxWorker fetches a queued tag after Timing.DropboxDelay, again while
 // crashes arrived during a fetch.
 // It runs in the context of the session that queued it: a stop cancels
 // it, and the tag is fetched by the next session instead.
 func (d *Device) dropboxWorker(ctx context.Context, tag string) {
 	for {
-		sleep(ctx, dropboxDelay.Get())
+		sleep(ctx, d.timing().DropboxDelay.Get())
 		if ctx.Err() != nil {
 			d.dbxMu.Lock()
 			delete(d.dbxPending, tag)
@@ -1095,21 +1079,17 @@ func (d *Device) sideWorkOn() bool {
 	return d.sideOn
 }
 
-// sideWorkWait: side work starts at the latest this long after recording
-// started, even when the backfill has not caught up by then.
-var sideWorkWait = newDur(time.Minute)
-
 // sideWork starts the session's other adb work once caught up (or after
-// sideWorkWait): the process table (ps), packages, the buffer span, and
+// Timing.SideWorkWait): the process table (ps), packages, the buffer span, and
 // one DropBox fetch per tag that crashes in the backfill asked for,
 // merged with the new-boot history tags.
 func (d *Device) sideWork(ctx context.Context, caught <-chan struct{}, pipe *Pipeline, newBoot bool) {
-	t := time.NewTimer(sideWorkWait.Get())
+	t := time.NewTimer(d.timing().SideWorkWait.Get())
 	defer t.Stop()
 	select {
 	case <-caught:
 	case <-t.C:
-		log.Printf("%s: not caught up after %s; starting ps/pm/dumpsys anyway", d.Serial, sideWorkWait.Get())
+		log.Printf("%s: not caught up after %s; starting ps/pm/dumpsys anyway", d.Serial, d.timing().SideWorkWait.Get())
 	case <-ctx.Done():
 		return
 	}
@@ -1141,7 +1121,7 @@ func (d *Device) sideWork(ctx context.Context, caught <-chan struct{}, pipe *Pip
 			d.deferDropbox(tag)
 			continue // stopped meanwhile: the next session fetches it
 		}
-		if when, ok := d.dropboxFetchedAt(tag); ok && time.Since(when) < dropboxRecent.Get() {
+		if when, ok := d.dropboxFetchedAt(tag); ok && time.Since(when) < d.timing().DropboxRecent.Get() {
 			continue // read recently: already holds these crashes
 		}
 		d.dbxMu.Lock()

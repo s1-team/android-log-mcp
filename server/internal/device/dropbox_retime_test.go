@@ -38,6 +38,7 @@ func retimePipe(t *testing.T) (*Pipeline, *store.Store, *time.Time) {
 // an entry imported once, then re-timed to a set-back time, is not
 // imported again
 func TestDropboxRetimedEntryNotReimported(t *testing.T) {
+	t.Parallel()
 	p, st, dn := retimePipe(t)
 	p.ApplyDropbox("Drop box contents\n" + retimeEntry("2026-10-11 19:31:35", "data_app_crash", "com.example.app", "26273"))
 	if n := len(LoadCrashes(st)); n != 1 {
@@ -63,6 +64,7 @@ func TestDropboxRetimedEntryNotReimported(t *testing.T) {
 // an entry first fetched after DropBox re-timed it merges into the
 // logcat crash of the same boot, pid and process
 func TestDropboxRetimedEntryMergesSameProcess(t *testing.T) {
+	t.Parallel()
 	p, st, dn := retimePipe(t)
 	at := time.Date(2026, 10, 11, 19, 31, 35, 761e6, time.UTC)
 	*dn = time.Date(1970, 1, 3, 8, 1, 0, 0, time.UTC)
@@ -88,6 +90,7 @@ func TestDropboxRetimedEntryMergesSameProcess(t *testing.T) {
 
 // two ANRs of one surviving process far apart stay two
 func TestDropboxAnrSamePidFarApart(t *testing.T) {
+	t.Parallel()
 	p, st, _ := retimePipe(t)
 	anr := func(ts, subject string) string {
 		return "========================================\n" + ts + " data_app_anr (text, 100 bytes)\nProcess: com.example.app\nPID: 500\nSubject: " + subject + "\n\nCPU usage\n\n"
@@ -101,6 +104,7 @@ func TestDropboxAnrSamePidFarApart(t *testing.T) {
 
 // a key written by older versions (tag|timeNs) still keeps the entry out
 func TestDropboxLegacyTimeKeyHonoured(t *testing.T) {
+	t.Parallel()
 	p, st, _ := retimePipe(t)
 	ts := time.Date(2026, 10, 11, 19, 31, 35, 0, time.UTC).UnixNano()
 	st.AppendAux("dropbox_seen", seenLine{Key: "data_app_crash|" + strconv.FormatInt(ts, 10), HostNs: time.Now().UnixNano()})

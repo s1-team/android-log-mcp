@@ -19,9 +19,10 @@ import (
 // the stop takes the lock keeps the device recording: the stop re-checks
 // idleness and the in-call busy count under wantMu.
 func TestCallBetweenIdleCheckAndStop(t *testing.T) {
+	// serial: sets the package-wide beforeIdleStop hook
 	e := fakeEnv(t)
 	addDevices(t, e, 2, "FAKEA")
-	m := NewManager(t.TempDir(), store.Config{})
+	m := newTestManager(t, t.TempDir(), store.Config{})
 	m.Lazy = true
 	m.IdleTick = 20 * time.Millisecond
 	var linger atomic.Int64
@@ -64,6 +65,7 @@ func TestCallBetweenIdleCheckAndStop(t *testing.T) {
 // A saved identity probe is used once, and its device clock is advanced
 // by the time since it was taken.
 func TestSavedProbeAdvancedAndUsedOnce(t *testing.T) {
+	t.Parallel()
 	st, err := store.OpenDir(t.TempDir(), "X", store.Config{IdleRelease: -1}, true)
 	if err != nil {
 		t.Fatal(err)
@@ -105,6 +107,7 @@ func recorderProbes(e fakeadb.Env) func(serial string) int {
 // a restart while tracking goes on (the identity stays cached) probes the
 // device again instead of reusing the old clock reading.
 func TestSavedProbeNotReusedOnRestart(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 2, "FAKEA", "FAKEB")
 	m := lazyManager(t, time.Minute)

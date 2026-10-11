@@ -6,6 +6,7 @@ import (
 )
 
 func TestParseDevices(t *testing.T) {
+	t.Parallel()
 	d := ParseDevices("List of devices attached\nemulator-5554\tdevice\nR5CT123\tunauthorized\nX\tno permissions (user in plugdev group)\n\n")
 	if len(d) != 3 || d[0].State != "device" || d[1].State != "unauthorized" || d[2].State != "no permissions" {
 		t.Fatalf("%+v", d)
@@ -13,6 +14,7 @@ func TestParseDevices(t *testing.T) {
 }
 
 func TestTrackFrames(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	buf.WriteString("0015emulator-5554\tdevice\n")
 	buf.WriteString("0000")

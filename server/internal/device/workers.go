@@ -16,14 +16,6 @@ import (
 // or closing the manager cancels them and waits until they returned, so
 // no adb child of ours outlives it and nothing writes into a closed store.
 
-// bgStopWait bounds the wait for background work after cancelling it;
-// what is still running then is logged and its adb processes are killed.
-var bgStopWait = newDur(5 * time.Second)
-
-// adbWaitDelay bounds how long a cancelled adb call waits for its output
-// pipes to close (a grandchild holding them must not hang the caller).
-var adbWaitDelay = newDur(2 * time.Second)
-
 // workers tracks running background goroutines by name.
 type workers struct {
 	mu   sync.Mutex
@@ -86,7 +78,7 @@ func (w *workers) wait(timeout time.Duration) []string {
 }
 
 // children are the running adb processes started under a context that
-// carries the set (withChildren): the last resort after bgStopWait.
+// carries the set (withChildren): the last resort after Timing.BgStopWait.
 type children struct {
 	mu  sync.Mutex
 	set map[*exec.Cmd]string
@@ -133,13 +125,12 @@ func (c *children) killAll() []string {
 	return killed
 }
 
-// stopBackground waits (bgStopWait) for background work that was already
+// stopBackground waits (Timing.BgStopWait) for background work that was already
 // cancelled; work still running then is logged, its adb processes are
 // killed with their trees, and it gets one more second to return. It
-// returns the names of the work that did not stop within bgStopWait (nil
+// returns the names of the work that did not stop within Timing.BgStopWait (nil
 // when everything returned in time).
-func stopBackground(who string, w *workers, c *children) []string {
-	t := bgStopWait.Get()
+func stopBackground(who string, t time.Duration, w *workers, c *children) []string {
 	names := w.wait(t)
 	if len(names) == 0 {
 		return nil
@@ -161,4 +152,6 @@ func orNone(s []string) string {
 }
 
 // waitBackground waits for the background work of a stopped device.
-func (d *Device) waitBackground() []string { return stopBackground(d.Serial, &d.bg, &d.kids) }
+func (d *Device) waitBackground() []string {
+	return stopBackground(d.Serial, d.timing().BgStopWait.Get(), &d.bg, &d.kids)
+}

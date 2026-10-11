@@ -25,6 +25,7 @@ func feedClock(c *LiveClock, seq0 uint64, host0 time.Time, devs []int64) []*stor
 }
 
 func TestLiveClockDelayedLineNoJump(t *testing.T) {
+	t.Parallel()
 	h := time.Unix(1_800_000_000, 0)
 	c := &LiveClock{}
 	c.Set(0, h, "date")
@@ -39,6 +40,7 @@ func TestLiveClockDelayedLineNoJump(t *testing.T) {
 }
 
 func TestLiveClockJumpAtFirstDeviatingLine(t *testing.T) {
+	t.Parallel()
 	h := time.Unix(1_800_000_000, 0)
 	for _, delta := range []int64{365 * day, -day, -(h.UnixNano() - int64(time.Hour))} { // +1 year, -1 day, back to 1970
 		c := &LiveClock{}
@@ -62,6 +64,7 @@ func TestLiveClockJumpAtFirstDeviatingLine(t *testing.T) {
 }
 
 func TestLiveClockAnnouncedSet(t *testing.T) {
+	t.Parallel()
 	h := time.Unix(1_800_000_000, 0)
 	c := &LiveClock{}
 	c.Set(0, h, "date")
@@ -95,6 +98,7 @@ func rec(ns int64, tag, msg string) *model.Record {
 // replayed lines (catch-up) never set the offset; jumps in them come from
 // the lines: an announced set (any size), a step back, a step forward > 1 h
 func TestReplayJumpsFromLines(t *testing.T) {
+	t.Parallel()
 	p, st := testPipe(t)
 	h := time.Unix(1_800_000_000, 0)
 	p.Clock.Set(0, h, "date")
@@ -135,6 +139,7 @@ func TestReplayJumpsFromLines(t *testing.T) {
 
 // live lines: the two-line rule, the jump at the first deviating line
 func TestLivePipelineJump(t *testing.T) {
+	t.Parallel()
 	p, st := testPipe(t)
 	h := time.Unix(1_800_000_000, 0)
 	p.Clock.Set(0, h, "date")
@@ -163,6 +168,7 @@ func TestLivePipelineJump(t *testing.T) {
 // replayed lines dated after T_end are not the end of the replay (issues
 // #48, #52 D3); a later agreeing line ends it only after a quiet stream
 func TestReplayEndByIdentity(t *testing.T) {
+	t.Parallel()
 	line := func(sec, us, tid int, msg string) string {
 		return fmt.Sprintf("%10d.%06d %5d %5d %5d I %-8s: %s", sec, us, 10146, 100, tid, "T", msg)
 	}
@@ -197,6 +203,7 @@ func TestReplayEndByIdentity(t *testing.T) {
 // a "measured" jump at the session's first line; a line-based report of the
 // same jump in the replay moves it to the exact line
 func TestReconnectAfterJumpWhileDisconnected(t *testing.T) {
+	t.Parallel()
 	for _, refine := range []bool{false, true} {
 		p, st := testPipe(t)
 		h := time.Unix(1_800_000_000, 0)
@@ -224,6 +231,7 @@ func TestReconnectAfterJumpWhileDisconnected(t *testing.T) {
 }
 
 func TestClockSetLine(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		tag, msg string
 		ok       bool
@@ -250,6 +258,7 @@ func TestClockSetLine(t *testing.T) {
 // without it (`adb shell date` as root logs nothing) two are needed, and the
 // jump is at the first of them either way
 func TestLiveJumpWithAndWithoutAnchor(t *testing.T) {
+	t.Parallel()
 	for _, anchor := range []string{"", "AlarmManagerService", "SystemClockTime"} {
 		p, st := testPipe(t)
 		h := time.Unix(1_800_000_000, 0)
@@ -285,6 +294,7 @@ func TestLiveJumpWithAndWithoutAnchor(t *testing.T) {
 }
 
 func TestReplayAnchorSystemClockTime(t *testing.T) {
+	t.Parallel()
 	p, st := testPipe(t)
 	h := time.Unix(1_800_000_000, 0)
 	t0 := h.UnixNano() - day

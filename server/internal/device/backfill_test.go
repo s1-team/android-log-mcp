@@ -41,9 +41,7 @@ func slowBackfill(t *testing.T, e fakeadb.Env, n int, delay time.Duration) {
 
 // shortDropbox makes DropBox fetches of live crashes start at once.
 func shortDropbox(t *testing.T) {
-	old := dropboxDelay.Get()
-	dropboxDelay.Set(50 * time.Millisecond)
-	t.Cleanup(func() { dropboxDelay.Set(old) })
+	testTiming(t).DropboxDelay.Set(50 * time.Millisecond)
 }
 
 func callsSince(e fakeadb.Env, since time.Time, sub string) (before, after []string) {
@@ -72,6 +70,7 @@ func dropboxCounts(e fakeadb.Env) map[string]int {
 // process table is seeded and each DropBox tag is fetched exactly once
 // (the crash tags found in the backfill merged with the new-boot history).
 func TestNoSideWorkDuringBackfill(t *testing.T) {
+	// serial: swaps the package-wide log output or session hook
 	shortDropbox(t)
 	e := fakeEnv(t)
 	slowBackfill(t, e, 40, 40*time.Millisecond) // ~1.6 s
@@ -116,6 +115,7 @@ func TestNoSideWorkDuringBackfill(t *testing.T) {
 // A crash found by a resumed (same boot) backfill asks for its tag only
 // after catch-up, and not at all when the tag was fetched recently.
 func TestDropboxAfterResume(t *testing.T) {
+	// serial: swaps the package-wide log output or session hook
 	shortDropbox(t)
 	e := fakeEnv(t)
 	slowBackfill(t, e, 10, 0)
@@ -135,9 +135,7 @@ func TestDropboxAfterResume(t *testing.T) {
 		t.Fatalf("data_app_crash fetched %d times; fetched a minute ago, so the resumed backfill's crash needs none", n)
 	}
 
-	old := dropboxRecent.Get()
-	dropboxRecent.Set(0)
-	t.Cleanup(func() { dropboxRecent.Set(old) })
+	testTiming(t).DropboxRecent.Set(0)
 	m.Unwant("FAKEA", "test")
 	waitFor(t, "fake adb children to exit", 5*time.Second, func() bool { return !e.AnyChildRunning() })
 	e.Log("FAKEA", crashLine(time.Now(), 9200))
@@ -152,9 +150,8 @@ func TestDropboxAfterResume(t *testing.T) {
 
 // Side work does not wait forever for a backfill that never catches up.
 func TestSideWorkWaitCap(t *testing.T) {
-	old := sideWorkWait.Get()
-	sideWorkWait.Set(300 * time.Millisecond)
-	t.Cleanup(func() { sideWorkWait.Set(old) })
+	t.Parallel()
+	testTiming(t).SideWorkWait.Set(300 * time.Millisecond)
 	e := fakeEnv(t)
 	slowBackfill(t, e, 200, 50*time.Millisecond) // ~10 s
 	m := lazyManager(t, time.Minute)
@@ -167,6 +164,7 @@ func TestSideWorkWaitCap(t *testing.T) {
 
 // The stream is `adb exec-out logcat`.
 func TestStreamExecOut(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 5, "FAKEA")
 	m := lazyManager(t, time.Minute)
@@ -188,6 +186,7 @@ func TestStreamExecOut(t *testing.T) {
 // the recorder falls back to `adb logcat`, whose CRLF lines are stored
 // without the CR.
 func TestStreamExecOutFallback(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 5, "FAKEA")
 	e.SetNoExecOut("FAKEA")
@@ -218,6 +217,7 @@ func TestStreamExecOutFallback(t *testing.T) {
 
 // API < 21 never tries exec-out.
 func TestStreamOldAPI(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 3, "FAKEA")
 	e.SetProp("FAKEA", "ro.build.version.sdk", "19")
@@ -231,6 +231,7 @@ func TestStreamOldAPI(t *testing.T) {
 
 // One adb shell identifies the device and probes it for the recorder.
 func TestMergedProbe(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 3, "FAKEA")
 	m := lazyManager(t, time.Minute)
@@ -243,9 +244,7 @@ func TestMergedProbe(t *testing.T) {
 		t.Fatalf("meta %+v", mt)
 	}
 	// a restart long after the identity probe probes again (cheap variant)
-	old := probeReuse.Get()
-	probeReuse.Set(0)
-	t.Cleanup(func() { probeReuse.Set(old) })
+	testTiming(t).ProbeReuse.Set(0)
 	m.Unwant("FAKEA", "test")
 	waitFor(t, "fake adb children to exit", 5*time.Second, func() bool { return !e.AnyChildRunning() })
 	startDevice(t, m, "FAKEA")
@@ -259,6 +258,7 @@ func TestMergedProbe(t *testing.T) {
 }
 
 func TestProbeClock(t *testing.T) {
+	t.Parallel()
 	t0 := time.Unix(1000, 0)
 	p := &Probe{Props: map[string]string{"now": "1791684325.000000000", "now2": "1791684325.800000000"}, T0: t0, T1: t0.Add(time.Second)}
 	dev, coarse, mid, ok := p.Clock()
@@ -282,6 +282,7 @@ func TestProbeClock(t *testing.T) {
 
 // The progress note shows the estimated total.
 func TestBackfillEstimate(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	slowBackfill(t, e, 60, 50*time.Millisecond) // ~3 s
 	m := lazyManager(t, time.Minute)
@@ -297,6 +298,7 @@ func TestBackfillEstimate(t *testing.T) {
 }
 
 func TestBackfillText(t *testing.T) {
+	t.Parallel()
 	at := time.Date(2026, 10, 11, 1, 2, 3, 4e6, time.UTC).UnixNano()
 	for _, c := range []struct {
 		p    Progress

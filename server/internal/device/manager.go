@@ -36,6 +36,9 @@ type Manager struct {
 	// CatchUpWait is the longest a log-tool call waits for catch-up
 	// (DefaultCatchUpWait; tests shorten it per Manager, #26).
 	CatchUpWait time.Duration
+	// Timing holds the time constants of recording (DefaultTiming; tests
+	// shorten them per Manager, #26).
+	Timing *Timing
 	// NoADB (--offline <dir>): browse a dataset read-only; adb is not used
 	// and nothing is recorded, pruned or created.
 	NoADB bool
@@ -96,7 +99,7 @@ func (t *trackSession) markReady() { t.once.Do(func() { close(t.ready) }) }
 func NewManager(base string, cfg store.Config) *Manager {
 	m := &Manager{Base: base, Root: layout.Root{Dir: base}, Cfg: cfg, MaxDevices: 4,
 		devices: map[string]*Device{}, states: map[string]string{}, addrs: map[string]string{}, resolving: map[string]bool{}, wantAddrs: map[string]bool{},
-		wanted: map[string]*want{}, idents: map[string]Identity{}, MaxTotalBytes: DefaultMaxTotalBytes, CatchUpWait: DefaultCatchUpWait, Disk: &store.DiskGuard{MinFree: DefaultMinFreeBytes}}
+		wanted: map[string]*want{}, idents: map[string]Identity{}, MaxTotalBytes: DefaultMaxTotalBytes, CatchUpWait: DefaultCatchUpWait, Timing: DefaultTiming(), Disk: &store.DiskGuard{MinFree: DefaultMinFreeBytes}}
 	if v, err := strconv.Atoi(os.Getenv("ANDROID_LOG_MCP_MAX_DEVICES")); err == nil && v > 0 {
 		m.MaxDevices = v
 	}
@@ -117,6 +120,7 @@ const (
 
 func (m *Manager) newDevice(st *store.Store, serial string) *Device {
 	d := newDevice(m.adb, st, serial)
+	d.tm = m.Timing
 	d.disk = m.Disk
 	return d
 }
@@ -251,7 +255,7 @@ func (m *Manager) Start(ctx context.Context) {
 		m.adbErr = err
 		return
 	}
-	m.adb = &ADB{Path: p}
+	m.adb = &ADB{Path: p, Timing: m.Timing}
 	m.mu.Lock()
 	for _, d := range m.devices {
 		d.adb = m.adb
@@ -635,8 +639,8 @@ func (m *Manager) swap(key string, d *Device) {
 			go func() { e.runWG.Wait(); close(done) }()
 			select {
 			case <-done:
-			case <-time.After(recorderStopWait.Get()):
-				log.Printf("%s: recorder did not stop within %s", e.Serial, recorderStopWait.Get())
+			case <-time.After(m.Timing.RecorderStopWait.Get()):
+				log.Printf("%s: recorder did not stop within %s", e.Serial, m.Timing.RecorderStopWait.Get())
 			}
 			e.waitBackground()
 		} else {
@@ -782,7 +786,7 @@ func (m *Manager) Close() {
 	if ts != nil {
 		ts.cancel()
 	}
-	stopBackground("device tracking", &m.bg, &m.kids)
+	stopBackground("device tracking", m.Timing.BgStopWait.Get(), &m.bg, &m.kids)
 	m.attachMu.Lock()
 	defer m.attachMu.Unlock()
 	for _, d := range m.Devices() {

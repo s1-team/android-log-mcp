@@ -16,9 +16,8 @@ import (
 // recovered from a dump, once, without disturbing clock-jump detection.
 
 func fastReconcile(t *testing.T) {
-	reconcileEvery.Set(100 * time.Millisecond)
-	reconcileSettle.Set(200 * time.Millisecond)
-	t.Cleanup(func() { reconcileEvery.Set(20 * time.Second); reconcileSettle.Set(2 * time.Second) })
+	testTiming(t).ReconcileEvery.Set(100 * time.Millisecond)
+	testTiming(t).ReconcileSettle.Set(200 * time.Millisecond)
 }
 
 func backJumps(st *store.Store) int {
@@ -32,6 +31,7 @@ func backJumps(st *store.Store) int {
 }
 
 func TestSetBackSkippedLinesRecovered(t *testing.T) {
+	t.Parallel()
 	fastReconcile(t)
 	e := fakeEnv(t)
 	addDevices(t, e, 5, "FAKEA")
@@ -87,6 +87,7 @@ func TestSetBackSkippedLinesRecovered(t *testing.T) {
 // A line logged twice (same device time, pid, tid, tag, text) of which the
 // stream skipped one copy is recovered once: copies count one by one.
 func TestSetBackSkippedIdenticalCopy(t *testing.T) {
+	t.Parallel()
 	fastReconcile(t)
 	e := fakeEnv(t)
 	addDevices(t, e, 5, "FAKEA")
@@ -118,6 +119,7 @@ func TestSetBackSkippedIdenticalCopy(t *testing.T) {
 // logd can kick the catch-up read too: lines missing at the very start
 // of the device buffer are recovered when the session began there.
 func TestSetBackSkippedCatchUpStart(t *testing.T) {
+	t.Parallel()
 	fastReconcile(t)
 	e := fakeEnv(t)
 	addDevices(t, e, 5, "FAKEA")
@@ -142,6 +144,7 @@ func TestSetBackSkippedCatchUpStart(t *testing.T) {
 
 // Without a clock set back nothing is compared (logd skips only then).
 func TestNoReconcileWithoutSetBack(t *testing.T) {
+	t.Parallel()
 	fastReconcile(t)
 	e := fakeEnv(t)
 	addDevices(t, e, 5, "FAKEA")
@@ -158,6 +161,7 @@ func TestNoReconcileWithoutSetBack(t *testing.T) {
 
 // Android 12+ logd positions readers by sequence: no comparison.
 func TestNoReconcileOnAPI31(t *testing.T) {
+	t.Parallel()
 	fastReconcile(t)
 	e := fakeEnv(t)
 	addDevices(t, e, 5, "FAKEA")
@@ -193,6 +197,7 @@ func hrec(sec int64, pid int, tag, msg string) *model.Record {
 // session's first line, lines before them; lines not streamed yet are never
 // returned; a record stored split differently from the dump counts as stored.
 func TestHoles(t *testing.T) {
+	t.Parallel()
 	st, err := store.Open(t.TempDir(), "d", store.Config{MaxAge: 24 * time.Hour, IdleRelease: -1})
 	if err != nil {
 		t.Fatal(err)
@@ -222,6 +227,7 @@ func TestHoles(t *testing.T) {
 }
 
 func TestReconcileSize(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		prev, seq, buf uint64
 		want           int

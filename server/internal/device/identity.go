@@ -19,7 +19,7 @@ type Identity struct {
 	BootID string
 	// Probe is the recorder probe that came with the identity probe (one
 	// adb shell for both); the recorder uses it instead of probing again
-	// when it starts within probeReuse of it.
+	// when it starts within Timing.ProbeReuse of it.
 	Probe *Probe
 	// Collision explains a disambiguated ID (another connected device
 	// already uses the plain ID); empty normally.
@@ -75,9 +75,6 @@ type Probe struct {
 	Props  map[string]string
 	T0, T1 time.Time
 }
-
-// probeReuse: a probe this recent is reused when recording starts.
-var probeReuse = newDur(30 * time.Second)
 
 // Clock returns the device clock reading, whether it has whole-second
 // precision only, and the host time it corresponds to (the middle of the

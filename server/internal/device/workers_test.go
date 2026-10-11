@@ -22,7 +22,7 @@ import (
 // closeManager is a lazy manager whose test closes it itself.
 func closeManager(t *testing.T) (*Manager, context.CancelFunc) {
 	t.Helper()
-	m := NewManager(t.TempDir(), store.Config{})
+	m := newTestManager(t, t.TempDir(), store.Config{})
 	m.Lazy = true
 	m.IdleTick = 20 * time.Millisecond
 	m.Linger = func(*Device) time.Duration { return time.Minute }
@@ -36,6 +36,7 @@ func closeManager(t *testing.T) (*Manager, context.CancelFunc) {
 // open: Close returns only after every fake adb process exited (so the
 // temp dir cleanup of the fake's directory succeeds).
 func TestCloseWaitsForSideWorkAdb(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 2, "FAKEA")
 	if err := e.SetHang("FAKEA", "pm list packages"); err != nil {
@@ -53,7 +54,7 @@ func TestCloseWaitsForSideWorkAdb(t *testing.T) {
 	if pids := e.RunningSettled(200 * time.Millisecond); len(pids) > 0 {
 		t.Fatalf("Close returned after %s with fake adb processes still running: %v", took, pids)
 	}
-	if took > bgStopWait.Get()+3*time.Second {
+	if took > testTiming(t).BgStopWait.Get()+3*time.Second {
 		t.Errorf("Close took %s", took)
 	}
 }
@@ -61,13 +62,13 @@ func TestCloseWaitsForSideWorkAdb(t *testing.T) {
 // Background work that ignores the cancellation is logged after
 // bgStopWait, and its adb processes are killed with their trees.
 func TestStuckBackgroundWorkIsKilled(t *testing.T) {
+	// serial: swaps the package-wide log output
 	e := fakeEnv(t)
 	addDevices(t, e, 2, "FAKEA")
 	if err := e.SetHang("FAKEA", "STUCKCMD"); err != nil {
 		t.Fatal(err)
 	}
-	bgStopWait.Set(300 * time.Millisecond)
-	t.Cleanup(func() { bgStopWait.Set(5 * time.Second) })
+	testTiming(t).BgStopWait.Set(300 * time.Millisecond)
 	var buf syncBuf
 	log.SetOutput(&buf)
 	t.Cleanup(func() { log.SetOutput(os.Stderr) })
@@ -110,6 +111,7 @@ func (s *syncBuf) String() string {
 
 // The tree walk skips adb processes (servers) and their subtrees.
 func TestDescendantsSkipADBServer(t *testing.T) {
+	t.Parallel()
 	procs := []procEntry{
 		{pid: 10, ppid: 1, name: "adb"},       // our adb client (root)
 		{pid: 11, ppid: 10, name: "sh"},       // a grandchild
@@ -130,12 +132,13 @@ func TestDescendantsSkipADBServer(t *testing.T) {
 // killTree on the real process table: the fake's hang grandchild dies
 // with it.
 func TestKillTreeKillsGrandchild(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 1, "FAKEA")
 	if err := e.SetHang("FAKEA", "STUCKCMD"); err != nil {
 		t.Fatal(err)
 	}
-	a := &ADB{Path: os.Getenv("ANDROID_LOG_MCP_ADB")}
+	a := &ADB{Path: fakeADB(t)}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {

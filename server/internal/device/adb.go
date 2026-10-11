@@ -18,7 +18,12 @@ import (
 )
 
 // ADB wraps the adb binary.
-type ADB struct{ Path string }
+type ADB struct {
+	Path string
+	// Timing (its Manager's) gives the wait delay of cancelled calls; nil:
+	// DefaultTiming.
+	Timing *Timing
+}
 
 // ErrNoADB carries the actionable message from design-v3 §4.
 var ErrNoADB = errors.New(`adb not found. Install Android platform-tools or set ANDROID_LOG_MCP_ADB=/path/to/adb (also checked: PATH, $ANDROID_HOME/platform-tools, $ANDROID_SDK_ROOT/platform-tools, ~/Library/Android/sdk/platform-tools, ~/Android/Sdk/platform-tools, ~/android-sdk/platform-tools)`)
@@ -64,7 +69,7 @@ func FindADB() (string, error) {
 func (a *ADB) Output(ctx context.Context, timeout time.Duration, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := adbCmd(ctx, a.Path, args...)
+	cmd := adbCmd(ctx, a.Path, a.timing().AdbWaitDelay.Get(), args...)
 	var stdout bytes.Buffer
 	var stderr strings.Builder
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -168,7 +173,7 @@ func ReadTrackFrames(r io.Reader, fn func([]DevState)) error {
 func (a *ADB) Watch(ctx context.Context, fn func([]DevState, error)) {
 	backoff := time.Second
 	for ctx.Err() == nil {
-		cmd := adbCmd(ctx, a.Path, "track-devices")
+		cmd := adbCmd(ctx, a.Path, a.timing().AdbWaitDelay.Get(), "track-devices")
 		stdout, err := cmd.StdoutPipe()
 		if err == nil {
 			err = cmd.Start()
