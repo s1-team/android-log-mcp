@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ### Fixed
 
-- A device that disconnects and reconnects quickly no longer has two recording sessions running at once ([#30](https://github.com/s1crab/android-log-mcp/issues/30)). The new session starts only after the previous session's recorder stopped (at most 10 s) and its background work returned (at most 5 s, after which its adb processes are killed with their child processes, never the adb server). A tool call right after the reconnect again waits for the new session's backfill: the previous session could end that wait early. If the previous session does not stop in time, the new session starts anyway, and the service log and `logcat_status` say so for that device ("recording session N started … before session N-1 had stopped: …").
+- A device that disconnects and reconnects quickly no longer has two recording sessions running at once ([#30](https://github.com/s1crab/android-log-mcp/issues/30)). The new session starts only after the previous session's recorder stopped (at most 10 s) and its background work returned (at most 5 s, after which its adb children are killed together with their own child processes, never the adb server). A tool call right after the reconnect again waits for the new session's backfill: the previous session could end that wait early. If the previous session does not stop in time, the new session starts anyway, and the service log and `logcat_status` say so for that device ("recording session N started … before session N-1 had stopped: …").
 - When a device starts recording again, the read-only view of its directory used while it was idle is closed at once instead of after one minute.
 
 ## [0.5.1] - 2026-10-11
