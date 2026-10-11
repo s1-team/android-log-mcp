@@ -31,6 +31,7 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ### Fixed
 
+- DropBox crashes are imported again after a device clock change ([#53](https://github.com/s1crab/android-log-mcp/issues/53)). Entries dated more than the retention before the highest device time ever stored were skipped. After a jump back past the retention (for example a reboot with a 1970 clock), no new entry was imported, and after a +1 year jump that was undone, none was for a year. The cutoff is now device now − retention; entries already imported stay out through their `dropbox_seen` keys.
 - Reconnecting on the same boot no longer loses or duplicates lines after a device clock change ([#52](https://github.com/s1crab/android-log-mcp/issues/52)).
   - Lines logged while disconnected after the device clock was set back, dated before the newest stored line, were dropped as already stored. A clock jump measured at connect, or stored among the lines that may still be in the device buffer, now makes the service read the whole buffer instead of `logcat -T`.
   - After a clock jump below the oldest line in the device buffer, a resume imported the whole buffer again. The stored lines to compare against are now the last lines of the boot session by arrival (the buffer's entry count × 1.5, at most 500k), not those dated after the buffer's oldest line.
