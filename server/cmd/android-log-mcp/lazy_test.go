@@ -113,9 +113,12 @@ func TestRecordForWithoutService(t *testing.T) {
 		t.Fatalf("record --for: %d\n%s\n%s", code, out, errOut)
 	}
 	pid := statePID(t, env)
-	if pid == 0 || !e.LogcatRunning("FAKEA") {
-		t.Fatalf("not recording (service pid %d)", pid)
+	if pid == 0 {
+		t.Fatal("no service pid")
 	}
+	// "recording" is reported once logcat was started; the fake registers
+	// its pid a moment later (slow process starts on macOS runners)
+	eventually(t, "logcat running", 5*time.Second, func() bool { return e.LogcatRunning("FAKEA") })
 	out, _, _ = cliEnv(t, env, "record")
 	if !strings.Contains(out, "pinned until") || !strings.Contains(out, "set by android-log-mcp record") {
 		t.Fatalf("record state:\n%s", out)
