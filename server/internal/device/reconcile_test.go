@@ -114,6 +114,31 @@ func TestSetBackSkippedIdenticalCopy(t *testing.T) {
 	}
 }
 
+// logd can kick the catch-up read too: lines missing at the very start
+// of the device buffer are recovered when the session began there.
+func TestSetBackSkippedCatchUpStart(t *testing.T) {
+	fastReconcile(t)
+	e := fakeEnv(t)
+	addDevices(t, e, 5, "FAKEA")
+	if err := e.SetStreamSkip("FAKEA", "#0", "#1"); err != nil {
+		t.Fatal(err)
+	}
+	m := lazyManager(t, time.Minute)
+	d := startDevice(t, m, "FAKEA")
+	waitFor(t, "backfill", 10*time.Second, func() bool { return len(messages(d.Store)) == 3 })
+	back := time.Now().Add(-24 * time.Hour)
+	e.SetDate("FAKEA", back)
+	e.Log("FAKEA", fakeadb.Line(back, 100, "LIVE", "after -1d 0"), fakeadb.Line(back.Add(time.Millisecond), 100, "LIVE", "after -1d 1"))
+	want := bufferKeys(t, e, "FAKEA")
+	for end := time.Now().Add(10 * time.Second); time.Now().Before(end) && fmt.Sprint(storedKeys(d.Store)) != fmt.Sprint(want); {
+		time.Sleep(50 * time.Millisecond)
+	}
+	time.Sleep(500 * time.Millisecond)
+	if got := storedKeys(d.Store); fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("stored %q\nbuffer %q", got, want)
+	}
+}
+
 // Without a clock set back nothing is compared (logd skips only then).
 func TestNoReconcileWithoutSetBack(t *testing.T) {
 	fastReconcile(t)
@@ -163,9 +188,9 @@ func hrec(sec int64, pid int, tag, msg string) *model.Record {
 	return &model.Record{TimeNs: sec * 1e9, PID: pid, TID: pid, Level: 'I', Tag: tag, Msg: msg}
 }
 
-// holes: only lines between stored ones count; lines before the compared
-// tail and lines not streamed yet are never returned; a record stored
-// split differently from the dump counts as stored.
+// holes: lines between stored ones and, when the compared lines reach the
+// session's first line, lines before them; lines not streamed yet are never
+// returned; a record stored split differently from the dump counts as stored.
 func TestHoles(t *testing.T) {
 	st, err := store.Open(t.TempDir(), "d", store.Config{MaxAge: 24 * time.Hour, IdleRelease: -1})
 	if err != nil {
@@ -175,7 +200,7 @@ func TestHoles(t *testing.T) {
 	st.Append([]*model.Record{hrec(10, 1, "A", "a"), hrec(12, 1, "C", "c part 1"), hrec(14, 1, "E", "e")})
 	st.Flush()
 	dump := []*model.Record{
-		hrec(9, 1, "OLD", "older than the tail"),
+		hrec(9, 1, "OLD", "skipped by the catch-up read"), // the session's first line is compared: lost too
 		hrec(10, 1, "A", "a"),
 		hrec(11, 1, "B", "b"),                  // skipped by the stream
 		hrec(12, 1, "C", "c part 1\nc part 2"), // stored split: counts as stored
@@ -187,8 +212,8 @@ func TestHoles(t *testing.T) {
 	for _, r := range holes(dump, st) {
 		got = append(got, r.Tag)
 	}
-	if fmt.Sprint(got) != "[B D]" {
-		t.Fatalf("holes %v, want [B D]", got)
+	if fmt.Sprint(got) != "[OLD B D]" {
+		t.Fatalf("holes %v, want [OLD B D]", got)
 	}
 	if h := holes(dump[:1], st); len(h) != 0 {
 		t.Fatalf("holes without stored lines: %v", h)
