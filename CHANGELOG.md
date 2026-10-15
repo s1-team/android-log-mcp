@@ -2,9 +2,13 @@
 
 All notable changes to android-log-mcp are documented in this file.
 
-The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0, breaking changes bump the minor version (see [AGENTS.md](AGENTS.md)). Entries marked **Breaking** need action or change behavior on upgrade; the [README](README.md#upgrading) has upgrade notes. Every user-facing change adds an entry under `[Unreleased]`; a release moves them under the new version, and the GitHub Release notes are taken from that section.
+The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0, breaking changes bump the minor version (see [AGENTS.md](AGENTS.md)). Entries marked **Breaking** need action or change behavior on upgrade; upgrade notes are only here, never in the README. Every user-facing change adds an entry under `[Unreleased]`; a release moves them under the new version, and the GitHub Release notes are taken from that section.
 
 ## [Unreleased]
+
+### Changed
+
+- Documentation reorganised ([#87](https://github.com/s1crab/android-log-mcp/issues/87)): the README only covers install, a short tools list, filter syntax and FAQ. Details moved to [docs/tools.md](docs/tools.md), [docs/reference.md](docs/reference.md) and [docs/compatibility.md](docs/compatibility.md); the repository layout is in [AGENTS.md](AGENTS.md). The README "Upgrading" section is removed: upgrade notes and breaking changes are only in this changelog.
 
 ### Fixed
 
@@ -88,10 +92,10 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ### Changed
 
-- **Breaking:** recording starts on use ([#11](https://github.com/s1crab/android-log-mcp/issues/11)). An idle background service runs no adb at all. A device starts being recorded on the first log tool call that uses it (`logcat_status`, `logcat_search`, `logcat_crashes`, `logcat_app_launches`, also via `call`), on `report` and on `record --for`, and is first backfilled from its log buffer: calls wait up to 10 s for that and otherwise say "backfill in progress"; `logcat_status` then returns no cursor and asks to be called again. With several devices connected and no `device`, nothing is started and the devices are listed; exceeding `ANDROID_LOG_MCP_MAX_DEVICES` is an error. Upgrade notes: [README › Upgrading › To 0.5.0](README.md#to-050-breaking).
+- **Breaking:** recording starts on use ([#11](https://github.com/s1crab/android-log-mcp/issues/11)). An idle background service runs no adb at all. A device starts being recorded on the first log tool call that uses it (`logcat_status`, `logcat_search`, `logcat_crashes`, `logcat_app_launches`, also via `call`), on `report` and on `record --for`, and is first backfilled from its log buffer: calls wait up to 10 s for that and otherwise say "backfill in progress"; `logcat_status` then returns no cursor and asks to be called again. With several devices connected and no `device`, nothing is started and the devices are listed; exceeding `ANDROID_LOG_MCP_MAX_DEVICES` is an error. Lines that dropped out of the device's log buffer while it was not recorded are not in the history; use `android-log-mcp record --for DURATION` to keep recording without calls.
 - **Breaking:** recording of a device stops after its own idle time since its last log tool call (`ANDROID_LOG_MCP_LINGER`, default `max(10m, 2 × the device's log buffer span)`, at most `1h`; `0` = after each call); a call that waits with `wait_ms` counts as use. Clients connecting or disconnecting no longer affect recording. The service no longer exits after the linger: it stays while clients are connected and exits 30 s after there are no clients, no pin and no recorded device.
 - **Breaking:** `report` starts the background service (detached) when none runs, starts recording the requested devices and backfills them (up to 10 s; otherwise the manifest warns "backfill incomplete"), instead of building the report in its own process.
-- `set-root` keeps the started devices, their idle timers and pins. Service protocol 2 (adds `record`); 0.4 clients keep working.
+- `set-root` keeps the started devices, their idle timers and pins. Service protocol 2 (adds `record`); 0.4 clients keep working: a 0.5 MCP process takes over an older service process as before, and a 0.4 MCP process keeps working with a 0.5 service process.
 - Faster first backfill, mostly on emulators: the device's log buffer is streamed with `adb exec-out logcat` (`adb logcat` on Android < 5.0 or when exec-out fails); while backfilling no other adb command runs on the device (`ps`, `pm list packages`, `dumpsys dropbox`, buffer span), and afterwards each DropBox tag needed by crashes in the backfill is fetched once (together with the new-boot history; skipped if fetched in the last 5 minutes); lines from before recording started no longer trigger `ps`; the identity and device probes are one adb shell. On an API 29 emulator a full buffer (~28,000 lines) now catches up in 29–37 s instead of 54–70 s; reading the buffer alone takes ~27 s there.
 - "backfill in progress" shows the estimated total, e.g. "(1,423 of ~27,000 lines; earliest …)", estimated from the entries logd holds (`logcat -S`); after a `-T` resume it shows "(N lines so far; …)".
 
@@ -130,7 +134,7 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 A breaking release: a new storage layout, one data root for all clients, and one background service per user that does all recording.
 
-Upgrade notes: [README › Upgrading › To 0.4.0](https://github.com/s1crab/android-log-mcp/blob/main/README.md#to-040-breaking).
+Upgrade notes are in the **Breaking** entries below.
 
 > 中文摘要：破坏性版本。新的存储结构 `v1/<设备ID>/`，旧数据不迁移、不读取；移除 `ANDROID_LOG_MCP_HOME` 和 `--home`，改用 `root` / `set-root` 统一管理数据根目录；每个用户一个后台服务负责全部录制，最后一个客户端关闭后继续录制一段时间（`ANDROID_LOG_MCP_LINGER`）；Windows 最低要求 Windows 10 1803 / Server 2019。
 
@@ -153,8 +157,8 @@ Upgrade notes: [README › Upgrading › To 0.4.0](https://github.com/s1crab/and
 
 ### Changed
 
-- **Breaking:** new versioned storage layout `<root>/v1/<device-id>/` under one data root, by default `<user cache dir>/android-log-mcp` ([#5](https://github.com/s1crab/android-log-mcp/issues/5), [#7](https://github.com/s1crab/android-log-mcp/issues/7)). **Data recorded by 0.3 or earlier is neither migrated nor read**, and 0.3 report zips cannot be loaded with `--offline`; the old `<serial>/` directories are ignored, not deleted.
-- **Breaking:** recording moved into the background service; it continues for the linger time after the last MCP client closes ([#3](https://github.com/s1crab/android-log-mcp/issues/3)).
+- **Breaking:** new versioned storage layout `<root>/v1/<device-id>/` under one data root, by default `<user cache dir>/android-log-mcp` ([#5](https://github.com/s1crab/android-log-mcp/issues/5), [#7](https://github.com/s1crab/android-log-mcp/issues/7)). **Data recorded by 0.3 or earlier is neither migrated nor read**, and 0.3 report zips cannot be loaded with `--offline`; the old `<serial>/` directories (e.g. `emulator-5554/`) are ignored, not deleted: remove them, and any manual backups, when you no longer need them.
+- **Breaking:** recording moved into the background service; it continues for the linger time after the last MCP client closes ([#3](https://github.com/s1crab/android-log-mcp/issues/3)). Nothing changes in the MCP host configuration. A still-running 0.3 MCP process uses its own old directories and does not conflict, but keeps its own recording: restart old MCP host sessions after upgrading.
 - **Breaking:** Windows 10 1803 / Windows Server 2019 or later is required (AF_UNIX); older Windows gets a clear error.
 - **Breaking:** `--offline <dir>` is the only read-only mode and takes the dataset directory (`--home DIR --offline` no longer works); the `report` flag that skips adb is now `--no-adb` ([#7](https://github.com/s1crab/android-log-mcp/issues/7)).
 - `report` is built by the running service (or by the command itself when none runs); `call` goes through the service.
@@ -165,7 +169,7 @@ Upgrade notes: [README › Upgrading › To 0.4.0](https://github.com/s1crab/and
 
 ### Removed
 
-- **Breaking:** `ANDROID_LOG_MCP_HOME` and `--home`. If either is still set, the program exits with an error naming `set-root` ([#9](https://github.com/s1crab/android-log-mcp/issues/9), [#10](https://github.com/s1crab/android-log-mcp/issues/10)).
+- **Breaking:** `ANDROID_LOG_MCP_HOME` and `--home`. If either is still set (in an MCP host's `env` / `args`, for example), the MCP process exits with an error naming `set-root`: remove it ([#9](https://github.com/s1crab/android-log-mcp/issues/9), [#10](https://github.com/s1crab/android-log-mcp/issues/10)).
 - Per-device owner locks (`owners/`), follower mode and takeover between MCP processes; a leftover `owners/` directory from development builds is removed automatically ([#3](https://github.com/s1crab/android-log-mcp/issues/3)).
 - Migration of the pre-0.4 flat layout and the `legacy/` handling ([#7](https://github.com/s1crab/android-log-mcp/issues/7)).
 

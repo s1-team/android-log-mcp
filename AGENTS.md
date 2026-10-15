@@ -20,7 +20,7 @@ Read [docs/GOALS.md](docs/GOALS.md) first, and check every change against its pr
    - `-race` on the packages you touched;
    - `GOOS=windows go vet ./...`.
 3. **Every user-facing change adds an entry under `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md)** (Keep a Changelog groups: Added / Changed / Deprecated / Removed / Fixed / Security; mark breaking changes with **Breaking** and link the issue). Internal-only changes (tests, refactoring, CI) need no entry.
-   **Bug fixes are described only in the CHANGELOG**, never in the README: the README describes the current behavior and options neutrally (no "before X.Y.Z this popped up / was broken" notes). Breaking changes still get an upgrade note in the README ("Upgrading").
+   **Bug fixes are described only in the CHANGELOG**, never in the README: the README describes the current behavior and options neutrally (no "before X.Y.Z this popped up / was broken" notes). **Upgrade notes and breaking changes are written only in the CHANGELOG** (a **Breaking** entry says what the user has to do); they are never repeated in the README.
 4. **Work on a feature branch, never on `main`.** `main` is branch-protected: direct pushes are rejected (admins included), history must stay linear, and nobody force-pushes. Commit with a reference to the issue, for example `feat(store): … (closes #N)` (`refs #N` on intermediate commits).
 5. **Open a pull request** from the branch with `Closes #N` in the PR body (and in the commit message), so the issue closes on merge. A squash merge uses the PR title and body as the commit message.
 6. **Wait for CI to be fully green on the PR**: the required checks are `test` (ubuntu, macos, windows) and `npm-pack`, and the branch must be up to date with `main`. The npx-compat jobs and every other job must pass too. If anything fails, fix it on the branch. If `main` moved, rebase the branch on `origin/main` and push it again (`git push --force-with-lease` on your own feature branch is fine; never on `main`).
@@ -41,12 +41,12 @@ Release only after **explicit sign-off from the user or maintainer**.
    - checks that the tag matches `npm/VERSION` and that `CHANGELOG.md` has a non-empty `X.Y.Z` section (`scripts/changelog-section.sh X.Y.Z`), before publishing anything;
    - publishes all npm packages;
    - creates the GitHub Release with the tarballs attached and **the `X.Y.Z` changelog section as its notes** (plus the compare link). Do not hand-edit release notes: fix the changelog on `main` (through a PR) and update the release with `gh release edit vX.Y.Z --notes-file <(scripts/changelog-section.sh X.Y.Z)` (a re-run of the workflow also updates the notes of an existing release, but only after the npm publish steps).
-3. Breaking changes also need an upgrade note in the README ("Upgrading").
+3. Breaking changes need a **Breaking** CHANGELOG entry with the upgrade action (§2); there is no upgrade section in the README.
 4. Verify that the npm `latest` tag points at the new version and that `npx -y android-log-mcp@X.Y.Z --version` works.
 
 ## 4. Versioning
 
-- **Before 1.0:** breaking changes bump the **minor** version (0.x → 0.(x+1)), and they need a **Breaking** changelog entry and an upgrade note in the README.
+- **Before 1.0:** breaking changes bump the **minor** version (0.x → 0.(x+1)), and they need a **Breaking** changelog entry that says what to do on upgrade (only there, §2).
 - **After 1.0:** breaking changes bump the **major** version.
 - Changing a default that deletes or hides user data counts as breaking. One example is retention.
 
@@ -63,13 +63,15 @@ Repository artifacts (docs, issues, commit messages, release notes) are **Englis
 
 ## 7. Where things are
 
-- **Layout:** the "仓库结构" (repository layout) section of [README.md](README.md), and [server/README.md](server/README.md) for the Go packages.
+- **Layout:** the table below, and [server/README.md](server/README.md) for the Go packages.
+- **User documentation:** [README.md](README.md) (install, short tools list, filter syntax, FAQ; at most about 200 lines), [docs/tools.md](docs/tools.md), [docs/reference.md](docs/reference.md), [docs/compatibility.md](docs/compatibility.md).
 - **Design:** [docs/design-v3.md](docs/design-v3.md) (current) and [docs/research-v2.md](docs/research-v2.md) (background research).
 - **Testing:**
   - `go test ./...`, including the API 29 fixture replay tests;
   - `scripts/e2e-report.sh` for the end-to-end redaction check on a device;
   - `scripts/compat-probe.sh` / `android-log-mcp compat` for the device compatibility probe;
   - `scripts/perf.sh` for the performance guard (CI job `perf`): output bytes, allocations, latency, memory against `perf/baseline.json` (pull requests: `--pr`, a small history against `perf/baseline-pr.json`). A change that intentionally moves a metric re-records both baselines (`scripts/perf.sh --update && scripts/perf.sh --update --pr`) in the same PR and says why ([docs/performance.md](docs/performance.md));
+  - `scripts/check-doc-links.py` for relative links and anchors in the Markdown docs (run it after moving or renaming a heading or file);
   - the evidence and procedures in [validation/README.md](validation/README.md).
 - **Isolating tests:** the service process, its control directory (`os.UserCacheDir()/android-log-mcp`: `run/service.lock`, the socket, `config.json`) and the default data root are fixed per user. Tests must never touch the real user's control dir, config or service (a test that stops, replaces or `set-root`s the real service would break the user's recording).
   - Go: every package whose tests create a `device.Manager`, start a service or call `layout.DefaultDir` has `func TestMain(m *testing.M) { os.Exit(testhome.Run(m)) }` (`internal/testhome` points `XDG_CACHE_HOME`, `HOME`, `LocalAppData` at a temp dir). Multi-process tests in `cmd/android-log-mcp` give every child its own cache dir with `isoEnv` (and a nonexistent `ANDROID_LOG_MCP_ADB`, or the fake adb of `fakeADBEnv`); the spawned service inherits it.
@@ -93,6 +95,20 @@ Apply these to any design comment or PR that adds, splits, merges or restructure
 Design comments may use the vocabulary module, interface, seam, adapter and depth. Code, tool output and docs keep the [docs/glossary.md](docs/glossary.md) terms (device process, service process, device time, host time).
 
 Large restructuring of the `device` package is evaluated with these criteria and goes through a design comment and review (§2), never a drive-by refactor inside an unrelated change.
+
+### Repository layout
+
+| Path | Content |
+|---|---|
+| `server/` | Go module `github.com/s1crab/android-log-mcp/server`: sources, unit and regression tests, fixtures (`internal/testdata/api29`); see [server/README.md](server/README.md) |
+| `npm/` | npm launcher and package templates; `scripts/build-npm.sh [VERSION] [--pack]` cross-compiles and assembles all packages |
+| `scripts/` | `build-npm.sh`, `e2e-report.sh` (report redaction on a device), `service-e2e.sh` (service process on a device through the npm launcher), `compat-probe.sh`, `perf.sh` (performance check / baseline) |
+| `perf/` | `baseline.json`: the performance baseline guarded in CI; see [docs/performance.md](docs/performance.md) |
+| `validation/` | Evidence from the API 29 emulator: findings, trigger scripts, test app, actual tool output |
+| `docs/` | Goals (`GOALS.md`), terminology (`glossary.md`), user documentation (`tools.md`, `reference.md`, `compatibility.md`), research and design (`design-v3.md`), performance metrics and baseline (`performance.md`) |
+| `CHANGELOG.md` | Release history ([Keep a Changelog](https://keepachangelog.com/en/1.1.0/)) |
+| `AGENTS.md` | Workflow, release, versioning and safety rules for agents and contributors |
+| `.github/workflows/` | CI (tests, npx compatibility, performance guard) and release (on `v*` tags) |
 
 ---
 
@@ -118,3 +134,4 @@ Large restructuring of the `device` package is evaluated with these criteria and
 - 空闲的服务不运行任何 adb：录制按需开始（#11），服务里新增的 adb 调用必须属于已被工具调用、`report` 或 pin 启动的设备，并随它停止。
 - 绝不要杀 adb server。
 - 设计评审标准（§8）：（1）删除测试：删掉该模块后复杂度直接消失，说明只是透传；若在 N 个调用方重新出现，才值得保留；（2）一个 adapter 只是假想的接缝，两个才是真的：仅当生产与测试（或两个真实实现）不同时才加接口/注入点；（3）接口就是测试面：测试只通过公开接口断言可观察行为。设计评论可以用 module / interface / seam / adapter / depth；代码、工具输出和文档仍用 `docs/glossary.md` 的术语。`device` 包的大规模重构必须先走设计评论和评审，不得顺手重构。
+- 文档结构：README 只保留安装、精简工具表、过滤语法和 FAQ（约 200 行以内）；详细说明在 `docs/tools.md`、`docs/reference.md`、`docs/compatibility.md`；仓库结构表在 AGENTS.md §7。升级说明和破坏性变更只写在 CHANGELOG（Breaking 条目），README 不重复。
