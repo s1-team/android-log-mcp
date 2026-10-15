@@ -125,9 +125,9 @@ Large restructuring of the `device` package is evaluated with these criteria and
 
 ## 9. Working mode
 
-- **Release testing never blocks `main`.** Pre-release and supplemental testing only occupies the device line. Findings are fixed on a branch cut from the release tag and shipped as a patch (`v0.7.0` → `0.7.1`), then merged back to `main`. The same applies to every version.
+- **Release testing never blocks `main`.** Pre-release and supplemental testing is not a merge gate. Findings are fixed on a branch cut from the release tag and shipped as a patch (`v0.7.0` → `0.7.1`), then merged back to `main`. The same applies to every version.
 - **Before pushing for CI:** `git fetch origin`, rebase on `origin/main` and verify it (`git merge-base --is-ancestor origin/main HEAD`), so CI never finishes behind `main` (§2.6).
-- **Task graph:** at the start and at the completion of each task, update [#67](https://github.com/s1crab/android-log-mcp/issues/67): back up the body, refetch it right before the edit, and afterwards verify it is not blank and its section titles are intact.
+- **Task graph:** at the start and at the completion of each task, update [#67](https://github.com/s1crab/android-log-mcp/issues/67): back up the body, refetch it right before the edit, and afterwards verify the body is not blank.
 - **Own files:** an agent's own scripts and notes live in `/workspace/<repo-name>/`, never in the repository.
 - **Merging:** the agent may merge only when CI is green, the change is reviewed and it matches an approved design. Release tags, release contents, milestones and new design decisions need the user's confirmation.
 - **Notifications:** "PR ready" notifications are batched, not sent one by one.
