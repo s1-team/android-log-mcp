@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/s1crab/android-log-mcp/server/internal/logcat"
+	"github.com/s1crab/android-log-mcp/server/internal/testhome"
 )
 
 func TestCookie(t *testing.T) {
@@ -131,7 +132,7 @@ func TestRealCapturesStructureAndHits(t *testing.T) {
 	r := newT(t, Options{})
 	files, _ := filepath.Glob("../testdata/api29/*")
 	if len(files) == 0 {
-		t.Skip("no fixtures")
+		testhome.SkipOrFail(t, "no fixtures under ../testdata/api29")
 	}
 	allowed := map[string]bool{"ipv4": true, "ipv6": true, "device_id": true, "phone": true, "domain": true}
 	// every real host name present in the fixtures; anything else hit by the
