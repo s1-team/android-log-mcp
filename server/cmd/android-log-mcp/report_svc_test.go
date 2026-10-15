@@ -38,7 +38,7 @@ func TestReportStartsService(t *testing.T) {
 	seedStore(t, controlDirOf(env))
 	out1 := filepath.Join(t.TempDir(), "r1.zip")
 	_, errOut, code := cliEnv(t, env, "report", "--no-adb", "-o", out1)
-	if code != 0 || !strings.Contains(errOut, "built by the android-log-mcp service (pid ") || !strings.Contains(errOut, "emu-1: 1 records") {
+	if code != 0 || !strings.Contains(errOut, "report built_by=service pid=") || !strings.Contains(errOut, "report device=emu-1 records=1 ") {
 		t.Fatalf("report without a service: %d\n%s", code, errOut)
 	}
 	if _, err := os.Stat(out1); err != nil {
@@ -50,7 +50,7 @@ func TestReportStartsService(t *testing.T) {
 	}
 	out2 := filepath.Join(t.TempDir(), "r2.zip")
 	_, errOut, code = cliEnv(t, env, "report", "--no-adb", "-o", out2)
-	if code != 0 || !strings.Contains(errOut, "built by the android-log-mcp service (pid "+strconv.Itoa(pid)) || !strings.Contains(errOut, "emu-1: 1 records") {
+	if code != 0 || !strings.Contains(errOut, "report built_by=service pid="+strconv.Itoa(pid)+" ") || !strings.Contains(errOut, "report device=emu-1 records=1 ") {
 		t.Fatalf("service report: %d\n%s", code, errOut)
 	}
 	if _, err := os.Stat(out2); err != nil {

@@ -59,7 +59,7 @@ func TestRootCommand(t *testing.T) {
 	}
 	// set-root needs exactly one of --keep-old / --delete-old (no prompts)
 	for _, a := range [][]string{{"set-root", t.TempDir()}, {"set-root", t.TempDir(), "--keep-old", "--delete-old"}, {"set-root", "--keep-old"}} {
-		if _, errOut, code := cli(t, nil, a...); code != 2 || !strings.Contains(errOut, "usage: android-log-mcp set-root") {
+		if _, errOut, code := cli(t, nil, a...); code != 2 || !strings.HasPrefix(errOut, "error code=usage ") || !strings.Contains(errOut, "next: android-log-mcp set-root DIR") {
 			t.Fatalf("%v: exit %d\n%s", a, code, errOut)
 		}
 	}

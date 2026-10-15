@@ -37,16 +37,15 @@ func runRecord(ctx context.Context, args []string) int {
 	dur := fs.String("for", "", "pin duration, e.g. 30m, 2h, 1h30m (max 24h)")
 	stop := fs.Bool("stop", false, "stop recording now and remove the pin")
 	asJSON := fs.Bool("json", false, "machine-readable output")
-	if err := fs.Parse(args); err != nil {
-		return 2
+	if code, ok := parseFlags(fs, args, "android-log-mcp record --for 2h"); !ok {
+		return code
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintf(os.Stderr, "record: unexpected argument %q\n\n", fs.Arg(0))
-		fs.Usage()
+		fmt.Fprintln(os.Stderr, mcpserver.CLIError("usage", "android-log-mcp record --for 2h", "value", fs.Arg(0), "msg", "unexpected_argument"))
 		return 2
 	}
 	if *dur != "" && *stop {
-		fmt.Fprintln(os.Stderr, "record: --for and --stop cannot be combined")
+		fmt.Fprintln(os.Stderr, mcpserver.CLIError("usage", "android-log-mcp record --stop", "msg", "for_and_stop_exclusive"))
 		return 2
 	}
 	ctrl := service.DefaultControl()
@@ -57,19 +56,19 @@ func runRecord(ctx context.Context, args []string) int {
 			err = errors.New("--for 0: use --stop to stop recording")
 		}
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "record:", strings.Replace(err.Error(), "record_for", "--for", 1))
+			fmt.Fprintln(os.Stderr, mcpserver.CLIError("bad_param", "android-log-mcp record --for 2h", "param", "--for", "value", *dur, "msg", strings.Replace(err.Error(), "record_for", "--for", 1)))
 			return 2
 		}
 		// never touch an unusable record.json
 		if _, _, err := service.ReadPins(ctrl, time.Now()); err != nil {
-			fmt.Fprintln(os.Stderr, "record:", err)
+			fmt.Fprintln(os.Stderr, mcpserver.CLIError("pins_unusable", "android-log-mcp service status", "msg", err.Error()))
 			return 1
 		}
 		cl := service.NewClient(service.ClientOptions{Control: ctrl, Version: mcpserver.Version, Role: "record", NoEmbedded: true})
 		defer cl.Close()
 		var rep service.RecordReply
 		if err := cl.Do(ctx, "record", a, &rep); err != nil {
-			fmt.Fprintln(os.Stderr, "record:", remoteMsg(err))
+			fmt.Fprintln(os.Stderr, mcpserver.CLIError("service_error", "android-log-mcp service status", "msg", remoteMsg(err)))
 			return 1
 		}
 		return printRecord(&rep, *asJSON)
@@ -79,12 +78,12 @@ func runRecord(ctx context.Context, args []string) int {
 	if err == nil {
 		defer conn.Close()
 		if conn.Hello.Proto < 2 {
-			fmt.Fprintf(os.Stderr, "record: the running service (pid %d, version %s) predates recording pins; stop it with `android-log-mcp service stop`\n", conn.Hello.PID, conn.Hello.Version)
+			fmt.Fprintln(os.Stderr, mcpserver.CLIError("service_too_old", "android-log-mcp service stop", "pid", conn.Hello.PID, "version", conn.Hello.Version))
 			return 1
 		}
 		var rep service.RecordReply
 		if err := conn.Do(ctx, "record", a, &rep); err != nil {
-			fmt.Fprintln(os.Stderr, "record:", remoteMsg(err))
+			fmt.Fprintln(os.Stderr, mcpserver.CLIError("service_error", "android-log-mcp service status", "msg", remoteMsg(err)))
 			return 1
 		}
 		return printRecord(&rep, *asJSON)
@@ -129,7 +128,7 @@ func recordOffline(ctrl service.Control, a service.RecordArgs, asJSON bool) int 
 			return nil
 		})
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "record:", err)
+			fmt.Fprintln(os.Stderr, mcpserver.CLIError("several_devices", "android-log-mcp record --stop --device ID", "msg", err.Error()))
 			return 1
 		}
 	}
@@ -147,7 +146,7 @@ func recordOffline(ctrl service.Control, a service.RecordArgs, asJSON bool) int 
 			rep.Devices = append(rep.Devices, service.RecordDevice{ID: id, State: "idle", Pin: pf.Pins[id]})
 		}
 	}
-	rep.Notes = append(rep.Notes, "service: not running (nothing is recorded; `record --for` or the next log tool call starts it)")
+	rep.Notes = append(rep.Notes, "service not running: nothing is recorded until `android-log-mcp record --for 2h` or the next log tool call")
 	return printRecord(rep, asJSON)
 }
 
@@ -158,42 +157,57 @@ func printRecord(rep *service.RecordReply, asJSON bool) int {
 		return 0
 	}
 	now := time.Now()
+	kv := []any{"action", rep.Action}
 	if rep.Service != 0 {
-		fmt.Printf("service: pid %d, version %s\n", rep.Service, rep.Version)
+		kv = append(kv, "service_pid", rep.Service, "version", rep.Version)
+	} else {
+		kv = append(kv, "service", "not_running")
 	}
-	if rep.Action == "pinned" && rep.Deadline != nil {
-		fmt.Printf("pinned until %s (in %s)\n", rep.Deadline.Local().Format("2006-01-02 15:04:05"), rep.Deadline.Sub(now).Round(time.Second))
+	if rep.Deadline != nil {
+		kv = append(kv, "pinned_until", rep.Deadline.Format(isoSec), "in_s", int(rep.Deadline.Sub(now).Seconds()))
 	}
+	word := "ok"
 	if len(rep.Devices) == 0 {
-		fmt.Println("recording: idle (starts on the first log tool call)")
+		word = "empty"
 	}
-	pending := false
+	fmt.Println(mcpserver.KV(word+" record", kv...))
+	pending := ""
 	for _, d := range rep.Devices {
-		line := d.ID + ": " + d.State
-		if d.Detail != "" {
-			line += " (" + d.Detail + ")"
-		}
+		kv := []any{"id", d.ID, "state", d.State, "caught_up", d.CaughtUp}
 		if d.Recording && !d.CaughtUp {
-			pending = true
-		}
-		fmt.Println(line)
-		if d.Pin != nil {
-			fmt.Println("  " + d.Pin.Describe(now))
+			kv = append(kv, "backfill_lines", d.Lines)
+			if pending == "" {
+				pending = d.ID
+			}
 		}
 		if d.IdleStop != nil {
-			fmt.Printf("  idle stop at %s unless called again or pinned\n", d.IdleStop.Local().Format("2006-01-02 15:04:05"))
+			kv = append(kv, "idle_stop", d.IdleStop.Format(isoSec))
 		}
+		if d.Pin != nil {
+			kv = append(kv, "pinned_until", d.Pin.Deadline.Format(isoSec), "pin_by", d.Pin.SetBy)
+			if d.Pin.Suspended != "" {
+				kv = append(kv, "pin_suspended", d.Pin.Suspended)
+			}
+			if d.Pin.LastError != "" {
+				kv = append(kv, "pin_error", d.Pin.LastError)
+			}
+		} else {
+			kv = append(kv, "pinned_until", "-")
+		}
+		fmt.Println(mcpserver.KV("device", kv...))
 	}
 	for _, p := range rep.Pins {
 		if strings.HasPrefix(p, "pins: ") {
-			fmt.Println(p)
+			fmt.Println(mcpserver.KV("note", "code", "pins", "msg", strings.TrimPrefix(p, "pins: ")))
 		}
 	}
 	for _, n := range rep.Notes {
-		fmt.Println("note: " + n)
+		fmt.Println(mcpserver.KV("note", "msg", n))
 	}
-	if rep.Action == "pinned" && pending {
-		fmt.Println("backfill in progress; check with: android-log-mcp record")
+	if rep.Action == "pinned" && pending != "" {
+		fmt.Println(mcpserver.KV("hint", "code", "backfill_in_progress") + " next: android-log-mcp record")
 	}
 	return 0
 }
+
+const isoSec = "2006-01-02T15:04:05Z07:00"

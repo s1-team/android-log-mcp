@@ -146,6 +146,11 @@ type Info struct {
 	Devices   []string `json:"devices,omitempty"` // per recorded device
 	Pins      []string `json:"pins,omitempty"`    // per pin (with suspension, last error)
 	Lifetime  string   `json:"lifetime,omitempty"`
+	// numeric twins of the sentences above (issue #85): seconds
+	UptimeS    int `json:"uptime_s"`
+	LingerMinS int `json:"linger_min_s"`
+	LingerMaxS int `json:"linger_max_s"`
+	ExitGraceS int `json:"exit_grace_s"`
 }
 
 // Text renders the info for `service status` (and, through Lines, the
@@ -366,6 +371,7 @@ func (s *Service) Info() Info {
 		i.Log = s.opt.Log.Path()
 	}
 	i.Linger = s.lingerText()
+	i.UptimeS, i.LingerMinS, i.LingerMaxS, i.ExitGraceS = int(time.Since(s.started).Seconds()), int(LingerMin.Seconds()), int(LingerMax.Seconds()), int(s.exitGrace.Seconds())
 	i.Lifetime = s.lifeText()
 	i.Recording, i.Devices = s.recordingText()
 	i.Pins = s.pinTexts()

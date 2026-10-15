@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/s1crab/android-log-mcp/server/internal/mcpserver"
@@ -42,30 +43,29 @@ func runSetRoot(ctx context.Context, args []string) int {
 	var dir string
 	rest := args
 	for {
-		if err := fs.Parse(rest); err != nil {
-			return 2
+		if code, ok := parseFlags(fs, rest, "android-log-mcp set-root DIR --keep-old"); !ok {
+			return code
 		}
 		if fs.NArg() == 0 {
 			break
 		}
 		if dir != "" {
-			fmt.Fprintf(os.Stderr, "set-root: unexpected argument %q\n\n", fs.Arg(0))
-			fs.Usage()
+			fmt.Fprintln(os.Stderr, mcpserver.CLIError("usage", "android-log-mcp set-root DIR --keep-old", "value", fs.Arg(0), "msg", "unexpected_argument"))
 			return 2
 		}
 		dir, rest = fs.Arg(0), fs.Args()[1:]
 	}
 	if dir == "" || *keep == *del {
+		msg := "missing_dir"
 		if dir != "" {
-			fmt.Fprintln(os.Stderr, "set-root: exactly one of --keep-old or --delete-old is required")
-			fmt.Fprintln(os.Stderr)
+			msg = "exactly_one_of_keep_old_delete_old"
 		}
-		fs.Usage()
+		fmt.Fprintln(os.Stderr, mcpserver.CLIError("usage", "android-log-mcp set-root DIR --keep-old | --delete-old", "msg", msg))
 		return 2
 	}
 	res, err := service.SetRoot(ctx, service.DefaultControl(), mcpserver.Version, service.SetRootArgs{Target: dir, DeleteOld: *del, Timeout: *timeout})
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "android-log-mcp set-root:", err)
+		fmt.Fprintln(os.Stderr, mcpserver.CLIError("set_root_failed", "android-log-mcp root", "msg", err.Error()))
 		return 1
 	}
 	code := 0
@@ -77,25 +77,29 @@ func runSetRoot(ctx context.Context, args []string) int {
 		fmt.Println(string(b))
 		return code
 	}
-	by := "by the running service (pid " + fmt.Sprint(res.ServicePID) + ")"
-	if res.ServicePID == 0 {
-		by = "(no service was running)"
-	}
-	fmt.Printf("data root: %s (was %s), switched %s in %s\n", res.NewRoot, res.OldRoot, by, res.Took)
+	fmt.Println(mcpserver.KV("ok set-root", "root", res.NewRoot, "old_root", res.OldRoot, "service_pid", res.ServicePID, "took_s", tookSeconds(res.Took), "old", oldState(res)))
 	if len(res.Devices) > 0 {
-		fmt.Printf("recording continues there for: %v (history before the switch stays in the old root)\n", res.Devices)
+		fmt.Println(mcpserver.KV("note", "code", "recording_continues", "devices", strings.Join(res.Devices, ",")))
 	}
-	switch {
-	case res.Old == "keep":
-		fmt.Printf("old root kept: %s\n", res.OldRoot)
-	case len(res.Remained) == 0:
-		what := "removed"
-		if !res.OldRootRemoved {
-			what = "android-log-mcp's directories removed (other files, or the control files, remain)"
-		}
-		fmt.Printf("old root %s: %s\n", res.OldRoot, what)
-	default:
-		fmt.Printf("old root %s: could not remove %v (%v); the service retries when it next starts, or remove them by hand\n", res.OldRoot, res.Remained, res.Errors)
+	if len(res.Remained) > 0 {
+		fmt.Println(mcpserver.KV("warning", "code", "old_root_remains", "paths", strings.Join(res.Remained, ","), "msg", fmt.Sprint(res.Errors)) + " next: remove those paths by hand (the service retries when it next starts)")
 	}
 	return code
+}
+
+func oldState(res *service.SetRootResult) string {
+	switch {
+	case res.Old == "keep":
+		return "kept"
+	case len(res.Remained) > 0:
+		return "partly_removed"
+	case res.OldRootRemoved:
+		return "removed"
+	}
+	return "dirs_removed"
+}
+
+func tookSeconds(s string) float64 {
+	d, _ := time.ParseDuration(s)
+	return float64(int(d.Seconds()*10)) / 10
 }

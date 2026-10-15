@@ -313,14 +313,17 @@ type RecordArgs struct {
 
 // RecordDevice is one device in a RecordReply.
 type RecordDevice struct {
-	ID        string     `json:"id"`
-	State     string     `json:"state"` // recording / idle / ...
-	Detail    string     `json:"detail,omitempty"`
-	Recording bool       `json:"recording"`
-	CaughtUp  bool       `json:"caught_up"`
-	Lines     uint64     `json:"backfill_lines"`
-	Pin       *Pin       `json:"pin,omitempty"`
-	IdleStop  *time.Time `json:"idle_stop,omitempty"`
+	ID     string `json:"id"`
+	State  string `json:"state"`            // recording / idle / ...
+	Detail string `json:"detail,omitempty"` // a sentence for people; agents read detail_code
+	// DetailCode is Detail as a closed enum: waiting_for_device, backfill,
+	// caught_up, starting, not_connected.
+	DetailCode string     `json:"detail_code,omitempty"`
+	Recording  bool       `json:"recording"`
+	CaughtUp   bool       `json:"caught_up"`
+	Lines      uint64     `json:"backfill_lines"`
+	Pin        *Pin       `json:"pin,omitempty"`
+	IdleStop   *time.Time `json:"idle_stop,omitempty"`
 }
 
 // RecordReply is the "record" op's reply.
@@ -471,9 +474,20 @@ func (s *Service) record(ctx context.Context, a RecordArgs) (*RecordReply, error
 			rd.State = "started"
 			pinned := s.pinUntil(id)
 			rd.Detail = deviceState(m, id, now, pinned, false)
+			rd.DetailCode = "waiting_for_device"
 			if d := m.Get(id); d != nil {
 				st := d.Status()
 				p := d.CatchUp()
+				switch {
+				case st.Recording && p.Pending:
+					rd.DetailCode = "backfill"
+				case st.Recording:
+					rd.DetailCode = "caught_up"
+				case st.State == "device":
+					rd.DetailCode = "starting"
+				default:
+					rd.DetailCode = "not_connected"
+				}
 				rd.Recording, rd.CaughtUp, rd.Lines = st.Recording, st.Recording && !p.Pending, p.Lines
 				if st.Recording {
 					rd.State = "recording"
