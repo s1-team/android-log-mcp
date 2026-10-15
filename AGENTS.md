@@ -31,6 +31,11 @@ Read [docs/GOALS.md](docs/GOALS.md) first, and check every change against its pr
    - **Never sit blocked.** While a node waits for a review, CI or the emulator, take the next unblocked node.
    - Design reviews still go to the release owner, but unrelated nodes continue in the meantime; only the nodes that depend on the design wait.
    - Keep the graph current in the pinned tracking issue [#67](https://github.com/s1crab/android-log-mcp/issues/67): update a node's status (and its PR) when it starts, blocks or merges.
+9. **Branch rules.**
+   - `0.7.x` and `0.8.x` are release branches; change them only via a PR.
+   - All dev branches start with `feat` (for example `feat-108-socket-doc`).
+   - PRs target `main` or the matching release branch.
+   - When several PRs are ready, state the merge order and rebase the later ones so they are not BEHIND each other.
 
 ## 3. Releases
 
