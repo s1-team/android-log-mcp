@@ -140,12 +140,26 @@ The `exe/` directory holds one binary (about 11 MB), plus renamed copies only wh
 | `android-log-mcp call TOOL [JSON]` | Call one tool through the service and print the result (like an MCP call, it starts recording the device and waits up to 10 s for the backfill) |
 | `android-log-mcp record [--device X]... --for 2h` / `--stop` / (no flag) | Keep recording until now + the duration without tool calls or connected MCP / CLI processes (a pin), stop now, or show what is recorded (see [below](#recording-pins-record-and-record_for)); `--json` for scripts |
 | `android-log-mcp report [flags]` | Diagnostic zip (see [below](#diagnostic-reports-and-privacy)); `report -h` lists the flags |
-| `android-log-mcp service [status [--json] \| stop [--force]]` | Show or stop the service process; without arguments, run it in the foreground. `stop --force` also ends a service process that holds the lock but does not answer: it is signalled (SIGTERM, then SIGKILL after 10 s; Windows: a stop request, then TerminateProcess) only when it is verified to be the process recorded in `run/service.json` (same executable and start time); unflushed lines can be lost, and the command says so. Exit 1 when the service holds the lock but does not answer |
+| `android-log-mcp service [status [--json] [--verbose] \| stop [--force]]` | Show or stop the service process; without arguments, run it in the foreground. `stop --force` also ends a service process that holds the lock but does not answer: it is signalled (SIGTERM, then SIGKILL after 10 s; Windows: a stop request, then TerminateProcess) only when it is verified to be the process recorded in `run/service.json` (same executable and start time); unflushed lines can be lost, and the command says so. Exit 1 when the service holds the lock but does not answer |
 | `android-log-mcp install [--json]` | Copy this binary to a fixed path (`<user cache dir>/android-log-mcp/exe/`) and print it, for MCP hosts that run the binary directly (recommended on Windows) |
 | `android-log-mcp root [--json]` | Print the data root (and the control dir, config file, socket and running service) |
 | `android-log-mcp set-root DIR --keep-old\|--delete-old` | Move the data root for every MCP and CLI process (see [below](#data-root-and-set-root)) |
 | `android-log-mcp compat [--serial S] [--json\|--raw]` | Read-only probe of a device for the logcat / ps / pm / dumpsys features this tool needs, evaluated with the recorder's own parsers. Exit 0 = supported (possibly degraded), 1 = a required feature is missing, 2 = usage or adb error |
 | `android-log-mcp --offline DIR [call …]` | Open a dataset read-only, e.g. an unzipped report's `store/`: no adb, no service, never records, prunes or creates files |
+
+## Output format (`fmt=1`)
+
+Every tool response and every CLI command prints the same grammar, built for agents (parse first, then read; see [GOALS.md](GOALS.md)). The version is `fmt=1` in the header; it changes only with a breaking format change.
+
+- **Line 1** is `ok`, `empty` or `error`, then `key=value` fields (values with a space are quoted). Times are ISO-8601 with offset (device time; `host_now` and `tz` only with `verbose=true`), numbers are plain integers, durations end in `_s` / `_ms`, sizes in `_bytes`. `order=arrival|newest_first` says how a list is sorted; `clock=observed|estimated|unknown` is the reading of device now (`dev_now`, `offset_s`).
+- **Rows** of `logcat_search`: `time level pid/tid process tag: message`. No column before the tag contains a space (`process` is `system_server` or `uid:system`; `?` = unknown). A continuation line of a multi-line message starts with `| `; a repeated line is `^ rep=N`; a date change is `--- 2026-10-15 ---`.
+- **Truncation:** one line `truncated <what>=N exact=0|1 ... next: param=value [| param=value]` at the place where output was cut; `exact=0` means N is a lower bound. `next:` is always executable (a parameter of the same tool or a command line), never a placeholder.
+- **Empty:** `empty ... scanned=N range=<first>/<last>` plus `hint code=<code> next: ...`: `scanned` and `range` tell "no data in range" from "the filter matched nothing".
+- **Error:** `error code=<code> ... next: ...`. Codes are a closed set: `bad_param`, `missing_param`, `bad_type`, `bad_json`, `bad_filter`, `bad_time`, `bad_cursor`, `cursor_device`, `host_time`, `empty_window`, `unknown_param`, `unknown_tool` (lists the tools), `unknown_device`, `unknown_crash`, `several_devices`, `no_device`, `device_offline`, `device_unauthorized`, `device_state`, `device_identifying`, `record_for_unavailable`. `note code=...` lines carry facts that explain the result (for example `shares_uid`, `lag`, `backfill`, `no_callback_durations`, `no_displayed_hot`).
+- **Verbose:** `verbose=true` adds what rarely changes the next call: `host_now`, `tz`, the full clock-jump list, the shared-uid package list, linger and lifetime.
+- **`logcat_crashes` detail** shows the 20 lines before a crash by default; `before_lines` (1-100) shows more.
+
+The CLI uses the same lines: `android-log-mcp call` writes exactly the tool response to stdout and nothing to stderr (except `service state=started pid=... version=...` when it started the service); usage mistakes are one `error code=usage ... next: <command>` line (exit 2), the full usage only for `-h`; `record`, `service status` and `report` print `key=value` lines (`service status --verbose` for the full text); `--json` outputs and `root` are unchanged apart from added numeric fields.
 
 ## Service process
 
@@ -337,3 +351,4 @@ Values are replaced by `[REDACTED:<type>#n]`. The same original value gets the s
 - **数据根目录**：默认 `<用户缓存目录>/android-log-mcp`（`android-log-mcp root` 查看）；用 `android-log-mcp set-root <绝对路径> --keep-old|--delete-old` 为所有 MCP 进程和 CLI 进程统一切换，失败会回滚；切换前的历史留在旧目录里，不再被查询。
 - **上限**：每台设备保留 1 天、最多 512 MiB；整个根目录最多 2 GiB；剩余磁盘低于 512 MiB 时暂停录制。
 - **诊断包**：`android-log-mcp report` 生成 zip（没有后台服务进程时会以 detached 方式启动它并先回填），默认打码 token、密码、邮箱、手机号、身份证、银行卡、设备 ID、IP、MAC、域名等；打码基于模式，分享前请检查。
+- **输出格式 `fmt=1`**：所有工具和 CLI 输出第一个词是 `ok|empty|error`，其后是 `key=value`；时间为带偏移的 ISO-8601；每个截断、空结果和错误都带可直接执行的 `next:`；错误码是封闭集合（见上文）。

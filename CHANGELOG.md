@@ -8,6 +8,21 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 Output format `fmt=1` ([#85](https://github.com/s1crab/android-log-mcp/issues/85), agent-first output, [docs/GOALS.md](docs/GOALS.md)). The whole set ships in one breaking release (0.8.0); this version covers `logcat_search`, `logcat_status`, `logcat_crashes`, `logcat_app_launches` and the errors shared by all tools (the CLI in this part).
 
+### Upgrade notes
+
+0.8.0 is one deliberate output break ([#85](https://github.com/s1crab/android-log-mcp/issues/85)): parse once, against `fmt=1` (see [docs/reference.md](docs/reference.md#output-format-fmt1)). Pre-1.0, so breaking is a minor version (AGENTS.md §4). The first token of every response is now `ok`, `empty` or `error`; read the header line first, then split rows on spaces / `key=value`.
+
+| # | Breaking change | What to do |
+|---|---|---|
+| B1 | `logcat_search` has a `summary of=N ...` head line when more matches exist than shown; the `top tags in ...` tail line is gone | read the head line |
+| B2 | Every truncation is one `truncated <what>=N exact=0\|1 ... next: param=value` line (replaces `[truncated: ...]`, `[output cap: ...]`, `more:`, `raise limit`); crashes, launches and status gain markers | follow `next:` |
+| B3 | The `clock:` prose line is gone; `clock_jumps=N ... next: after=...` appears only when a jump splits the matches | parse the one line |
+| B4 | Header is `key=value` with ISO times; `host now`, `format:` and `count:` lines are gone (`host_now`, `tz` with `verbose=true`); `fmt=1` | match on the first token and keys |
+| B5 | Rows: one-token process (`uid:system`, never `?(uid system)`), `\| ` continuation lines, `^ rep=N`, ASCII separators, no thousands separators, durations in seconds/ms | split rows on whitespace |
+| B6 | Empty results and errors are `empty ... scanned= range=` and `error code=<code> ... next:`; `call` maps JSON/usage mistakes to the same shape | match `code=`, not message text |
+| B7 | `logcat_crashes` detail shows 20 lines before a crash (was 40) | pass `before_lines=40` (max 100) for the old amount |
+| B8 | CLI: `call` writes nothing to stderr normally; `service status`, `record`, `report` stderr and `set-root` print `key=value` lines; usage errors are one `error code=usage ... next:` line | use `--json` (unchanged, numeric fields added) or parse `key=value` |
+
 ### Changed
 
 - **Breaking:** `logcat_search` responses start with one header line `ok`, `empty` or `error`, then `key=value` fields (`view device matched exact shown order range dev_now clock offset_s clock_age_s fmt=1`). Times are ISO-8601 with offset, numbers are plain integers (no thousands separators), durations are seconds (`_s`). The old prose header (`device … · device time … · device now … · host now …`), the `format:` line and the `count:` line are gone. `host now` is no longer printed by default; pass `verbose=true` to get `host_now`, `tz` and the column legend. Upgrade: parse the first line as `ok|empty|error k=v …`; read the count from `matched`/`exact` (`exact=0` means a lower bound, with `counted_from`/`counted_to`).
