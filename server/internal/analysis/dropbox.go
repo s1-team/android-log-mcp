@@ -136,9 +136,13 @@ func MatchDropboxBoot(list []*Crash, e DropboxEntry, boot string) (c *Crash, isN
 			continue
 		}
 		d := abs(x.TimeNs - e.TimeNs)
-		if d < 60e9 && d < bestD {
+		win := int64(60e9)
+		if kind == "anr" {
+			win = anrPairWindow
+		}
+		if d < win && d < bestD {
 			best, bestD = x, d
-		} else if d >= 60e9 && boot != "" && x.Boot == boot && kind != "anr" && pid != 0 && x.PID == pid &&
+		} else if d >= win && boot != "" && x.Boot == boot && kind != "anr" && pid != 0 && x.PID == pid &&
 			proc != "" && x.Process == proc && (far == nil || d < farD) {
 			far, farD = x, d
 		}
