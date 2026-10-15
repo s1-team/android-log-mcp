@@ -53,7 +53,7 @@ func deviceFile(name string) bool {
 	case strings.HasPrefix(name, "seg-") && strings.HasSuffix(name, ".jsonl"),
 		strings.HasSuffix(name, ".jsonl"), strings.HasSuffix(name, ".tmp"),
 		strings.HasPrefix(name, "dropbox_status_"),
-		name == "meta.json", name == "packages.json", name == "writer.lock":
+		name == "meta.json", name == "packages.json", name == store.ResumeDedupFile, name == "writer.lock":
 		return true
 	}
 	return false

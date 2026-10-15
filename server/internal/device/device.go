@@ -577,11 +577,17 @@ func (d *Device) recordOnce(ctx context.Context) error {
 		resume = logcat.FormatResumeTime(arrNs)
 		known = boundaryMultiset(d.Store, arrNs)
 	}
-	if known != nil {
-		if rd := meta.ResumeDedup; rd != nil && rd.TimeNs == arrNs {
-			for _, h := range rd.Hashes { // stored in the previous root (set-root)
-				known[h]++
+	if rd := meta.ResumeDedup; rd != nil {
+		// stored in the previous root (set-root, issue #56): used by every
+		// resume until the boot changes or enough lines are stored here
+		if rd.Active(bootID, arrNs, d.Store.LastSeq()) {
+			if known != nil {
+				for _, h := range d.Store.LoadResumeDedup() {
+					known[h]++
+				}
 			}
+		} else {
+			d.Store.ClearResumeDedup()
 		}
 	}
 	if !sameBoot {

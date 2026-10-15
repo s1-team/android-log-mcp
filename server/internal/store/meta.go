@@ -54,11 +54,10 @@ type Meta struct {
 	// Holes are seq ranges that are not in this directory (recorded in
 	// another root before the recording moved back here).
 	Holes []SeqRange `json:"holes,omitempty"`
-	// ResumeDedup holds the hashes (one per line, repeats kept) of the
-	// lines stored in the previous root near the newest arrival's device
-	// time: logcat -T <that time> repeats them after a set-root move, and
-	// this directory does not have them to compare against. Ignored once
-	// the newest arrival moves on.
+	// ResumeDedup describes the hashes of the lines stored in the previous
+	// root (set-root, issue #56): the new directory does not have them to
+	// compare against, and a resume (logcat -T or the whole buffer) can
+	// repeat them. The hashes themselves are in resume_dedup.bin.
 	ResumeDedup *ResumeDedup `json:"resume_dedup,omitempty"`
 }
 
@@ -88,10 +87,31 @@ const ClockJumpThreshold = int64(60e9)
 // maxClockJumps bounds Meta.ClockJumps.
 const maxClockJumps = 200
 
-// ResumeDedup: see Meta.ResumeDedup.
+// ResumeDedup: see Meta.ResumeDedup. The carried set is used by every
+// resume while the device boot is BootID and fewer than Count lines have
+// been stored since the move (SeqFloor): the old root's lines can still be
+// in the device buffer until then (issue #56).
 type ResumeDedup struct {
-	TimeNs int64    `json:"time_ns"`
-	Hashes []uint64 `json:"hashes"`
+	BootID   string `json:"boot_id,omitempty"`
+	SeqFloor uint64 `json:"seq_floor,omitempty"`
+	Count    int    `json:"count,omitempty"`
+	// Legacy (0.5.x–0.6.0): the hashes inline in meta.json, used only by the
+	// first resume (the newest arrival is still TimeNs). Still read.
+	TimeNs int64    `json:"time_ns,omitempty"`
+	Hashes []uint64 `json:"hashes,omitempty"`
+}
+
+// Active reports whether the carried set still applies: the same boot and
+// fewer than Count lines stored since the move, or (legacy inline set)
+// the newest arrival still at the move's resume point.
+func (rd *ResumeDedup) Active(bootID string, arrivalNs int64, lastSeq uint64) bool {
+	if rd == nil {
+		return false
+	}
+	if rd.Count > 0 {
+		return rd.BootID == bootID && lastSeq-min(lastSeq, rd.SeqFloor) < uint64(rd.Count)
+	}
+	return len(rd.Hashes) > 0 && rd.TimeNs == arrivalNs
 }
 
 // SeqRange is an inclusive range of seqs.

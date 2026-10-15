@@ -94,3 +94,66 @@ func TestContinueInSameDirRefused(t *testing.T) {
 		t.Fatal("same dir accepted")
 	}
 }
+
+func TestResumeDedupLifetime(t *testing.T) {
+	rd := &ResumeDedup{BootID: "b1", SeqFloor: 1000, Count: 50}
+	for _, c := range []struct {
+		boot string
+		last uint64
+		want bool
+	}{{"b1", 1000, true}, {"b1", 1049, true}, {"b1", 1050, false}, {"b2", 1000, false}, {"b1", 10, true}} {
+		if got := rd.Active(c.boot, 0, c.last); got != c.want {
+			t.Errorf("Active(%s, %d) = %v, want %v", c.boot, c.last, got, c.want)
+		}
+	}
+	if (*ResumeDedup)(nil).Active("b1", 0, 0) {
+		t.Error("nil is never active")
+	}
+}
+
+func TestContinueInCarriedFile(t *testing.T) {
+	a, b := filepath.Join(t.TempDir(), "a"), filepath.Join(t.TempDir(), "b")
+	s1, err := OpenDir(a, "dev", Config{}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s1.UpdateMeta(func(m *Meta) { m.LastBootID = "b1" })
+	appendN(t, s1, "A", 3, 1000)
+	s1.Close()
+	if err := os.MkdirAll(b, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(b, ResumeDedupFile), []byte("stale"), 0o644)
+	if err := ContinueIn(a, b, 3, []uint64{7, 7, 9}); err != nil {
+		t.Fatal(err)
+	}
+	s2, err := OpenDir(b, "dev", Config{}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	if rd := s2.Meta().ResumeDedup; rd == nil || rd.Count != 3 || rd.BootID != "b1" || rd.SeqFloor != 3 || rd.Hashes != nil {
+		t.Fatalf("meta: %+v", rd)
+	}
+	if h := s2.LoadResumeDedup(); fmt.Sprint(h) != "[7 7 9]" {
+		t.Fatalf("hashes %v", h)
+	}
+	// a damaged file is ignored (the stored lines remain the only de-dup)
+	os.WriteFile(filepath.Join(b, ResumeDedupFile), []byte("short"), 0o644)
+	if h := s2.LoadResumeDedup(); h != nil {
+		t.Fatalf("damaged file read: %v", h)
+	}
+	s2.ClearResumeDedup()
+	if _, err := os.Stat(filepath.Join(b, ResumeDedupFile)); !os.IsNotExist(err) || s2.Meta().ResumeDedup != nil {
+		t.Fatal("not cleared")
+	}
+	// nothing to carry (or no boot): no file, and a stale one is removed
+	os.WriteFile(filepath.Join(b, ResumeDedupFile), []byte("stale"), 0o644)
+	s2.Close()
+	if err := ContinueIn(a, b, 3, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(b, ResumeDedupFile)); !os.IsNotExist(err) {
+		t.Fatal("stale file kept")
+	}
+}
