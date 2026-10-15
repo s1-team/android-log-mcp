@@ -82,6 +82,18 @@ Repository artifacts (docs, issues, commit messages, release notes) are **Englis
 - **Never kill the adb server** (`adb kill-server`, or killing its process) in code, tests or scripts: other tools and the user depend on it. The service starts it outside its own process group and only its own `adb` children end with it.
 - **Packaging:** run `scripts/build-npm.sh [VERSION] [--pack]`. CI runs the npx smoke tests on every Node version in the matrix.
 
+## 8. Design review criteria
+
+Apply these to any design comment or PR that adds, splits, merges or restructures modules (based on [mattpocock/skills codebase-design](https://github.com/mattpocock/skills/tree/main/skills/engineering/codebase-design)):
+
+1. **Deletion test.** Imagine deleting the module. If the complexity just vanishes, it was a pass-through: do not add it, or inline it. If the complexity reappears across N callers, it earns its keep.
+2. **One adapter is a hypothetical seam, two is a real one.** Add an interface or injection point only when production and tests (or two real implementations) differ. Do not add one "for later".
+3. **The interface is the test surface.** Tests assert observable behaviour through the public interface, so they survive internal refactors. Do not test private helpers or call order.
+
+Design comments may use the vocabulary module, interface, seam, adapter and depth. Code, tool output and docs keep the [docs/glossary.md](docs/glossary.md) terms (device process, service process, device time, host time).
+
+Large restructuring of the `device` package is evaluated with these criteria and goes through a design comment and review (§2), never a drive-by refactor inside an unrelated change.
+
 ---
 
 ## 中文摘要
@@ -105,3 +117,4 @@ Repository artifacts (docs, issues, commit messages, release notes) are **Englis
 - 测试隔离：后台服务进程、控制目录（`os.UserCacheDir()/android-log-mcp`：`run/`、socket、`config.json`）和默认数据根目录都是每用户固定的，测试绝不能碰真实用户的这些东西。Go 测试用 `testhome.Run` 的 TestMain，多进程测试用 `isoEnv`；手动运行用 `XDG_CACHE_HOME`（Linux）/ `HOME`（macOS）/ `LocalAppData`（Windows）把整个缓存目录指向临时目录。只读查看数据集用 `--offline <目录>`。`scripts/service-e2e.sh` / `e2e-report.sh` 也要这样隔离，除非就是要测真实服务。`internal/fakeadb` 是可编程的假 adb，用来断言运行了哪些 adb 命令。
 - 空闲的服务不运行任何 adb：录制按需开始（#11），服务里新增的 adb 调用必须属于已被工具调用、`report` 或 pin 启动的设备，并随它停止。
 - 绝不要杀 adb server。
+- 设计评审标准（§8）：（1）删除测试：删掉该模块后复杂度直接消失，说明只是透传；若在 N 个调用方重新出现，才值得保留；（2）一个 adapter 只是假想的接缝，两个才是真的：仅当生产与测试（或两个真实实现）不同时才加接口/注入点；（3）接口就是测试面：测试只通过公开接口断言可观察行为。设计评论可以用 module / interface / seam / adapter / depth；代码、工具输出和文档仍用 `docs/glossary.md` 的术语。`device` 包的大规模重构必须先走设计评论和评审，不得顺手重构。
