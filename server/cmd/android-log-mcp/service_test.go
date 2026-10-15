@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -242,4 +243,38 @@ func TestVersionHandoff(t *testing.T) {
 func serviceLog(env []string) string {
 	b, _ := os.ReadFile(filepath.Join(controlDirOf(env), "log", "service.log"))
 	return string(b)
+}
+
+// `--offline <root> report --logs-only` works with no service and no adb and
+// makes a zip that holds only diagnostics.
+func TestReportLogsOnlyOffline(t *testing.T) {
+	t.Parallel()
+	env := isoEnv(t)
+	root := controlDirOf(env)
+	if err := os.MkdirAll(filepath.Join(root, "log"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(root, "log", "service.log"), []byte("2026/10/15 service started\n"), 0o644)
+	out := filepath.Join(t.TempDir(), "r.zip")
+	stdout, stderr, code := cliEnv(t, env, "--offline", root, "report", "--logs-only", "-o", out)
+	if code != 0 {
+		t.Fatalf("exit %d\n%s\n%s", code, stdout, stderr)
+	}
+	zr, err := zip.OpenReader(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer zr.Close()
+	got := map[string]bool{}
+	for _, f := range zr.File {
+		got[f.Name] = true
+		if strings.HasPrefix(f.Name, "store/") || strings.HasPrefix(f.Name, "devices/") {
+			t.Fatalf("logs-only zip contains %s", f.Name)
+		}
+	}
+	for _, want := range []string{"diagnostics/service.log", "diagnostics/diagnose.txt", "manifest.json", "README.txt"} {
+		if !got[want] {
+			t.Fatalf("zip lacks %s (have %v)", want, got)
+		}
+	}
 }

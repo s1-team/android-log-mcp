@@ -74,6 +74,19 @@ type Options struct {
 	Logf    func(format string, a ...any)
 	// Warnings are added to the manifest (e.g. "backfill incomplete").
 	Warnings []string
+	// LogsOnly leaves out every recorded device: the zip holds the Extras,
+	// the manifest and the README (small enough to attach to an issue).
+	LogsOnly bool
+	// Extras are text files added under diagnostics/ (service log,
+	// service.json, adb devices -l …); their content is redacted like the
+	// rest.
+	Extras []Extra
+}
+
+// Extra is one diagnostics file of a report.
+type Extra struct {
+	Name string // file name under diagnostics/
+	Text string
 }
 
 // Manifest is manifest.json.
@@ -107,6 +120,7 @@ type Params struct {
 	RedactExtra   int      `json:"redact_extra_rules,omitempty"`
 	KeepDomains   int      `json:"keep_domains,omitempty"`
 	Offline       bool     `json:"offline,omitempty"`
+	LogsOnly      bool     `json:"logs_only,omitempty"`
 }
 
 // Limits reports the size cap and what it cost.
@@ -218,7 +232,7 @@ func Build(ctx context.Context, o Options) (*Manifest, error) {
 	}
 	man := &Manifest{Format: Format, Tool: "android-log-mcp", Version: o.Version, GeneratedAt: o.Now().Format(time.RFC3339), Args: o.Args}
 	man.Params = Params{From: o.From, To: o.To, Package: o.Package, MaxBytes: o.MaxBytes, AmStart: o.AmStart, Note: o.Note != "",
-		Redact: !o.Redact.Disabled, KeepPrivateIP: o.Redact.KeepPrivateIP, RedactExtra: len(o.Redact.Extra), KeepDomains: len(o.Redact.KeepDomains), Offline: o.Shell == nil}
+		Redact: !o.Redact.Disabled, KeepPrivateIP: o.Redact.KeepPrivateIP, RedactExtra: len(o.Redact.Extra), KeepDomains: len(o.Redact.KeepDomains), Offline: o.Shell == nil, LogsOnly: o.LogsOnly}
 	if o.From == "" {
 		man.Params.Since = o.Since.String()
 	}
@@ -226,9 +240,18 @@ func Build(ctx context.Context, o Options) (*Manifest, error) {
 		return nil, fmt.Errorf("--am-start %q: expected <package>/<Activity>, e.g. com.foo/.MainActivity", o.AmStart)
 	}
 
-	devs, err := selectDevices(o)
-	if err != nil {
-		return nil, err
+	var devs []*devWork
+	if o.LogsOnly {
+		if o.AmStart != "" {
+			return nil, errors.New("--am-start cannot be combined with --logs-only")
+		}
+		man.Devices = []*DeviceManifest{}
+		man.Params.Serials = []string{}
+	} else {
+		var err error
+		if devs, err = selectDevices(o); err != nil {
+			return nil, err
+		}
 	}
 	if o.AmStart != "" {
 		if o.Shell == nil {
@@ -300,6 +323,9 @@ func Build(ctx context.Context, o Options) (*Manifest, error) {
 	if o.Note != "" {
 		zf.add("note.txt", []byte(red.Text(strings.TrimRight(o.Note, "\n")+"\n")))
 	}
+	for _, x := range o.Extras {
+		zf.add("diagnostics/"+x.Name, []byte(red.Text(x.Text)))
+	}
 	zf.add("README.txt", []byte(readme))
 
 	man.Redaction = Redaction{Enabled: red.Enabled(), Placeholder: "[REDACTED:<type>#<n>] — the same value maps to the same n within this report; the mapping key is random and discarded, so values cannot be recovered",
@@ -315,6 +341,9 @@ func Build(ctx context.Context, o Options) (*Manifest, error) {
 		"unzip REPORT.zip -d r && android-log-mcp --offline r/store call logcat_crashes '{}'",
 		"or point an MCP client at: android-log-mcp --offline r/store",
 		"raw logcat text for replay tests: devices/<serial>/logcat/<boot>.txt (device.Pipeline.ReplayText), DropBox: devices/<serial>/dropbox/<tag>.txt (Pipeline.ApplyDropbox)",
+	}
+	if o.LogsOnly {
+		man.Load = []string{"logs only: no recorded device data; read diagnostics/ (service.log, service.json, diagnose.txt, adb-devices.txt)"}
 	}
 	man.Files = zf.files
 	zf.add("manifest.json", jsonIndent(man))
@@ -337,6 +366,10 @@ devices/<serial>/logcat/<boot>.txt
 devices/<serial>/dropbox/<tag>.txt
                               DropBox crash / ANR / tombstone entries in the window
 devices/<serial>/am-start.txt output of "am start -W" (only with --am-start)
+diagnostics/service.log       the service log (last 1 MiB, redacted); crash.log, service.json,
+                              diagnose.txt (who holds the lock, is the socket there) and
+                              adb-devices.txt ("adb devices -l") when available.
+                              With --logs-only this is all the zip contains.
 
 Sensitive values are replaced by [REDACTED:<type>#<n>] unless the report was
 made with --no-redact (see manifest.json "redaction"). Redaction is pattern

@@ -14,6 +14,9 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 ### Added
 
 - `android-log-mcp service stop --force` ends a service that holds the lock but does not answer: SIGTERM first, SIGKILL after 10 s (Windows: a stop request, then TerminateProcess after 10 s; lines the service had not flushed yet can be lost, and the command says so). It only signals a process that is verified to be the service recorded in `run/service.json` (same executable and start time), and it never kills a service that runs inside an MCP process (that would kill the MCP process): it refuses and says to end that MCP process instead ([#83](https://github.com/s1crab/android-log-mcp/issues/83)).
+- `android-log-mcp report --logs-only` makes a small zip with no recorded device data: the service log (last 1 MiB), `crash.log`, `service.json`, a diagnosis of the service lock and `adb devices -l`, all redacted. It works with `--offline DIR` while the service is down ([#83](https://github.com/s1crab/android-log-mcp/issues/83)).
+- Every report now contains `diagnostics/` (service log, `crash.log`, `service.json`, `diagnose.txt`, and `adb devices -l` when adb is available), also `--offline` reports (they run `adb devices -l` only; `--no-adb` skips it). The values go through the usual redaction.
+- `ANDROID_LOG_MCP_REPORT_HINT=1` (developer option, off by default): connect and start errors that mean android-log-mcp itself is broken then tell the agent to ask the user first and, if they agree, run `report --offline <root> --logs-only`; the user reviews the zip and submits the issue by hand. It changes only error text. There is no network code in android-log-mcp: nothing is uploaded or sent.
 - `service status` says so when a service holds the lock but does not answer (exit 1; `{"running":false,"unresponsive":true,…}` with `--json`).
 - `run/service.json` records the service's OS start time (`start_time`).
 

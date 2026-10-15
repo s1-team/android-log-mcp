@@ -14,7 +14,15 @@ func (c *Client) logHintTail() string {
 
 // fail builds an error whose tail names the log and the manual commands.
 func (c *Client) fail(format string, a ...any) error {
-	return fmt.Errorf("%s. %s", fmt.Sprintf(format, a...), c.logHintTail())
+	msg := fmt.Sprintf("%s. %s", fmt.Sprintf(format, a...), c.logHintTail())
+	if ReportHintOn(c.opt.Getenv(ReportHintEnv)) {
+		root, err := ConfiguredRoot(c.opt.Control)
+		if err != nil {
+			root = c.opt.Control.Dir
+		}
+		msg += ReportHintBlock(root, suggestedReportPath(time.Now()))
+	}
+	return errors.New(msg)
 }
 
 // waitAnswerOrFree waits until the service answers or lets go of the lock
