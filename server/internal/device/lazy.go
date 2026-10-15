@@ -94,6 +94,22 @@ func (m *Manager) Identifying() []string {
 	return out
 }
 
+// Settling reports whether the current adb tracking session has not yet
+// delivered its first device list or still reads the identity of an online
+// device: a device that is not listed may merely not be known yet.
+func (m *Manager) Settling() bool {
+	ts := m.session()
+	if ts == nil {
+		return false
+	}
+	select {
+	case <-ts.ready:
+		return false
+	default:
+		return true
+	}
+}
+
 // Wanted reports whether the device is started (recorded or waiting to
 // come online).
 func (m *Manager) Wanted(id string) bool {
