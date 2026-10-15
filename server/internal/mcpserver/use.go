@@ -67,8 +67,9 @@ func (e *errSeveral) Error() string {
 }
 
 // target resolves the device a log-tool call is about, without starting
-// anything: the device ID to start (online) or, for a device that is not
-// connected, its stored data (d).
+// anything: the device ID to start (online, or named by stored data while
+// the device list or an identity is still pending) or, for a device that is
+// known not to be connected, its stored data (d).
 func (t *Tools) target(name string) (id string, d *device.Device, err error) {
 	if !t.M.Lazy {
 		d, err := t.resolveDevice(name)
@@ -92,12 +93,19 @@ func (t *Tools) target(name string) (id string, d *device.Device, err error) {
 					return i.ID, nil, nil
 				}
 			}
-			if len(identifying) > 0 {
-				return "", nil, slow() // maybe it is that device
+			if len(identifying) > 0 || t.M.Settling() {
+				// Not known to be offline: the first device list or an identity
+				// is still pending, so it may be that device. Start it; it
+				// attaches as soon as it is online (issue #109). Only a name that
+				// matches stored data gets here, never a typo or foreign serial.
+				return sd.Serial, nil, nil
 			}
 			return "", sd, nil // stored data of a device that is not connected
 		}
 		if len(identifying) > 0 {
+			// the name may be the adb serial of a device whose identity is
+			// still being read: start it as soon as that is known (issue #109)
+			t.M.WantAddr(name)
 			return "", nil, slow()
 		}
 		d, err := t.resolveDevice(name)

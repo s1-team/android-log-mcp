@@ -63,7 +63,8 @@ type Manager struct {
 	states    map[string]string  // live adb states by adb serial (incl. unauthorized/offline)
 	addrs     map[string]string  // adb serial -> device ID
 	resolving map[string]bool
-	attachMu  sync.Mutex // serializes attach / migration / sweep
+	wantAddrs map[string]bool // adb serials named by a call while their identity is pending (issue #109)
+	attachMu  sync.Mutex      // serializes attach / migration / sweep
 	watchErr  error
 	closed    bool // Close was called: never attach again
 	sess      *trackSession
@@ -87,7 +88,7 @@ func (t *trackSession) markReady() { t.once.Do(func() { close(t.ready) }) }
 
 func NewManager(base string, cfg store.Config) *Manager {
 	m := &Manager{Base: base, Root: layout.Root{Dir: base}, Cfg: cfg, MaxDevices: 4,
-		devices: map[string]*Device{}, states: map[string]string{}, addrs: map[string]string{}, resolving: map[string]bool{},
+		devices: map[string]*Device{}, states: map[string]string{}, addrs: map[string]string{}, resolving: map[string]bool{}, wantAddrs: map[string]bool{},
 		wanted: map[string]*want{}, idents: map[string]Identity{}, MaxTotalBytes: DefaultMaxTotalBytes, Disk: &store.DiskGuard{MinFree: DefaultMinFreeBytes}}
 	if v, err := strconv.Atoi(os.Getenv("ANDROID_LOG_MCP_MAX_DEVICES")); err == nil && v > 0 {
 		m.MaxDevices = v
@@ -352,6 +353,11 @@ func (m *Manager) onDevices(ts *trackSession, list []DevState, err error) {
 	for _, ds := range list {
 		m.states[ds.Serial] = ds.State
 	}
+	for a := range m.wantAddrs {
+		if m.states[a] != "device" {
+			delete(m.wantAddrs, a) // gone before its identity was read
+		}
+	}
 	for a := range m.addrs {
 		if _, ok := m.states[a]; !ok {
 			delete(m.addrs, a) // gone: the address may be reused by another device (emulator ports)
@@ -394,6 +400,15 @@ func (m *Manager) resolve(addr string) {
 		m.mu.Unlock()
 		log.Printf("%s: identity probe failed (retrying): %v", addr, err)
 		return
+	}
+	m.mu.Lock()
+	named := m.wantAddrs[addr]
+	delete(m.wantAddrs, addr)
+	m.mu.Unlock()
+	if named {
+		if err := m.Want(id.ID, true); err != nil {
+			log.Printf("%s: starting recording: %v", id.ID, err)
+		}
 	}
 	final := m.attach(id)
 	m.mu.Lock()
