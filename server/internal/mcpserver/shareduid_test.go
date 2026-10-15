@@ -76,7 +76,7 @@ func TestPackageSharedUID(t *testing.T) {
 	}
 
 	// each package of the uid: its own process and the shared one, with the note
-	note := "shares uid 10054 with" // logcat_crashes
+	note := "note code=shares_uid package=" // logcat_crashes, status
 	out := e.ok("logcat_search", `{"package":"com.android.providers.contacts","filter":"tag=:Attr"}`,
 		" matched=2 ", "2100/", "2300/", "note code=shares_uid package=com.android.providers.contacts uid=10054 shares_uid=2 next: verbose=true")
 	notContains(t, out, "2200/", "2400/", "calllogbackup")
@@ -95,15 +95,15 @@ func TestPackageSharedUID(t *testing.T) {
 
 	// crashes: the acore crash is listed for the uid's packages, never for android
 	out = e.ok("logcat_crashes", `{"package":"com.android.contacts"}`, "acore broke", note)
-	notContains(t, out, "package: android")
+	notContains(t, out, "package=android ")
 	dump(t, out)
-	e.ok("logcat_crashes", `{"package":"android"}`, "no crashes or ANRs match")
-	out = e.ok("logcat_crashes", `{"package":"android"}`, "no crashes or ANRs match")
+	e.ok("logcat_crashes", `{"package":"android"}`, "empty view=list", "hint code=no_crash_for_package")
+	out = e.ok("logcat_crashes", `{"package":"android"}`, "empty view=list", "hint code=no_crash_for_package")
 	e.ok("logcat_crashes", `{"kinds":["java"]}`, "media broke", "acore broke")
 	for _, c := range device.CrashSummaries(st) {
 		if c.Process == "android.process.media" {
 			out = e.ok("logcat_crashes", `{"id":"`+c.ID+`"}`, "media broke")
-			notContains(t, out, "package: android\n")
+			notContains(t, out, "package=android\n")
 		}
 	}
 

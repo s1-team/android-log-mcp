@@ -19,7 +19,7 @@ func (t *Tools) launches(ctx context.Context, a launchArgs) (out string, err err
 		a.Limit = 5
 	}
 	if a.Limit < 1 || a.Limit > 20 {
-		return "", errf("limit must be 1..20 (got %d)", a.Limit)
+		return "", errc("bad_param", []string{"limit=20"}, "param", "limit", "value", a.Limit, "valid", "1..20")
 	}
 	d, done, note, err := t.useAndWait(ctx, a.Device)
 	defer done()
@@ -27,8 +27,9 @@ func (t *Tools) launches(ctx context.Context, a launchArgs) (out string, err err
 		return "", err
 	}
 	defer func() {
-		if note != "" && err == nil {
-			out = "note: " + note + "\n" + out
+		if note != "" && err == nil { // after the header line: it stays the first line
+			head, rest, _ := strings.Cut(out, "\n")
+			out = head + "\n" + note + "\n" + rest
 		}
 	}()
 	d.Store.Refresh()
@@ -37,7 +38,6 @@ func (t *Tools) launches(ctx context.Context, a launchArgs) (out string, err err
 	if err != nil {
 		return "", err
 	}
-	now := ci.Now
 	var recs []*model.Record
 	start := time.Now()
 	stopped := false
@@ -83,83 +83,117 @@ func (t *Tools) launches(ctx context.Context, a launchArgs) (out string, err err
 		ls[i], ls[j] = ls[j], ls[i]
 	}
 	var b strings.Builder
-	scope := "all apps"
-	if a.Package != "" {
-		scope = "package " + a.Package
-	}
-	fmt.Fprintf(&b, "device %s · device time %s · %s · %s · %d launches since %s\n", d.Serial, tzLabel(loc, d.TZName(), now), clockLine(ci), scope, len(ls), dateTime(fromNs, loc))
+	word := "ok"
 	if len(ls) == 0 {
-		b.WriteString("no launch requests (ActivityTaskManager \"START u0 … cmp=<pkg>/…\") found in range.\n")
-		if st := d.Store.Stats(); st.OldestNs > fromNs {
-			fmt.Fprintf(&b, "note: history starts %s.\n", dateTime(st.OldestNs, loc))
+		word = "empty"
+	}
+	shown := min(len(ls), a.Limit)
+	kv := []any{"view", "launches", "device", d.Serial, "launches", len(ls), "shown", shown, "order", "newest_first", "since", isoNs(fromNs, loc)}
+	if a.Package != "" {
+		kv = append(kv, "package", a.Package)
+	}
+	if a.Verbose {
+		kv = append(kv, "tz", d.TZName())
+	}
+	kv = append(kv, clockKV(ci, a.Verbose)...)
+	if shown > 0 && !stopped { // callback durations are missing on this Android version: said once
+		for _, l := range ls[:shown] {
+			if l.Events == "am_on_*" {
+				kv = append(kv, "note", "no_callback_durations")
+				break
+			}
 		}
-		b.WriteString("Launch the app first (adb shell am force-stop <pkg>; adb shell am start -W -n <pkg>/<activity>, or tap the icon), or widen from.\n")
+	}
+	kv = append(kv, "fmt", fmtVersion)
+	b.WriteString(hdr(word, kv...) + "\n")
+	if len(ls) == 0 {
+		if st := d.Store.Stats(); st.OldestNs > fromNs {
+			b.WriteString(hdr("note", "code", "history_starts", "oldest", isoNs(st.OldestNs, loc)) + "\n")
+		}
+		next := []string{`from="2h"`}
+		if a.Package != "" {
+			next = []string{"adb shell monkey -p " + a.Package + " -c android.intent.category.LAUNCHER 1", next[0]}
+		}
+		b.WriteString(hdr("hint", "code", "no_launch_requests") + nextClause(next...) + "\n")
 		return b.String(), nil
 	}
 	b.WriteString(launchJumps(recs, jumps, loc))
 	for i, l := range ls {
 		if i >= a.Limit {
-			fmt.Fprintf(&b, "[%d older launches not shown; raise limit]\n", len(ls)-a.Limit)
+			older := len(ls) - a.Limit
+			next := param("limit", min(20, len(ls)))
+			if len(ls) > 20 {
+				next = param("to", isoNs(ls[a.Limit-1].RequestNs, loc))
+			}
+			b.WriteString(truncLine("older", older, true, nil, next))
 			break
 		}
 		b.WriteString(renderLaunch(i+1, l, loc))
 	}
-	b.WriteString("how to read: \"+N ms\" = when the line was logged, relative to the launch request. onX lines are logged when the callback returned. TTID/TTFD are the system's own measurement (request → first frame / reportFullyDrawn) and can be logged much later than they happened.\n")
-	for i, l := range ls {
-		if i < a.Limit && l.ClockJumped {
-			b.WriteString("note: steps marked \"?\" (and a TTID/TTFD marked unreliable) were logged after the device clock was set (clock jump), so their device times cannot be subtracted from the request's: that duration is not shown. The TTID/TTFD and \"callback took\" values themselves are measured by the system on a monotonic clock and stay valid.\n")
-			break
-		}
-	}
 	if stopped {
-		b.WriteString("note: scan stopped early to stay responsive; narrow from/to.\n")
+		b.WriteString(truncLine("scan_stopped_ms", int(scanBudget.Milliseconds()), false, nil, `from="10m"`))
 	}
 	return b.String(), nil
 }
 
+// launchNoteCodes maps the analysis' explanations to codes (the sentences
+// live in docs/reference.md, not in every response).
+var launchNoteCodes = []struct{ prefix, code string }{
+	{"no lifecycle or Displayed evidence", "no_lifecycle_evidence"},
+	{"no Displayed line: nothing new was drawn", "no_new_draw"},
+	{"no Displayed line: expected for HOT", "no_displayed_hot"},
+	{"Displayed not logged (yet)", "displayed_pending"},
+}
+
 func renderLaunch(n int, l *analysis.Launch, loc *time.Location) string {
 	var b strings.Builder
-	pid := ""
+	kv := []any{"time", isoNs(l.RequestNs, loc), "kind", l.Kind, "component", l.Component}
 	if l.PID != 0 {
-		pid = fmt.Sprintf("  (pid %d)", l.PID)
+		kv = append(kv, "pid", l.PID)
 	}
-	why := ""
 	if l.KindWhy != "" {
-		why = " — " + l.KindWhy
+		kv = append(kv, "why", strings.ReplaceAll(l.KindWhy, "→", "->"))
 	}
-	fmt.Fprintf(&b, "#%d %s  %s  %s%s%s\n", n, time.Unix(0, l.RequestNs).In(loc).Format("2006-01-02 15:04:05.000"), l.Kind, l.Component, pid, why)
-	rel := func(ns int64) string { return fmt.Sprintf("+%d ms", (ns-l.RequestNs)/1e6) }
+	if l.Displayed.Ns != 0 {
+		kv = append(kv, "ttid_ms", l.Displayed.TookMs)
+	} else {
+		kv = append(kv, "ttid", "none")
+	}
+	if l.FullyDrawn.Ns != 0 {
+		kv = append(kv, "ttfd_ms", l.FullyDrawn.TookMs)
+	} else {
+		kv = append(kv, "ttfd", "none")
+	}
+	fmt.Fprintf(&b, "#%d %s\n", n, hdr("launch", kv...))
+	rel := func(ns int64) int64 { return (ns - l.RequestNs) / 1e6 }
 	// a step logged after a clock jump that followed the request: no
 	// duration, only its device time (issue #54)
-	when := func(s analysis.Step) string {
+	at := func(s analysis.Step) []any {
 		if s.AfterJump {
-			return "?"
+			return []any{"at_ms", "?", "unreliable", "clock_jump", "device_time", isoNs(s.Ns, loc)}
 		}
-		return rel(s.Ns)
+		return []any{"at_ms", rel(s.Ns)}
 	}
-	jumped := func(s analysis.Step) string {
-		return unreliable + "; logged at device time " + time.Unix(0, s.Ns).In(loc).Format("2006-01-02 15:04:05.000")
-	}
-	row := func(when, what, extra string) {
-		fmt.Fprintf(&b, "   %-10s %-22s %s\n", when, what, extra)
+	step := func(name string, kv ...any) {
+		b.WriteString("  " + hdr("step", append([]any{"name", name}, kv...)...) + "\n")
 	}
 	req := l.RequestMsg
 	if len(req) > 160 {
-		req = req[:160] + "…"
+		req = req[:cutAt(req, 160)] + "..."
 	}
-	row("+0 ms", "launch request", req)
-	took := func(s analysis.Step) string {
+	step("launch_request", "at_ms", 0, "msg", req)
+	took := func(s analysis.Step) []any {
 		if s.TookMs >= 0 {
-			return fmt.Sprintf("(callback took %d ms)", s.TookMs)
+			return []any{"took_ms", s.TookMs}
 		}
-		return ""
+		return nil
 	}
 	if l.ProcStart.Ns != 0 {
-		note := l.ProcStart.Note
-		if l.ProcStart.AfterJump {
-			note += "   " + jumped(l.ProcStart)
+		kv := at(l.ProcStart)
+		if l.ProcStart.Note != "" {
+			kv = append(kv, "note", l.ProcStart.Note)
 		}
-		row(when(l.ProcStart), "process started", note)
+		step("process_started", kv...)
 	}
 	short := l.Class
 	if i := strings.LastIndexByte(short, '.'); i >= 0 {
@@ -174,44 +208,47 @@ func renderLaunch(n int, l *analysis.Launch, loc *time.Location) string {
 			if (st.name == "onRestart" && l.Kind != "HOT") || (strings.HasSuffix(st.name, ".onCreate") && l.Kind == "HOT") {
 				continue // not expected for this kind
 			}
-			row("—", st.name, "not logged")
+			step(st.name, "logged", 0)
 			continue
 		}
-		extra := "returned " + took(st.s)
-		switch {
-		case st.s.AfterJump:
-			extra += "   " + jumped(st.s)
-		case st.name == "onResume":
-			extra += "   ← request→onResume " + strings.TrimPrefix(rel(st.s.Ns), "+")
-		}
-		row(when(st.s), st.name, strings.TrimSpace(extra))
+		step(st.name, append(at(st.s), took(st.s)...)...)
 	}
 	if l.Displayed.Ns != 0 {
-		at := "logged at " + rel(l.Displayed.Ns)
+		kv := []any{"ms", l.Displayed.TookMs, "source", l.Displayed.Note}
 		if l.Displayed.AfterJump {
-			at = jumped(l.Displayed)
+			kv = append(kv, "unreliable", "clock_jump", "device_time", isoNs(l.Displayed.Ns, loc))
+		} else {
+			kv = append(kv, "logged_at_ms", rel(l.Displayed.Ns))
 		}
-		fmt.Fprintf(&b, "   TTID (time to initial display, system-measured): %d ms   [source: %s, %s]\n", l.Displayed.TookMs, l.Displayed.Note, at)
-	} else {
-		fmt.Fprintf(&b, "   TTID: not logged\n")
+		b.WriteString("  " + hdr("ttid", kv...) + "\n")
 	}
 	if l.FullyDrawn.Ns != 0 {
-		at := "logged at " + rel(l.FullyDrawn.Ns)
+		kv := []any{"ms", l.FullyDrawn.TookMs}
 		if l.FullyDrawn.AfterJump {
-			at = jumped(l.FullyDrawn)
+			kv = append(kv, "unreliable", "clock_jump", "device_time", isoNs(l.FullyDrawn.Ns, loc))
+		} else {
+			kv = append(kv, "logged_at_ms", rel(l.FullyDrawn.Ns))
 		}
-		fmt.Fprintf(&b, "   TTFD (time to full display, reportFullyDrawn): %d ms   [%s]\n", l.FullyDrawn.TookMs, at)
-	} else {
-		fmt.Fprintf(&b, "   TTFD: not reported (app does not call reportFullyDrawn(), or not yet)\n")
+		b.WriteString("  " + hdr("ttfd", kv...) + "\n")
 	}
 	for _, n := range l.Notes {
-		fmt.Fprintf(&b, "   note: %s\n", n)
+		if n == "this Android version logs am_on_*_called without callback durations" {
+			continue // note=no_callback_durations in the header
+		}
+		code := ""
+		for _, c := range launchNoteCodes {
+			if strings.HasPrefix(n, c.prefix) {
+				code = c.code
+			}
+		}
+		if code == "" {
+			b.WriteString("  " + hdr("note", "code", "other", "msg", n) + "\n")
+		} else {
+			b.WriteString("  " + hdr("note", "code", code) + "\n")
+		}
 	}
 	return b.String()
 }
-
-// unreliable replaces a duration across a device clock jump (issue #54).
-const unreliable = "duration: unreliable (device clock jumped)"
 
 // afterJumps adds the launch lines logged just after a device clock jump
 // that follows a launch request in recs (arrival order): their device
@@ -288,8 +325,8 @@ func afterJumps(st *store.Store, recs []*model.Record, jumps []store.ClockJump, 
 	return recs, stopped
 }
 
-// launchJumps: the clock: / clock_jump: lines of the device clock jumps
-// among the scanned launch lines (the newest 3).
+// launchJumps: the clock jumps among the scanned launch lines (the newest
+// 3, as clock_jump lines; clock_jumps=N first when there are more).
 func launchJumps(recs []*model.Record, jumps []store.ClockJump, loc *time.Location) string {
 	if len(recs) == 0 {
 		return ""
@@ -305,8 +342,8 @@ func launchJumps(recs []*model.Record, jumps []store.ClockJump, loc *time.Locati
 		return ""
 	}
 	var b strings.Builder
+	fmt.Fprintf(&b, "clock_jumps=%d shown=%d\n", len(in), min(len(in), 3))
 	if len(in) > 3 {
-		fmt.Fprintf(&b, "clock: %d device clock jumps among the scanned launch lines; the newest 3:\n", len(in))
 		in = in[len(in)-3:]
 	}
 	for i := len(in) - 1; i >= 0; i-- {

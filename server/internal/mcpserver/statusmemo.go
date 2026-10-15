@@ -74,7 +74,7 @@ func renderStatusHead(b *strings.Builder, lines []StatusLine, memo *StatusMemo, 
 	for _, l := range lines {
 		if l.Static && !show {
 			if !placed {
-				b.WriteString("unchanged since shown earlier in this session: " + strings.Join(labels, ", ") + " (logcat_status(verbose=true) shows them)\n")
+				b.WriteString(hdr("unchanged", "since", "earlier_in_session", "lines", strings.Join(noSpaces(labels), ",")) + nextClause("verbose=true") + "\n")
 				placed = true
 			}
 			continue
@@ -82,4 +82,12 @@ func renderStatusHead(b *strings.Builder, lines []StatusLine, memo *StatusMemo, 
 		b.WriteString(l.Text)
 		b.WriteByte('\n')
 	}
+}
+
+func noSpaces(in []string) []string {
+	out := make([]string, len(in))
+	for i, s := range in {
+		out[i] = noSpace(s)
+	}
+	return out
 }

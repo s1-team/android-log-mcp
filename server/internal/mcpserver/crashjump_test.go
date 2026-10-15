@@ -67,6 +67,6 @@ func TestClockJumpInsideACrashDoesNotSplitIt(t *testing.T) {
 	lines = append(lines, jumpCrashLines(t0-7200+3, 100, "split")...)
 	lines = append(lines, fxLine(t0-7200+30, 1000, 1500, "I", "Filler", "later"))
 	e.replay(strings.Join(lines, "\n"))
-	out := e.ok("logcat_crashes", `{}`, "1 match", "split", "events:am_crash")
+	out := e.ok("logcat_crashes", `{}`, "ok view=detail", "split", "events:am_crash")
 	dump(t, out)
 }

@@ -23,7 +23,7 @@ func TestRenderStatusHead(t *testing.T) {
 		return b.String()
 	}
 	all := "service: background service pid 1\nroot: /r\nrecording: idle\nlifetime: exits 30s after …; staying: 1 client(s) connected\nadb: ok (/adb, version 1)\nstore: /r (data in v1/<device-id>)\n"
-	short := "service: background service pid 1\nunchanged since shown earlier in this session: root, lifetime, adb, store (logcat_status(verbose=true) shows them)\nrecording: idle\n"
+	short := "service: background service pid 1\nunchanged since=earlier_in_session lines=root,lifetime,adb,store next: verbose=true\nrecording: idle\n"
 
 	// no memo (in-process --offline, tests): always everything
 	for i := 0; i < 2; i++ {

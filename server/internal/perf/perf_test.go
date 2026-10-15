@@ -159,7 +159,7 @@ func normalize(out, base string) string {
 }
 
 var (
-	reClock = regexp.MustCompile(`device now [^\n]*?· clock offset (?:\(device − host\) )?\S+| dev_now=\S+ clock=\S+ offset_s=\S+(?: clock_age_s=\S+)?`)
+	reClock = regexp.MustCompile(`device now [^\n]*?· clock offset (?:\(device − host\) )?\S+| dev_now=\S+ clock=\S+ offset_s=\S+(?: clock_age_s=\S+)?| since=\S+`)
 	reDigit = regexp.MustCompile(`[0-9]`)
 )
 

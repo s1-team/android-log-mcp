@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -119,11 +118,11 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 	var pinFor time.Duration
 	if a.RecordFor != "" {
 		if t.Pins == nil || !t.M.Lazy {
-			return "", errf("record_for is not available here (no background service, e.g. --offline)")
+			return "", errc("record_for_unavailable", []string{"logcat_status"}, "reason", "no_background_service")
 		}
 		d, err := ParsePin(a.RecordFor)
 		if err != nil {
-			return "", errf("%v", err)
+			return "", errc("bad_param", []string{`record_for="2h"`, `record_for="0"`}, "param", "record_for", "value", a.RecordFor, "valid", "30m|2h|1h30m|0 (max 24h)")
 		}
 		pinFor = d
 	}
@@ -173,14 +172,14 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 		}
 		if pinFor > 0 {
 			if targetID == "" {
-				return "", errf("device %s is not connected: record_for needs a connected device", d.Serial)
+				return "", errc("device_offline", []string{"logcat_status"}, "device", d.Serial, "reason", "record_for_needs_connected_device")
 			}
 			until, err := t.Pins.Set(targetID, pinFor, "logcat_status(record_for)")
 			if err != nil {
 				return "", errf("%v", err)
 			}
-			pinNote = fmt.Sprintf("pinned: %s records until %s (device time; in %s), whatever the calls; logcat_status(record_for=\"0\") stops it", targetID,
-				until.Add(time.Duration(target.Store.Meta().ClockOffsetNs)).In(target.Loc()).Format("2006-01-02 15:04:05"), time.Until(until).Round(time.Second))
+			pinNote = hdr("pinned", "device", targetID, "until", isoSec(until.Add(time.Duration(target.Store.Meta().ClockOffsetNs)).In(target.Loc())),
+				"in_s", int(time.Until(until).Round(time.Second).Seconds())) + nextClause(`record_for="0"`)
 		}
 		if target != nil {
 			if starting {
@@ -195,24 +194,24 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 		head = append(head, t.Service()...)
 	}
 	if t.M.NoADB {
-		head = append(head, StatusLine{Text: "adb: not used (--offline)", Label: "adb", Static: true})
+		head = append(head, StatusLine{Text: hdr("adb", "state", "not_used", "reason", "offline"), Label: "adb", Static: true})
 	} else if err := t.M.ADBError(); err != nil {
-		head = append(head, StatusLine{Text: "adb: NOT FOUND — " + err.Error()})
+		head = append(head, StatusLine{Text: hdr("hint", "code", "adb_not_found", "msg", err.Error()) + nextClause("adb version")})
 	} else if adb := t.M.ADB(); adb != nil && (!t.M.Lazy || t.M.Tracking()) {
 		v, err := adb.Version(ctx)
 		if err != nil {
-			head = append(head, StatusLine{Text: fmt.Sprintf("adb: error — %v", err)})
+			head = append(head, StatusLine{Text: hdr("hint", "code", "adb_error", "msg", err.Error()) + nextClause("adb version")})
 		} else {
-			head = append(head, StatusLine{Text: fmt.Sprintf("adb: ok (%s, version %s)", adb.Path, v), Label: "adb", Static: true})
+			head = append(head, StatusLine{Text: hdr("adb", "state", "ok", "path", adb.Path, "version", v), Label: "adb", Static: true})
 		}
 		if werr := t.M.WatchError(); werr != nil {
-			head = append(head, StatusLine{Text: fmt.Sprintf("adb server: %v", werr)})
+			head = append(head, StatusLine{Text: hdr("hint", "code", "adb_server", "msg", werr.Error()) + nextClause("adb start-server")})
 		}
 	} else if adb != nil {
-		head = append(head, StatusLine{Text: fmt.Sprintf("adb: %s (not running any adb: no device is recorded)", adb.Path), Label: "adb", Static: true})
+		head = append(head, StatusLine{Text: hdr("adb", "state", "idle", "path", adb.Path, "reason", "no_device_recorded"), Label: "adb", Static: true})
 	}
 	if stopped != "" {
-		head = append(head, StatusLine{Text: fmt.Sprintf("stopped: %s is no longer recorded and its pin is removed; the next log tool call for it starts it again (with backfill)", stopped)})
+		head = append(head, StatusLine{Text: hdr("stopped", "device", stopped, "pin", "removed") + nextClause(param("device", stopped))})
 	}
 	if pinNote != "" {
 		head = append(head, StatusLine{Text: pinNote})
@@ -233,13 +232,12 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 		}
 		devs = []*device.Device{d}
 	}
-	head = append(head, StatusLine{Text: fmt.Sprintf("store: %s (data in %s/<device-id>)", t.M.Base, filepath.Base(store.DataDir(t.M.Base))), Label: "store", Static: true})
+	head = append(head, StatusLine{Text: hdr("store", "path", t.M.Base, "data", filepath.Base(store.DataDir(t.M.Base))+"/<device-id>"), Label: "store", Static: true})
 	if t.M.NoADB {
-		head = append(head, StatusLine{Text: "mode: offline (read-only dataset; nothing is recorded, pruned or created)"})
+		head = append(head, StatusLine{Text: hdr("mode", "offline", 1, "read_only", 1)})
 	}
-	var b strings.Builder
-	renderStatusHead(&b, head, statusMemoFrom(ctx), a.Verbose)
-	fmt.Fprintf(&b, "devices (%d):\n", len(devs))
+	var body strings.Builder
+	renderStatusHead(&body, head, statusMemoFrom(ctx), a.Verbose)
 	known := map[string]bool{}
 	for _, d := range devs {
 		known[d.Serial] = true
@@ -252,174 +250,221 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 		loc := d.Loc()
 		state := st.State
 		if state == "" {
-			state = "not connected"
+			state = "not_connected"
 		}
-		rel := ""
-		if m.Release != "" {
-			rel = fmt.Sprintf("  android %s (sdk %s)", m.Release, m.SDK)
-		}
-		via := ""
+		kv := []any{"id", d.Serial}
 		if st.State != "" && d.Addr() != d.Serial {
-			via = " (adb " + d.Addr() + ")"
+			kv = append(kv, "via", d.Addr())
 		}
-		fmt.Fprintf(&b, "  %s%s  %s  %s%s  tz %s\n", d.Serial, via, state, orQ(m.Model), rel, tzLabel(loc, d.TZName(), time.Now()))
+		kv = append(kv, "state", strings.ReplaceAll(state, " ", "_"), "model", orQ(m.Model))
+		if m.Release != "" {
+			kv = append(kv, "android", m.Release, "sdk", m.SDK)
+		}
+		kv = append(kv, "tz", d.TZName(), "tz_offset", time.Now().In(loc).Format("-07:00"))
+		fmt.Fprintf(&body, "%s\n", hdr("device", kv...))
 		stats := d.Store.Stats()
-		fmt.Fprintf(&b, "    %s\n", t.recText(d, st))
+		rk, rnext := t.recKV(d, st)
+		fmt.Fprintf(&body, "  %s%s\n", hdr("recording", rk...), nextClause(rnext...))
 		if t.Pins != nil {
 			if p := t.Pins.Describe(d.Serial, loc); p != "" {
-				fmt.Fprintf(&b, "    %s\n", p)
+				fmt.Fprintf(&body, "  %s\n", hdr("pin", "msg", p)+nextClause(`record_for="0"`))
 			}
 		}
-		if st.IDNote != "" {
-			fmt.Fprintf(&b, "    note: %s\n", st.IDNote)
+		for _, n := range []struct{ code, msg string }{{"id", st.IDNote}, {"rollback", d.RollbackNote()}, {"recovered", d.RecoveredNote()}, {"handoff", d.HandoffNote()}} {
+			if n.msg != "" {
+				fmt.Fprintf(&body, "  %s\n", hdr("note", "code", n.code, "msg", n.msg))
+			}
 		}
-		if rb := d.RollbackNote(); rb != "" {
-			fmt.Fprintf(&b, "    note: %s\n", rb)
+		d.RefreshAutoTime(context.Background()) // only when a clock change made it stale
+		ci := d.Clock()
+		if ci.AutoTime != "" {
+			fmt.Fprintf(&body, "  %s\n", hdr("clock", "auto_time", ci.AutoTime, "source", orStr(ci.Source, "none")))
 		}
-		if rc := d.RecoveredNote(); rc != "" {
-			fmt.Fprintf(&b, "    note: %s\n", rc)
+		if js := d.Store.ClockJumps(); len(js) > 0 {
+			j := js[len(js)-1]
+			fmt.Fprintf(&body, "  clock_jumps stored=%d last_seq=%d%s\n", len(js), j.Seq, nextClause(`query="*"`))
+			if a.Verbose {
+				body.WriteString("  " + jumpLines(j, loc, -1, -1, ""))
+			}
 		}
-		if h := d.HandoffNote(); h != "" {
-			fmt.Fprintf(&b, "    note: %s\n", h)
-		}
-		fmt.Fprintf(&b, "    %s\n", statusClock(d, loc))
-		line := ""
+		wk := []any{}
 		if m.RecordingSince != 0 {
-			line += "recording since host time " + hostTime(time.Unix(0, m.RecordingSince)) + "   "
+			wk = append(wk, "recording_since", isoSec(time.Unix(0, m.RecordingSince).Local()))
 		}
 		if stats.OldestNs != 0 {
-			line += "oldest stored line at device time " + dateTime(stats.OldestNs, loc) + ", newest stored " + dateTime(stats.NewestNs, loc)
+			wk = append(wk, "oldest", isoNs(stats.OldestNs, loc), "newest", isoNs(stats.NewestNs, loc))
 		}
-		if line != "" {
-			fmt.Fprintf(&b, "    %s\n", strings.TrimSpace(line))
+		if len(wk) > 0 {
+			fmt.Fprintf(&body, "  %s\n", hdr("window", wk...))
 		}
 		cfg := d.Store.Config()
-		fmt.Fprintf(&b, "    stored %s lines (%.1f MB; retention %s, max %d MiB per device)", commas(int(stats.Records)), float64(stats.Bytes)/1e6, store.FormatRetention(cfg.MaxAge), cfg.MaxBytes>>20)
+		sk := []any{"lines", int(stats.Records), "bytes", int(stats.Bytes), "retention", store.FormatRetention(cfg.MaxAge), "max_mib", int(cfg.MaxBytes >> 20)}
 		if len(m.Gaps) > 0 {
-			fmt.Fprintf(&b, "; gaps: %d (latest: %s)", len(m.Gaps), gapText(m.Gaps[len(m.Gaps)-1], loc))
+			sk = append(sk, "gaps", len(m.Gaps), "latest_gap", gapText(m.Gaps[len(m.Gaps)-1], loc))
 		}
-		b.WriteString("\n")
-		win := fmt.Sprintf("%s lines (~%.1f MB)", commas(stats.MemRecords), float64(stats.MemBytes)/1e6)
-		if !stats.MemLoaded {
-			win = "not loaded (loads on the next query)"
+		fmt.Fprintf(&body, "  %s\n", hdr("stored", sk...))
+		if stats.MemLoaded {
+			fmt.Fprintf(&body, "  %s\n", hdr("memory", "window_lines", stats.MemRecords, "window_bytes", int(stats.MemBytes), "cache_bytes", int(stats.CacheBytes)))
+		} else {
+			fmt.Fprintf(&body, "  %s\n", hdr("memory", "window_loaded", 0, "cache_bytes", int(stats.CacheBytes)))
 		}
-		fmt.Fprintf(&b, "    memory: recent window %s; history cache ~%.1f MB\n", win, float64(stats.CacheBytes)/1e6)
 		if note := lagNote(d, st, m, stats); note != "" && st.Recording {
-			fmt.Fprintf(&b, "    note: %s\n", note)
+			fmt.Fprintf(&body, "  %s\n", hdr("note", "code", "lag", "msg", note))
 		}
 		if hostLoc := time.Local; st.State == "device" {
 			_, ho := time.Now().In(hostLoc).Zone()
 			_, do := time.Now().In(loc).Zone()
 			if ho != do {
-				fmt.Fprintf(&b, "    note: host timezone differs (%s); device times here use the device timezone; host times are labelled\n", tzLabel(hostLoc, "host", time.Now()))
+				fmt.Fprintf(&body, "  %s\n", hdr("note", "code", "host_tz_differs", "host_tz", hostLoc.String(), "host_tz_offset", time.Now().In(hostLoc).Format("-07:00")))
 			}
 		}
 	}
-	for s, stt := range live {
-		if !known[s] && (a.Device == "" || a.Device == s) {
-			fmt.Fprintf(&b, "  %s  %s  (not recorded: ", s, stt)
-			if stt == "unauthorized" {
-				b.WriteString("accept the \"Allow USB debugging\" prompt on the phone)\n")
-			} else if stt == "device" && t.M.AddrOf(s) == "" {
-				b.WriteString("identifying the device…)\n")
-			} else if stt == "device" && t.M.Lazy {
-				fmt.Fprintf(&b, "connected, not recorded — pass device=%s to start)\n", t.M.AddrOf(s))
-			} else if stt == "device" {
-				fmt.Fprintf(&b, "recording limit of %d devices reached; set ANDROID_LOG_MCP_MAX_DEVICES)\n", t.M.MaxDevices)
-			} else {
-				b.WriteString("adb state not ready)\n")
-			}
+	liveIDs := make([]string, 0, len(live))
+	for s := range live {
+		liveIDs = append(liveIDs, s)
+	}
+	sort.Strings(liveIDs)
+	for _, s := range liveIDs {
+		stt := live[s]
+		if known[s] || (a.Device != "" && a.Device != s) {
+			continue
 		}
+		var reason string
+		var next []string
+		switch {
+		case stt == "unauthorized":
+			reason, next = "unauthorized", []string{"accept the Allow USB debugging prompt on the device"}
+		case stt == "device" && t.M.AddrOf(s) == "":
+			reason, next = "identifying", []string{"logcat_status"}
+		case stt == "device" && t.M.Lazy:
+			reason, next = "not_recorded", []string{param("device", t.M.AddrOf(s))}
+		case stt == "device":
+			reason, next = "device_limit", nil
+		default:
+			reason, next = "adb_state_not_ready", []string{"logcat_status"}
+		}
+		kv := []any{"id", s, "state", stt, "recorded", 0, "reason", reason}
+		if reason == "device_limit" {
+			kv = append(kv, "max", t.M.MaxDevices)
+		}
+		fmt.Fprintf(&body, "%s\n", hdr("device", kv...)+nextClause(next...))
 	}
 	if len(devs) == 0 && len(live) == 0 {
-		b.WriteString("  (none) — " + t.noDeviceHint() + "\n")
-	}
-	if several != nil {
-		fmt.Fprintf(&b, "%s No device was started and no cursor is returned.\n", strings.Replace(several.Error(), "error code=", "several code=", 1))
+		body.WriteString(hdr("hint", "code", "no_device", "msg", t.noDeviceHint()) + nextClause("adb devices") + "\n")
 	}
 	if useErr != nil && several == nil {
-		fmt.Fprintf(&b, "note: %v. No cursor is returned.\n", strings.TrimSuffix(useErr.Error(), "."))
-	}
-	if target == nil {
-		return b.String(), nil
+		var te *toolError
+		if errors.As(useErr, &te) {
+			if !(te.code == "no_device" && len(devs) == 0 && len(live) == 0) { // the hint line says it
+				body.WriteString(hdr("note", append([]any{"code", te.code}, te.kv...)...) + nextClause(te.next...) + "\n")
+			}
+		} else {
+			body.WriteString(hdr("note", "code", "failed", "msg", useErr.Error()) + "\n")
+		}
 	}
 	// cursor + package for the resolved device
-	d := target
-	if prog.Pending {
-		fmt.Fprintf(&b, "%s: %s; call logcat_status again (no cursor until the backfill has caught up)\n", d.Serial, prog.BackfillText(d.Loc()))
-	} else {
-		m := d.Store.Meta()
-		boot := "0"
-		if len(m.Sessions) > 0 {
-			boot = m.Sessions[len(m.Sessions)-1].Boot
+	word := "ok"
+	if len(devs) == 0 && len(live) == 0 {
+		word = "empty"
+	}
+	hk := []any{"view", "status", "devices", len(devs)}
+	var tail strings.Builder
+	switch {
+	case several != nil:
+		hk = append(hk, "device", "none", "cursor", "none")
+		var ids, next []string
+		for _, i := range several.ids {
+			ids = append(ids, i.ID)
+			next = append(next, param("device", i.ID))
 		}
-		cur := store.Cursor{Serial: d.Serial, Boot: boot, Seq: d.Store.LastSeq()}
-		fmt.Fprintf(&b, "cursor (newest line, %s): %s\n", d.Serial, cur)
-		if prog.Note != "" {
-			fmt.Fprintf(&b, "note: %s\n", prog.Note)
+		tail.WriteString(hdr("hint", "code", "several_devices", "devices", strings.Join(ids, ","), "started", 0) + nextClause(next...) + "\n")
+	case target == nil:
+		hk = append(hk, "device", "none", "cursor", "none")
+	default:
+		d := target
+		hk = append(hk, "device", d.Serial)
+		if prog.Pending {
+			hk = append(hk, "caught_up", 0, "cursor", "none")
+			tail.WriteString(hdr("note", append(append([]any{"code", "backfill"}, backfillKV(prog, d.Loc())...), "results", "incomplete")...) + nextClause("logcat_status") + "\n")
+		} else {
+			m := d.Store.Meta()
+			boot := "0"
+			if len(m.Sessions) > 0 {
+				boot = m.Sessions[len(m.Sessions)-1].Boot
+			}
+			cur := store.Cursor{Serial: d.Serial, Boot: boot, Seq: d.Store.LastSeq()}
+			hk = append(hk, "caught_up", 1, "cursor", cur.String())
+			if prog.Note != "" {
+				tail.WriteString(hdr("note", "code", "catchup", "msg", prog.Note) + "\n")
+			}
+		}
+		if a.Verbose {
+			hk = append(hk, "tz", d.TZName())
+		}
+		hk = append(hk, clockKV(d.Clock(), a.Verbose)...)
+		if a.Package != "" {
+			tail.WriteString(t.packageStatus(d, a.Package, a.Verbose))
 		}
 	}
-	if a.Package != "" {
-		b.WriteString(t.packageStatus(d, a.Package))
-	}
-	return b.String(), nil
+	hk = append(hk, "fmt", fmtVersion)
+	return hdr(word, hk...) + "\n" + body.String() + tail.String(), nil
 }
 
-// recText is a device's recording state line.
-func (t *Tools) recText(d *device.Device, st device.Status) string {
-	var rec string
+// recKV is a device's recording state: key=values and the executable next.
+func (t *Tools) recKV(d *device.Device, st device.Status) (kv []any, next []string) {
 	lazy := t.M.Lazy && !t.M.NoADB
+	otherWriter := func() []any {
+		kv := []any{"state", "not_recorded", "reason", "other_writer"}
+		if st.WriterPID != "" {
+			kv = append(kv, "writer_pid", st.WriterPID)
+		}
+		return kv
+	}
 	switch {
 	case st.Paused != "":
-		rec = st.Paused
+		kv = []any{"state", "paused", "msg", st.Paused}
 	case st.Recording && lazy:
-		rec = "recording"
+		kv = []any{"state", "recording"}
 		if p := d.CatchUp(); p.Pending {
-			rec += "; " + p.BackfillText(d.Loc())
+			kv = append(kv, "caught_up", 0)
+			kv = append(kv, backfillKV(p, d.Loc())...)
 		} else {
-			rec += "; caught up"
+			kv = append(kv, "caught_up", 1)
 		}
 		switch idle := t.M.IdleIn(d.Serial, time.Now()); {
 		case idle < 0:
-			rec += "; no idle stop (ANDROID_LOG_MCP_LINGER)"
+			kv = append(kv, "idle_stop", "never")
 		case t.M.LastCall(d.Serial).IsZero():
-			rec += "; kept by its pin"
+			kv = append(kv, "idle_stop", "pinned")
 		default:
-			rec += fmt.Sprintf("; stops %s after the last log tool call unless called again or pinned", idle.Round(time.Second))
+			kv = append(kv, "idle_stop_s", int(idle.Round(time.Second).Seconds()))
+			next = []string{`record_for="2h"`}
 		}
 	case st.Recording:
-		rec = "recording"
+		kv = []any{"state", "recording"}
 	case lazy && st.State == "device" && t.M.Wanted(d.Serial) && !st.Writer && st.Owned:
-		rec = "NOT recorded: another process writes this directory (writer.lock"
-		if st.WriterPID != "" {
-			rec += ", pid " + st.WriterPID
-		}
-		rec += "), e.g. an older android-log-mcp; stop it"
+		kv = otherWriter()
 	case lazy && st.State == "device" && t.M.Wanted(d.Serial):
-		rec = "starting recorder"
+		kv = []any{"state", "starting"}
 	case lazy && st.State == "device":
-		rec = "connected, not recorded — pass device=" + d.Serial + " to start"
+		kv, next = []any{"state", "not_recorded", "reason", "not_started"}, []string{param("device", d.Serial)}
 	case lazy && t.M.Wanted(d.Serial) && t.M.Settling():
-		rec = "starting: waiting for adb to list the device and read its identity; recording begins as soon as it is online"
+		kv = []any{"state", "starting", "reason", "waiting_for_adb", "msg", "waiting for adb to list the device and read its identity; recording begins as soon as it is online"}
 	case lazy && t.M.Wanted(d.Serial):
-		rec = "not recording (device not connected; recording resumes when it reconnects)"
+		kv = []any{"state", "not_connected", "reason", "resumes_on_reconnect"}
 	case st.State == "device" && !st.Owned && !t.M.NoADB:
-		rec = fmt.Sprintf("NOT recorded: recording limit of %d devices reached (ANDROID_LOG_MCP_MAX_DEVICES)", t.M.MaxDevices)
+		kv = []any{"state", "not_recorded", "reason", "device_limit", "max", t.M.MaxDevices}
 	case st.State == "device" && !st.Writer:
-		rec = "NOT recorded: another process writes this directory (writer.lock"
-		if st.WriterPID != "" {
-			rec += ", pid " + st.WriterPID
-		}
-		rec += "), e.g. an older android-log-mcp; stop it"
+		kv = otherWriter()
 	case st.State == "device":
-		rec = "starting recorder"
+		kv = []any{"state", "starting"}
 	default:
-		rec = "not recording (device not connected)"
+		kv = []any{"state", "not_connected"}
 	}
 	if st.LastErr != "" {
-		rec += "; last error: " + st.LastErr
+		kv = append(kv, "last_error", st.LastErr)
 	}
-	return rec
+	return kv, next
 }
 
 // lagNote explains a stale newest line: a hung writer, logcat still
@@ -453,37 +498,27 @@ func orQ(s string) string {
 func gapText(g store.Gap, loc *time.Location) string {
 	to := "ongoing"
 	if g.ToNs > 0 {
-		to = dateTime(g.ToNs, loc)
+		to = isoNs(g.ToNs, loc)
 	}
 	from := "?"
 	if g.FromNs > 0 {
-		from = dateTime(g.FromNs, loc)
+		from = isoNs(g.FromNs, loc)
 	}
-	return fmt.Sprintf("%s–%s, %s", from, to, g.Reason)
+	return fmt.Sprintf("%s..%s %s", from, to, noSpace(g.Reason))
 }
 
-func (t *Tools) packageStatus(d *device.Device, pkg string) string {
+func (t *Tools) packageStatus(d *device.Device, pkg string, verbose bool) string {
 	var b strings.Builder
 	loc := d.Loc()
 	pk := d.Packages()
-	installed, uid := "unknown (package list not loaded yet)", -1
+	installed, uid := "unknown", -1
 	if len(pk) > 0 {
-		installed = "not installed"
+		installed = "0"
 		for u, l := range pk {
 			for _, p := range l {
 				if p == pkg {
-					installed, uid = "installed", u
+					installed, uid = "1", u
 				}
-			}
-		}
-	}
-	if uid >= 0 {
-		fmt.Fprintf(&b, "package %s: %s (uid %d)\n", pkg, installed, uid)
-	} else {
-		fmt.Fprintf(&b, "package %s: %s\n", pkg, installed)
-		if installed == "not installed" {
-			if s := similar(pkg, allPkgs(pk)); len(s) > 0 {
-				fmt.Fprintf(&b, "  did you mean: %s\n", strings.Join(s, ", "))
 			}
 		}
 	}
@@ -497,9 +532,6 @@ func (t *Tools) packageStatus(d *device.Device, pkg string) string {
 	own := procs.NameOwner(pk) // dotted process names (issue #41)
 	ps := d.Procs()
 	su := newSharedUID(pkg, pk, func() []procs.Proc { return ps }) // shared-uid processes (issue #44)
-	if su != nil {
-		b.WriteString("  note: " + su.note() + "\n")
-	}
 	for _, p := range ps {
 		// app processes only: helpers running with the app's uid
 		// (crash_dump64, sh …) have no package and are not listed
@@ -524,79 +556,106 @@ func (t *Tools) packageStatus(d *device.Device, pkg string) string {
 	sort.Slice(alive, func(i, j int) bool { return startOf(alive[i]) > startOf(alive[j]) })
 	sort.Slice(dead, func(i, j int) bool { return dead[i].EndNs > dead[j].EndNs })
 	sort.Slice(prior, func(i, j int) bool { return startOf(prior[i]) > startOf(prior[j]) })
+	kv := []any{"id", pkg, "installed", installed}
+	if uid >= 0 {
+		kv = append(kv, "uid", uid)
+	}
+	kv = append(kv, "running", len(alive))
+	if len(alive) == 0 && len(dead) > 0 {
+		kv = append(kv, "last_pid", dead[0].PID, "ended", isoNs(dead[0].EndNs, loc))
+	}
+	if !connected && len(alive) > 0 {
+		kv = append(kv, "device_connected", 0, "running_as_of", "last_seen")
+	}
+	if su != nil {
+		kv = append(kv, "shares_uid", 1)
+	}
+	b.WriteString(hdr("package", kv...) + "\n")
+	if su != nil {
+		if l := su.noteLine(verbose); l != "" {
+			b.WriteString(l)
+			if !strings.HasSuffix(l, "\n") {
+				b.WriteByte('\n')
+			}
+		}
+	}
+	if installed == "unknown" {
+		b.WriteString(hdr("hint", "code", "package_list_pending") + nextClause(`package="`+pkg+`"`) + "\n")
+	}
+	if installed == "0" {
+		if s := similar(pkg, allPkgs(pk)); len(s) > 0 {
+			var next []string
+			for _, p := range s {
+				next = append(next, param("package", p))
+			}
+			b.WriteString(hdr("hint", "code", "package_not_installed", "similar", strings.Join(s, ",")) + nextClause(next...) + "\n")
+		} else {
+			b.WriteString(hdr("hint", "code", "package_not_installed") + nextClause("adb shell pm list packages") + "\n")
+		}
+	}
 	crashes := d.Crashes()
-	crashOf := func(p procs.Proc) string {
+	crashOf := func(p procs.Proc) []any {
 		for _, c := range crashes {
 			if c.PID == p.PID && c.Boot == p.Boot && c.TimeNs >= startOf(p)-5e9 && (p.EndNs <= 0 || c.TimeNs <= p.EndNs+5e9) {
 				if c.Kind == "anr" {
-					return "; ANR: see logcat_crashes id=" + c.ID
+					return []any{"anr", c.ID}
 				}
-				return "; crashed: see logcat_crashes id=" + c.ID
+				return []any{"crash", c.ID}
 			}
 		}
-		return ""
+		return nil
 	}
-	life := func(p procs.Proc) string {
-		start := "before recording"
-		if p.StartNs > 0 {
-			start = clock(p.StartNs, loc)[:8]
-		} else if p.SeenNs > 0 {
-			start = "≤" + clock(p.SeenNs, loc)[:8]
+	for _, p := range alive {
+		k := []any{"pid", p.PID, "name", procLabelName(p.Name), "state", "running"}
+		switch {
+		case p.StartNs > 0:
+			k = append(k, "since", isoNs(p.StartNs, loc))
+		case p.SeenNs > 0:
+			k = append(k, "since_at_least", isoNs(p.SeenNs, loc))
+		default:
+			k = append(k, "since", "before_recording")
 		}
-		end := "?"
+		b.WriteString("  " + hdr("proc", k...) + "\n")
+	}
+	ended := func(p procs.Proc, scope string) []any {
+		k := []any{"pid", p.PID, "name", procLabelName(p.Name), "state", "ended"}
+		switch {
+		case p.StartNs > 0:
+			k = append(k, "start", isoNs(p.StartNs, loc))
+		case p.SeenNs > 0:
+			k = append(k, "start_at_most", isoNs(p.SeenNs, loc))
+		default:
+			k = append(k, "start", "before_recording")
+		}
 		if p.EndNs > 0 {
-			end = clock(p.EndNs, loc)[:8]
+			k = append(k, "end", isoNs(p.EndNs, loc))
+		} else {
+			k = append(k, "end", "?")
 		}
-		return fmt.Sprintf("pid %d %s (%s–%s, %s%s)", p.PID, p.Name, start, end, orStr(p.EndReason, "ended"), crashOf(p))
+		k = append(k, "reason", noSpace(orStr(p.EndReason, "ended")))
+		k = append(k, crashOf(p)...)
+		return append(k, "scope", scope)
 	}
-	switch {
-	case len(alive) > 0:
-		var parts []string
-		for _, p := range alive {
-			since := "before recording"
-			if p.StartNs > 0 {
-				since = dateTime(p.StartNs, loc)
-			} else if p.SeenNs > 0 {
-				since = "at least " + dateTime(p.SeenNs, loc) + " (seen in ps)"
-			}
-			parts = append(parts, fmt.Sprintf("pid %d %s (since %s)", p.PID, p.Name, since))
-		}
-		label := "running"
-		if !connected {
-			label = "running when the device was last seen"
-		}
-		fmt.Fprintf(&b, "  %s: %s\n", label, strings.Join(parts, ", "))
-	default:
-		msg := fmt.Sprintf("  %s has no running process", pkg)
-		if len(dead) > 0 {
-			msg += fmt.Sprintf(" (last pid %d ended %s)", dead[0].PID, dateTime(dead[0].EndNs, loc))
-		}
-		b.WriteString(msg + ".\n")
+	capN := 6
+	if verbose {
+		capN = 1 << 30
 	}
-	if len(dead) > 0 {
-		var parts []string
-		for i, p := range dead {
-			if i == 6 {
-				parts = append(parts, fmt.Sprintf("… %d more", len(dead)-6))
-				break
-			}
-			parts = append(parts, life(p))
+	for i, p := range dead {
+		if i == capN {
+			b.WriteString(truncLine("procs_ended", len(dead)-capN, true, nil, "verbose=true"))
+			break
 		}
-		fmt.Fprintf(&b, "  ended this boot: %s\n", strings.Join(parts, "; "))
+		b.WriteString("  " + hdr("proc", ended(p, "this_boot")...) + "\n")
 	}
-	if len(prior) > 0 {
-		var parts []string
-		for i, p := range prior {
-			if i == 6 {
-				parts = append(parts, fmt.Sprintf("… %d more", len(prior)-6))
-				break
-			}
-			if p.Alive() { // never closed (older store): the reboot ended it
-				p.EndReason = "device rebooted"
-			}
-			parts = append(parts, life(p)+" [boot "+p.Boot+"]")
+	for i, p := range prior {
+		if i == capN {
+			b.WriteString(truncLine("procs_before_reboot", len(prior)-capN, true, nil, "verbose=true"))
+			break
 		}
-		fmt.Fprintf(&b, "  before the last reboot: %s\n", strings.Join(parts, "; "))
+		if p.Alive() { // never closed (older store): the reboot ended it
+			p.EndReason = "device rebooted"
+		}
+		b.WriteString("  " + hdr("proc", append(ended(p, "before_reboot"), "boot", p.Boot)...) + "\n")
 	}
 	return b.String()
 }
@@ -657,25 +716,13 @@ func lev(a, b string) int {
 	return prev[len(b)]
 }
 
-var _ = os.Getpid
+// procLabelName is a process name as one token.
+func procLabelName(n string) string {
+	if n == "" {
+		return "?"
+	}
+	return noSpace(n)
+}
 
 // statusClock: device now, host now, clock offset, auto_time and the
 // clock jumps stored (issue #48 D4).
-func statusClock(d *device.Device, loc *time.Location) string {
-	d.RefreshAutoTime(context.Background()) // only when a clock change made it stale
-	ci := d.Clock()
-	s := statusLine(ci)
-	if ci.AutoTime != "" {
-		s += " · auto_time " + ci.AutoTime
-	}
-	js := d.Store.ClockJumps()
-	if len(js) > 0 {
-		j := js[len(js)-1]
-		s += fmt.Sprintf("\n    clock jumps stored: %d; last: %s at seq %s", len(js), jumpWord(j), commas(int(j.Seq)))
-		if j.HostNs != 0 {
-			s += " (host time " + hostTime(time.Unix(0, j.HostNs)) + ")"
-		}
-		s += " · logcat_search shows them where they fall"
-	}
-	return s
-}

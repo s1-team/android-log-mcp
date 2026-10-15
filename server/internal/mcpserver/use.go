@@ -84,7 +84,7 @@ func (t *Tools) target(name string) (id string, d *device.Device, err error) {
 	online := t.M.OnlineIDs()
 	identifying := t.M.Identifying()
 	slow := func() error {
-		return errc("device_identifying", []string{"retry_after_s=3"}, "devices", strings.Join(identifying, ","))
+		return errc("device_identifying", []string{"logcat_status"}, "devices", strings.Join(identifying, ","), "retry_after_s", 3)
 	}
 	if name != "" {
 		for _, i := range online {
@@ -158,7 +158,7 @@ func (t *Tools) use(name string, start time.Time) (d *device.Device, done func()
 }
 
 // useAndWait is use plus the catch-up wait (§5): it returns the device
-// and a backfill note ("" when caught up).
+// and the backfill note line ("" when caught up).
 func (t *Tools) useAndWait(ctx context.Context, name string) (*device.Device, func(), string, error) {
 	start := time.Now()
 	d, done, starting, err := t.use(name, start)
@@ -172,7 +172,29 @@ func (t *Tools) useAndWait(ctx context.Context, name string) (*device.Device, fu
 	if !p.Pending {
 		return d, done, "", nil
 	}
-	return d, done, p.BackfillText(d.Loc()) + "; results may be incomplete, call again", nil
+	return d, done, backfillNote(p, d.Loc()), nil
+}
+
+// backfillKV are the progress fields of a running backfill (device time).
+func backfillKV(p device.Progress, loc *time.Location) []any {
+	if p.Starting {
+		return []any{"backfill", "starting"}
+	}
+	kv := []any{"backfill", "running", "lines", int(p.Lines)}
+	if p.EstTotal > 0 {
+		kv = append(kv, "est_total", int(max(p.EstTotal, p.Lines)))
+	}
+	if p.EarliestNs != 0 {
+		kv = append(kv, "earliest", isoNs(p.EarliestNs, loc))
+	}
+	return kv
+}
+
+// backfillNote is the note line of a response given while the backfill runs.
+func backfillNote(p device.Progress, loc *time.Location) string {
+	kv := append([]any{"code", "backfill"}, backfillKV(p, loc)...)
+	kv = append(kv, "results", "incomplete")
+	return hdr("note", kv...) + nextClause("logcat_status")
 }
 
 // Target resolves a device name like the tools do (the single online
