@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-15
+
 ### Upgrade notes
 
 - **`android-log-mcp service stop` exits 1 when a service holds the lock but does not answer**, instead of printing `service: not running` and exiting 0. Scripts that treated that exit code as "stopped" should call `service stop --force` ([#83](https://github.com/s1crab/android-log-mcp/issues/83)).
@@ -28,7 +30,6 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 - `logcat_crashes` lists crashes newest first by arrival, no longer by device time ([#55](https://github.com/s1crab/android-log-mcp/issues/55)). After the device clock is set back, crashes that arrive later have older device times and used to sort as old, so the newest page could leave them out. Shown times and the `from`/`to` window stay device time; ids are unchanged. A DropBox-only crash of an old event that is imported late appears at the top of the list.
 
 ### Fixed
-
 - An MCP process no longer gives up with "holds the lock but does not answer" or a vague `context deadline exceeded` when the service process is hung ([#83](https://github.com/s1crab/android-log-mcp/issues/83)):
   - A service counts as reachable only when it answers a hello, not when the socket merely accepts a connection.
   - A service that is verified as this tool's, is not shutting down and has been silent for more than 10 s is replaced automatically (at most 3 replacements per minute). A service that is not recognised as ours, or that runs inside an MCP process, is never signalled; the error names the pid and the manual command.
@@ -36,9 +37,7 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
   - Connection errors name the service log and the commands to try.
 - A lock that was just released could look held for a few milliseconds while a child process was being started (macOS and Linux) ([#82](https://github.com/s1crab/android-log-mcp/issues/82)). The recorder then logged "being written by another process … not recording it", `set-root` could fail with "is being written by another process", and the service could report "already running for this user" or take a stopped service for a running one. The cause is that a `flock` belongs to the open file description, and a forked child holds a copy of every open fd until its `exec`. A lock that looks held is now retried for up to 200 ms (1 ms to 10 ms backoff) before it is reported held; the worst wait measured on a macOS CI runner was 23 ms. A lock that really is held is reported after the 200 ms. Windows is not affected and is unchanged.
 - After `set-root`, lines that the old root already stored are no longer stored again by a later whole-buffer read ([#56](https://github.com/s1crab/android-log-mcp/issues/56)). The move now carries the hashes of the newest stored lines of the current boot (up to 500,000, in a new `resume_dedup.bin` next to `meta.json`, not inside it), and every resume in the new root uses them until the device reboots or that many new lines are stored. Before, only the first resume used a small set taken near the newest line's device time, so a device clock jump or set-back after the move could store old lines twice.
-
 - The crash detector follows device clock jumps ([#55](https://github.com/s1crab/android-log-mcp/issues/55)). Its matching windows (15 s Java, 30 s ANR, 60 s `am_crash` native) and its quiet period are counted on a time line without the jumps. A clock set no longer splits one crash into two (the `am_crash` event and its stack, or the native crash and its tombstone), no longer merges two crashes of a reused pid, and no longer keeps a pending native crash open until the device clock catches up. A pending native crash now also ends when no more lines arrive: until now only the next line ended it.
-
 - Lines are attributed to the right device process after the device clock is set back ([#55](https://github.com/s1crab/android-log-mcp/issues/55)). A pid reused by another app after a back jump used to give its lines to the previous app, or to none, because lifetimes were compared by device time. Lifetimes now carry the sequence numbers of their start and end (`start_seq` / `end_seq` in `procs.jsonl`; older files load without them and keep the time rule), and the owner of a pid is the newest lifetime that started before the line in arrival order. Device time only gives the 2 s fork-race slack and the 5 s grace after an end, and only when no clock jump lies between the two records.
 
 ## [0.6.0] - 2026-10-15
@@ -257,7 +256,8 @@ Upgrade notes are in the **Breaking** entries below.
 - First release: an MCP stdio server giving AI agents read-only access to Android logcat, with background recording of every connected device, the tools `logcat_status`, `logcat_search` (Android Studio filter syntax with strict errors), `logcat_crashes` and `logcat_app_launches`, and the `call` debug subcommand.
 - npm packaging: a Node launcher plus per-platform binary packages (linux / darwin / win32 × x64 / arm64), CI and release workflows.
 
-[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/s1crab/android-log-mcp/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/s1crab/android-log-mcp/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/s1crab/android-log-mcp/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/s1crab/android-log-mcp/compare/v0.5.0...v0.5.1
