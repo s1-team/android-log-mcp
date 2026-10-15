@@ -108,3 +108,33 @@ func TestANRDropboxWindow(t *testing.T) {
 		t.Fatalf("dropbox entry 130 s after am_anr must be new")
 	}
 }
+
+// A DropBox ANR dump that arrives 59, 65 or 100 s after am_anr is one ANR
+// in both orders (DropBox entry first, then logcat: AdoptDropbox; logcat
+// first, then DropBox entry: MatchDropbox); other kinds keep 60 s.
+func TestANRDropboxWindowBothOrders(t *testing.T) {
+	body := "Process: com.foo\nPID: 4321\nSubject: Input dispatching timed out\n\n----- pid 4321 at x -----\nCmd line: com.foo\n"
+	for _, gap := range []int64{59, 65, 100} {
+		dbOnly := &Crash{ID: "c1", Kind: "anr", TimeNs: 1000e9 + gap*1e9, PID: 4321, Process: "com.foo", Sources: []string{"dropbox:data_app_anr"}}
+		fresh := &Crash{Kind: "anr", TimeNs: 1000e9, PID: 4321, Process: "com.foo", Sources: []string{"events:am_anr"}}
+		if !AdoptDropbox([]*Crash{dbOnly}, fresh) || fresh.ID != "c1" {
+			t.Errorf("AdoptDropbox: dropbox %d s after am_anr not adopted", gap)
+		}
+		logc := &Crash{ID: "c2", Kind: "anr", TimeNs: 1000e9, PID: 4321, Process: "com.foo", Sources: []string{"events:am_anr"}}
+		e := DropboxEntry{Tag: "data_app_anr", TimeNs: 1000e9 + gap*1e9, Body: body}
+		if c, isNew := MatchDropbox([]*Crash{logc}, e); isNew || c == nil || c.ID != "c2" {
+			t.Errorf("MatchDropbox: dropbox %d s after am_anr gave a new ANR", gap)
+		}
+	}
+	// other kinds keep the 60 s window
+	for _, tc := range []struct {
+		gap  int64
+		want bool
+	}{{59, true}, {65, false}} {
+		dbOnly := &Crash{ID: "j1", Kind: "java", TimeNs: 1000e9 + tc.gap*1e9, PID: 4321, Process: "com.foo", Sources: []string{"dropbox:data_app_crash"}}
+		fresh := &Crash{Kind: "java", TimeNs: 1000e9, PID: 4321, Process: "com.foo"}
+		if got := AdoptDropbox([]*Crash{dbOnly}, fresh); got != tc.want {
+			t.Errorf("java crash, dropbox %d s apart: adopted=%v, want %v", tc.gap, got, tc.want)
+		}
+	}
+}
