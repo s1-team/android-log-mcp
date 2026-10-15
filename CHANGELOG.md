@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+### Fixed
+
+- The first `logcat_status` (or log tool call) that replaces a running service (version handoff, or automatic replacement of a hung service) now starts the requested device, like on a cold start, instead of answering `recording: idle` / `not recording (device not connected)` until the next call; a slow device identity no longer prevents the device from being started ([#109](https://github.com/s1crab/android-log-mcp/issues/109)).
+
 ## [0.7.0] - 2026-10-15
 
 ### Upgrade notes
