@@ -140,7 +140,7 @@ The `exe/` directory holds one binary (about 11 MB), plus renamed copies only wh
 | `android-log-mcp call TOOL [JSON]` | Call one tool through the service and print the result (like an MCP call, it starts recording the device and waits up to 10 s for the backfill) |
 | `android-log-mcp record [--device X]... --for 2h` / `--stop` / (no flag) | Keep recording until now + the duration without tool calls or connected MCP / CLI processes (a pin), stop now, or show what is recorded (see [below](#recording-pins-record-and-record_for)); `--json` for scripts |
 | `android-log-mcp report [flags]` | Diagnostic zip (see [below](#diagnostic-reports-and-privacy)); `report -h` lists the flags |
-| `android-log-mcp service [status [--json] \| stop]` | Show or stop the service process; without arguments, run it in the foreground |
+| `android-log-mcp service [status [--json] \| stop [--force]]` | Show or stop the service process; without arguments, run it in the foreground. `stop --force` also ends a service process that holds the lock but does not answer: it is signalled (SIGTERM, then SIGKILL after 10 s; Windows: a stop request, then TerminateProcess) only when it is verified to be the process recorded in `run/service.json` (same executable and start time); unflushed lines can be lost, and the command says so. Exit 1 when the service holds the lock but does not answer |
 | `android-log-mcp install [--json]` | Copy this binary to a fixed path (`<user cache dir>/android-log-mcp/exe/`) and print it, for MCP hosts that run the binary directly (recommended on Windows) |
 | `android-log-mcp root [--json]` | Print the data root (and the control dir, config file, socket and running service) |
 | `android-log-mcp set-root DIR --keep-old\|--delete-old` | Move the data root for every MCP and CLI process (see [below](#data-root-and-set-root)) |
@@ -241,6 +241,7 @@ Set them in the MCP host's `env` for android-log-mcp; recording settings are rea
 | `ANDROID_LOG_MCP_MEM_RECORDS` | Newest lines kept in memory per device (default 20000) |
 | `ANDROID_LOG_MCP_MEM_MB` | Byte cap of that in-memory window in MiB (estimated; default 16) |
 | `ANDROID_LOG_MCP_HISTORY_CACHE_MB` | Per-device cache of decoded history blocks in MiB (default 32, LRU over ~512 KiB blocks) |
+| `ANDROID_LOG_MCP_REPORT_HINT` | Developer option, off by default (`1` / `true` turns it on); read by the MCP and CLI processes only. When a connect or start error means android-log-mcp itself is broken, the error text then also tells the agent to **ask the user first**, and only if they agree to run `android-log-mcp --offline <root> report --logs-only --out <file>`; the user reviews the zip and submits the issue by hand. It changes only error text: nothing is collected or sent, and the tool has no network code |
 | `ANDROID_LOG_MCP_IDLE_RELEASE` | Release the history cache after this long without queries (default `2m`; `0` = never) |
 
 `ANDROID_LOG_MCP_HOME` and `--home` were removed in 0.4.0; if either is set, the program exits with an error saying so.
@@ -269,7 +270,8 @@ npx -y android-log-mcp report --package com.foo --am-start com.foo/.MainActivity
 | `--no-redact` | No redaction (the manifest warns) |
 | `--keep-private-ip` | Keep private addresses (10/8, 172.16/12, 192.168/16, link-local, ULA) |
 | `--keep-domain D` | Keep domain `D` and its subdomains (repeatable), e.g. your own API host; not written to the manifest |
-| `--no-adb` | Do not use adb: no live device info or DropBox |
+| `--no-adb` | Do not use adb: no live device info, DropBox or `adb devices -l` |
+| `--logs-only` | No recorded device data: only `diagnostics/` (the service log's last 1 MiB, `crash.log`, `service.json`, `diagnose.txt` with who holds the service lock and whether the socket exists, and `adb devices -l`; all redacted). A small zip to attach to an issue; works with `--offline DIR` while the service is down. `--offline` reports also run `adb devices -l` unless `--no-adb` |
 | `-o FILE` | Output (default `./android-log-mcp-report-<time>.zip`; the path goes to stdout, a summary to stderr) |
 
 The service process builds the report (it has the data and adb); with no service process running, the CLI process starts it detached. The service process starts recording the requested devices (with `--serial`, else the single connected one) and backfills their buffers first, waiting at most 10 s; if that is not enough, the manifest warns "backfill incomplete". `--no-adb` and `--offline DIR` use only what is stored. It only reads the data and, apart from `--am-start`, only runs `getprop`, `date`, `cat /proc/sys/kernel/random/boot_id` and `dumpsys dropbox --print` on the device.
@@ -278,6 +280,7 @@ The service process builds the report (it has the data and adb); with no service
 |---|---|
 | `manifest.json` | Version, time, parameters (values of `--note` / `--redact-extra` / `--keep-domain` omitted), per-device window and line count, file sizes, trimming, hits and distinct values per redaction rule, warnings |
 | `note.txt` | The `--note` text |
+| `diagnostics/` | `service.log` (last 1 MiB, redacted), `crash.log`, `service.json`, `diagnose.txt`, `adb-devices.txt` (`adb devices -l`), whichever exist |
 | `store/v1/<device-id>/` | The recorded store, trimmed to the window/package and renumbered 1..N; load it with `android-log-mcp --offline <unzipped>/store` |
 | `devices/<serial>/device.json` | Fingerprint, model, manufacturer, Android version, SDK, time zone and offset, boot_id, device–host clock difference (from the recording if the device is offline, with the source noted) |
 | `devices/<serial>/logcat/<boot>.txt` | The same lines as `logcat -v threadtime -v epoch -v uid -v usec -v printable` text, one file per boot |
@@ -309,6 +312,8 @@ Values are replaced by `[REDACTED:<type>#n]`. The same original value gets the s
 | `device_id` | IMEI, IMSI, ICCID, MEID, serial, Android ID, advertising ID (`key=value`) |
 | `ipv4` / `ipv6` | IP addresses (not 127.0.0.1, ::1, 0.0.0.0); `--keep-private-ip` keeps private ones |
 | `mac` | MAC addresses (not all-zero / broadcast) |
+| `username` | The user name in a home path: `/home/<user>`, `/Users/<user>`, `C:\Users\<user>` (either slash type, JSON-escaped backslashes, any case for the Windows form); the rest of the path stays |
+| `home_dir` | The home directory of the user who runs the report, wherever it is (also in the command line and warnings of `manifest.json`) |
 | `domain` | Host names, see below; `--keep-domain` keeps listed domains |
 
 `domain`:

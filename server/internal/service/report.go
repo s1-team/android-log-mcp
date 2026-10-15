@@ -33,6 +33,14 @@ type ReportArgs struct {
 	Out      string         `json:"out"`
 	Args     []string       `json:"args,omitempty"`
 	NoADB    bool           `json:"no_adb,omitempty"`
+	// LogsOnly: no recorded device data, only the diagnostics (service log …).
+	LogsOnly bool `json:"logs_only,omitempty"`
+	// DevicesList: run `adb devices -l` for the bundle even when NoADB
+	// (an offline report); set by the CLI, not sent to the service.
+	DevicesList bool `json:"-"`
+	// Control is the control dir whose service state the diagnostics
+	// describe (zero: none).
+	Control Control `json:"-"`
 
 	warnings []string // set by the service (backfill notes)
 }
@@ -73,6 +81,7 @@ func init() {
 			adb = m.ADB()
 		}
 		a.warnings = notes
+		a.Control = s.opt.Control
 		return BuildReport(ctx, root, s.opt.Version, a, adb)
 	}
 }
@@ -138,8 +147,9 @@ func BuildReport(ctx context.Context, root, version string, a ReportArgs, adb *d
 		mu.Unlock()
 	}
 	opt := report.Options{Base: root, Serials: a.Serials, Since: a.Since, From: a.From, To: a.To, Package: a.Package, MaxBytes: a.MaxBytes,
-		Note: a.Note, AmStart: a.AmStart, Redact: a.Redact, Out: a.Out, Version: version, Args: a.Args, Logf: logf, Warnings: a.warnings}
-	if !a.NoADB {
+		Note: a.Note, AmStart: a.AmStart, Redact: a.Redact, Out: a.Out, Version: version, Args: a.Args, Logf: logf, Warnings: a.warnings, LogsOnly: a.LogsOnly}
+	var listADB *device.ADB
+	if !a.NoADB || a.DevicesList {
 		if adb == nil {
 			if p, err := device.FindADB(); err == nil {
 				adb = &device.ADB{Path: p}
@@ -147,7 +157,8 @@ func BuildReport(ctx context.Context, root, version string, a ReportArgs, adb *d
 				logf("adb not found (%v): live device info and DropBox are skipped", err)
 			}
 		}
-		if adb != nil {
+		listADB = adb
+		if adb != nil && !a.NoADB {
 			if devs, err := adb.Output(ctx, 10*time.Second, "devices"); err == nil {
 				opt.Online = map[string]bool{}
 				for _, d := range device.ParseDevices(devs) {
@@ -166,6 +177,7 @@ func BuildReport(ctx context.Context, root, version string, a ReportArgs, adb *d
 	if a.AmStart != "" && opt.Shell == nil {
 		return nil, errors.New("--am-start needs adb (and not --no-adb)")
 	}
+	opt.Extras = diagnostics(ctx, root, a.Control, listADB, logf)
 	man, err := report.Build(ctx, opt)
 	if err != nil {
 		return nil, err
@@ -214,7 +226,7 @@ func RunOrLocal(ctx context.Context, ctrl Control, version, role string, remote 
 			if st := ctrl.ReadState(); st != nil {
 				pid = st.PID
 			}
-			return fmt.Errorf("an android-log-mcp service (pid %d) holds %s but does not answer on %s (%v)", pid, ctrl.LockPath(), ctrl.Socket(), err)
+			return fmt.Errorf("an android-log-mcp service (pid %d) holds %s but does not answer on %s (%v); try: android-log-mcp service stop --force", pid, ctrl.LockPath(), ctrl.Socket(), err)
 		}
 		select {
 		case <-ctx.Done():

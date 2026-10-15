@@ -36,6 +36,8 @@ type ClientOptions struct {
 	// crashed and an unsuspended recording pin is active, start a new
 	// service at once instead of on the next call (issue #11 §8).
 	RestartPinned bool
+	// Getenv reads the environment (default os.Getenv; tests).
+	Getenv func(string) string
 	// NoDetach runs the service in this process instead of detached (tests;
 	// NoSpawn does it for the whole process).
 	NoDetach bool
@@ -102,6 +104,9 @@ func NewClient(opt ClientOptions) *Client {
 		opt.StartTimeout = 10 * time.Second
 	}
 	opt.Repair.defaults()
+	if opt.Getenv == nil {
+		opt.Getenv = os.Getenv
+	}
 	return &Client{opt: opt}
 }
 
@@ -290,7 +295,7 @@ func (c *Client) start(ctx context.Context) error {
 	case NoSpawn || c.opt.NoDetach:
 		reason = "detached start disabled"
 	case len(c.spawns) >= 3 && c.opt.NoEmbedded:
-		return fmt.Errorf("the background service stopped %d times within a minute; see %s", len(c.spawns), c.logHint())
+		return c.fail("the background service stopped %d times within a minute", len(c.spawns))
 	case len(c.spawns) >= 3:
 		reason = fmt.Sprintf("the background service stopped %d times within a minute", len(c.spawns))
 	default:
@@ -386,10 +391,10 @@ func (c *Client) spawn(ctx context.Context) (int, error) {
 	}
 	select {
 	case <-exited:
-		return 0, fmt.Errorf("the service exited right after starting (%v); see %s", werr, LogDir(root))
+		return 0, c.fail("the service exited right after starting (%v)", werr)
 	default:
 		cmd.Process.Kill()
-		return 0, fmt.Errorf("the service did not answer within %s; see %s", c.opt.StartTimeout, LogDir(root))
+		return 0, c.fail("the service did not answer within %s", c.opt.StartTimeout)
 	}
 }
 
