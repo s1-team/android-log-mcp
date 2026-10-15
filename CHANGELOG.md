@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-16
+
 ### Fixed
 
 - Correction to the 0.7.0 upgrade notes: the long-path fallback socket did **not** move. When `<control dir>/run/service.sock` would exceed the socket path limit (a very long home or cache path), the socket is, as in 0.6.0, `/tmp/alm-<uid>/<hash>.sock` (Windows: `%TEMP%\alm-<hash>\s.sock`). Nothing needs to be done when upgrading; the unreachable cache-dir fallback code was removed ([#108](https://github.com/s1crab/android-log-mcp/issues/108)).
@@ -263,7 +265,8 @@ Upgrade notes are in the **Breaking** entries below.
 - First release: an MCP stdio server giving AI agents read-only access to Android logcat, with background recording of every connected device, the tools `logcat_status`, `logcat_search` (Android Studio filter syntax with strict errors), `logcat_crashes` and `logcat_app_launches`, and the `call` debug subcommand.
 - npm packaging: a Node launcher plus per-platform binary packages (linux / darwin / win32 × x64 / arm64), CI and release workflows.
 
-[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/s1crab/android-log-mcp/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/s1crab/android-log-mcp/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/s1crab/android-log-mcp/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/s1crab/android-log-mcp/compare/v0.5.1...v0.5.2
