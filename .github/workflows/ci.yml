@@ -19,6 +19,13 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Relative links and #anchors in the Markdown docs (no dependencies, ~seconds).
+  doc-links:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/check-doc-links.py
   test:
     strategy:
       fail-fast: false
