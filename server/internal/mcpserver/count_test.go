@@ -58,15 +58,16 @@ func bigFixture(t *testing.T, n int) (*Tools, *store.Store) {
 	return &Tools{M: m}, ro
 }
 
-var countLine = regexp.MustCompile(`(?m)^count: total=(\d+) count_exact=(true|false)(?: (counted_from|counted_to)="([^"]+)")?$`)
+var countLine = regexp.MustCompile(`^(?:ok|empty) .*? matched=(\d+) exact=([01])(?: (counted_from|counted_to)=(\S+))? `)
 
+// parseCount reads matched / exact / counted_from|to from the header line.
 func parseCount(t *testing.T, out string) (total string, exact bool, key, at string) {
 	t.Helper()
-	m := countLine.FindAllStringSubmatch(out, -1)
-	if len(m) != 1 {
-		t.Fatalf("want exactly one count line in:\n%s", out)
+	m := countLine.FindStringSubmatch(firstLine(out))
+	if m == nil {
+		t.Fatalf("no matched= exact= in the header of:\n%s", out)
 	}
-	return m[0][1], m[0][2] == "true", m[0][3], m[0][4]
+	return m[1], m[2] == "1", m[3], m[4]
 }
 
 func withCountBudget(t *testing.T, d time.Duration) {
@@ -82,7 +83,7 @@ func TestSearchExactTotalWithoutFilter(t *testing.T) {
 	withCountBudget(t, time.Nanosecond)
 	tl, _ := bigFixture(t, 30000)
 	out, e := call(t, tl, "logcat_search", `{"limit":50}`)
-	must(t, out, e, "matched 30,000 lines; showing newest 50", "top tags in the newest 50 matches only: ")
+	must(t, out, e, "matched=30000 exact=1 shown=50 ", "\nsummary of=")
 	if total, exact, key, _ := parseCount(t, out); total != "30000" || !exact || key != "" {
 		t.Fatalf("count line: %s %v %s\n%s", total, exact, key, out)
 	}
@@ -90,9 +91,9 @@ func TestSearchExactTotalWithoutFilter(t *testing.T) {
 	cur := out[i+8:]
 	cur = cur[:strings.IndexByte(cur, '"')]
 	out, e = call(t, tl, "logcat_search", `{"limit":50,"before":"`+cur+`"}`)
-	must(t, out, e, "matched 29,950 lines; showing newest 50", "count: total=29950 count_exact=true\n")
+	must(t, out, e, "matched=29950 exact=1 shown=50 ")
 	out, e = call(t, tl, "logcat_search", `{"limit":50,"after":"`+cur+`"}`)
-	must(t, out, e, "matched 49 new lines", "count: total=49 count_exact=true\n")
+	must(t, out, e, "matched=49 exact=1 shown=49 ")
 }
 
 // With a filter, counting stops after the budget: a lower bound, the span
@@ -102,19 +103,15 @@ func TestSearchPartialCount(t *testing.T) {
 	withCountBudget(t, time.Nanosecond)
 	tl, _ := bigFixture(t, 30000)
 	out, e := call(t, tl, "logcat_search", `{"filter":"tag=:Ten","limit":20}`)
-	must(t, out, e, "matched ≥", "lines (counted the newest ", " only, since ", "older history not counted — narrow with from/to, e.g. from=\"1h\", for an exact count); showing newest 20",
-		"[truncated: ≥", "top tags in the ")
+	must(t, out, e, " exact=0 counted_from=", " shown=20 ", "\ntruncated older=", " exact=0 ", "\nsummary of=")
 	total, exact, key, at := parseCount(t, out)
 	if exact || key != "counted_from" || at == "" || total == "3000" {
 		t.Fatalf("count line: %s %v %s %s\n%s", total, exact, key, at, out)
 	}
-	if !strings.Contains(out, "matched ≥"+commasStr(total)+" lines") || !strings.Contains(out, "counted matches only (newest ") {
-		t.Fatalf("text and fields disagree:\n%s", out)
-	}
 	// a budget long enough for the whole range: exact, as before
 	withCountBudget(t, time.Minute)
 	out, e = call(t, tl, "logcat_search", `{"filter":"tag=:Ten","limit":20}`)
-	must(t, out, e, "matched 3,000 lines; showing newest 20", "count: total=3000 count_exact=true\n", "top tags in all 3,000 matches: Ten 3,000")
+	must(t, out, e, "matched=3000 exact=1 shown=20 ", "\nsummary of=2000 tags=Ten:100% msgs=2000x\"Ten: line #\"")
 }
 
 // Fewer matches than the limit: the whole range is scanned (exact), as
@@ -124,13 +121,7 @@ func TestSearchFewMatchesExact(t *testing.T) {
 	withCountBudget(t, time.Nanosecond)
 	tl, _ := bigFixture(t, 30000)
 	out, e := call(t, tl, "logcat_search", `{"filter":"message:\"line 7\" tag=:Other","limit":1000}`)
-	must(t, out, e, "count_exact=true")
+	must(t, out, e, " exact=1 ")
 	out, e = call(t, tl, "logcat_search", `{"filter":"message:zz-none"}`)
-	must(t, out, e, "matched 0 lines", "count: total=0 count_exact=true\n")
-}
-
-func commasStr(s string) string {
-	var n int
-	fmt.Sscan(s, &n)
-	return commas(n)
+	must(t, out, e, "empty view=lines ", " matched=0 exact=1 scanned=")
 }

@@ -36,12 +36,32 @@ type Tools struct {
 	Pins Pins
 }
 
-// toolError is a business error returned with isError=true.
-type toolError struct{ msg string }
+// toolError is a business error returned with isError=true. Its text is the
+// P3 shape of #85: "error code=<code> k=v ... next: param=value". code is a
+// closed enum (docs/reference.md); next is the only part that must be
+// executable.
+type toolError struct {
+	code string
+	kv   []any
+	next []string
+	msg  string // legacy free text (code "failed")
+}
 
-func (e *toolError) Error() string { return e.msg }
+func (e *toolError) Error() string {
+	if e.code == "" {
+		return hdr("error", "code", "failed", "msg", e.msg)
+	}
+	return hdr("error", append([]any{"code", e.code}, e.kv...)...) + nextClause(e.next...)
+}
 
-func errf(format string, a ...any) error { return &toolError{fmt.Sprintf(format, a...)} }
+// errf is an error without a code of its own: code=failed with the message.
+// Prefer errc, which carries an executable next step.
+func errf(format string, a ...any) error { return &toolError{msg: fmt.Sprintf(format, a...)} }
+
+// errc is a coded error: code, key=value details and executable next steps.
+func errc(code string, next []string, kv ...any) error {
+	return &toolError{code: code, kv: kv, next: next}
+}
 
 // Call dispatches a tool by name with raw JSON args, returning text and isError.
 func (t *Tools) Call(ctx context.Context, name string, raw json.RawMessage) (string, bool) {
@@ -71,9 +91,17 @@ func (t *Tools) Call(ctx context.Context, name string, raw json.RawMessage) (str
 			out, err = t.launches(ctx, a)
 		}
 	default:
-		err = errf("unknown tool %q", name)
+		var names []string
+		for _, d := range toolDefs() {
+			names = append(names, d.name)
+		}
+		err = errc("unknown_tool", []string{"one of " + strings.Join(names, " ")}, "value", name)
 	}
 	if err != nil {
+		var te *toolError
+		if !errors.As(err, &te) { // not coded: keep the first token
+			return hdr("error", "code", "failed", "msg", err.Error()), true
+		}
 		return err.Error(), true
 	}
 	return out, false
@@ -88,13 +116,14 @@ func decodeArgs(raw json.RawMessage, v any) error {
 	if err := dec.Decode(v); err != nil {
 		msg := err.Error()
 		if strings.HasPrefix(msg, "json: unknown field ") {
-			return errf("unknown parameter %s. Valid parameters: %s", strings.TrimPrefix(msg, "json: unknown field "), strings.Join(fieldNames(v), ", "))
+			bad := strings.Trim(strings.TrimPrefix(msg, "json: unknown field "), `"`)
+			return errc("unknown_param", []string{"drop " + bad}, "param", bad, "valid", strings.Join(fieldNames(v), ","))
 		}
 		var te *json.UnmarshalTypeError
 		if errors.As(err, &te) {
-			return errf("parameter %q has the wrong type: expected %s", te.Field, te.Type.String())
+			return errc("bad_type", nil, "param", te.Field, "expected", te.Type.String())
 		}
-		return errf("invalid arguments: %v", err)
+		return errc("bad_json", []string{`pass a JSON object, e.g. {"device":"emulator-5554"}`}, "msg", err.Error())
 	}
 	return nil
 }

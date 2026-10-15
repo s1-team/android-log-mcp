@@ -109,7 +109,7 @@ func renderSections(secs []*stackSection, nMain, nCause int) (string, int) {
 			if ind == "" {
 				ind = "\t"
 			}
-			lines = append(lines, fmt.Sprintf("%s%s %d more frames", ind, identicalLabel, h))
+			lines = append(lines, fmt.Sprintf("%s%s frames_hidden=%d", ind, identicalLabel, h))
 			hidden += h
 		}
 	}
@@ -164,9 +164,9 @@ func shortStack(msg string) (out string, hidden int, changed bool) {
 		}
 	}
 	if room := max(shortStackChars-len(tail), 200); len(frontText) > room {
-		marker := fmt.Sprintf("…[+%s chars; stack=\"full\" shows the whole stack]", commas(len(frontText)))
+		marker := lineCut(shortStackChars, len(frontText), `stack="full"`)
 		k := cutAt(frontText, max(room-len(marker), 100))
-		frontText = frontText[:k] + fmt.Sprintf("…[+%s chars; stack=\"full\" shows the whole stack]", commas(len(frontText)-k))
+		frontText = frontText[:k] + lineCut(shortStackChars, len(frontText)-k, `stack="full"`)
 	}
 	return frontText + tail, h1 + h2, true
 }
@@ -176,7 +176,7 @@ func clipLines(ls []string, n int) []string {
 	out := make([]string, len(ls))
 	for i, l := range ls {
 		if len(l) > n {
-			l = l[:cutAt(l, n)] + "…"
+			l = l[:cutAt(l, n)] + "..."
 		}
 		out[i] = l
 	}
@@ -221,7 +221,7 @@ func sameStack(msg string, at int64, loc *time.Location) (string, int) {
 	if ind == "" {
 		ind = "\t"
 	}
-	lines = append(lines, fmt.Sprintf("%s%s same %d frames as %s", ind, identicalLabel, total, clock(at, loc)))
+	lines = append(lines, fmt.Sprintf("%s%s same_frames=%d as=%s", ind, identicalLabel, total, clock(at, loc)))
 	out := strings.Join(lines, "\n")
 	if len(out) > shortStackChars { // long heads: shortStack keeps the causes first
 		out, total, _ = shortStack(msg)

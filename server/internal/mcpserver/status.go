@@ -43,13 +43,14 @@ func (t *Tools) resolveDevice(serial string) (*device.Device, error) {
 			return nil, stateError(serial, st)
 		}
 		if len(devs) == 0 {
-			return nil, errf("device %q has no recorded logs and is not connected. %s", serial, t.noDeviceHint())
+			return nil, errc("unknown_device", []string{"logcat_status"}, "value", serial, "reason", t.noDeviceHint())
 		}
-		var names []string
+		var ids, next []string
 		for _, d := range devs {
-			names = append(names, deviceDesc(d))
+			ids = append(ids, d.Serial)
+			next = append(next, param("device", d.Serial))
 		}
-		return nil, errf("device %q has no recorded logs. Devices with logs: %s", serial, strings.Join(names, ", "))
+		return nil, errc("unknown_device", next, "value", serial, "devices", strings.Join(ids, ","))
 	}
 	var online, withData []*device.Device
 	for _, d := range devs {
@@ -70,28 +71,28 @@ func (t *Tools) resolveDevice(serial string) (*device.Device, error) {
 		if len(cand) == 0 {
 			cand = withData
 		}
-		var names []string
+		var ids []string
 		for _, d := range cand {
-			names = append(names, deviceDesc(d))
+			ids = append(ids, d.Serial)
 		}
-		return nil, errf("%d devices have logs; pass device=one of: %s.", len(cand), strings.Join(names, ", "))
+		return nil, severalErr(ids)
 	}
 	for s, st := range live {
 		if st != "device" {
 			return nil, stateError(s, st)
 		}
 	}
-	return nil, errf("%s", t.noDeviceHint())
+	return nil, errc("no_device", []string{"logcat_status"}, "reason", t.noDeviceHint())
 }
 
 func stateError(serial, st string) error {
 	switch st {
 	case "unauthorized":
-		return errf("Device %s is unauthorized: accept the \"Allow USB debugging\" prompt on the phone.", serial)
+		return errc("device_unauthorized", []string{"accept the Allow USB debugging prompt on the device", "logcat_status"}, "device", serial)
 	case "offline":
-		return errf("Device %s is offline (adb state). Reconnect the cable or restart adb (`adb kill-server`).", serial)
+		return errc("device_offline", []string{"adb -s " + serial + " reconnect offline", "logcat_status"}, "device", serial)
 	}
-	return errf("Device %s is in adb state %q and cannot be recorded yet.", serial, st)
+	return errc("device_state", []string{"logcat_status"}, "device", serial, "adb_state", st)
 }
 
 func (t *Tools) noDeviceHint() string {
@@ -334,7 +335,7 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 		b.WriteString("  (none) — " + t.noDeviceHint() + "\n")
 	}
 	if several != nil {
-		fmt.Fprintf(&b, "%s No device was started and no cursor is returned.\n", several.Error())
+		fmt.Fprintf(&b, "%s No device was started and no cursor is returned.\n", strings.Replace(several.Error(), "error code=", "several code=", 1))
 	}
 	if useErr != nil && several == nil {
 		fmt.Fprintf(&b, "note: %v. No cursor is returned.\n", strings.TrimSuffix(useErr.Error(), "."))

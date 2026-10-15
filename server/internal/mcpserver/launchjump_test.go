@@ -252,7 +252,7 @@ func TestLaunchesAcrossClockJumps(t *testing.T) {
 				}
 			}
 		}
-		if len(exp) > 0 && !strings.Contains(out, "clock_jump: ") && strings.Contains(out, "unreliable") {
+		if len(exp) > 0 && !strings.Contains(out, "clock_jump seq=") && strings.Contains(out, "unreliable") {
 			t.Errorf("%s: no clock_jump line:\n%s", args, out)
 		}
 	}

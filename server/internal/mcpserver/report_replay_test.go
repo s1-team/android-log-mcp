@@ -312,7 +312,8 @@ func between(s, a, b string) string {
 
 // normalize drops lines that legitimately differ between the live store and
 // a report (sequence cursors, "now"-relative notes).
-var reClockLine = regexp.MustCompile(` · device now .*? · clock offset [^·]*`)
+var reClockLineOld = regexp.MustCompile(` · device now .*? · clock offset [^·]*`) // crashes, launches (not yet fmt=1)
+var reClockLine = regexp.MustCompile(` dev_now=\S+ clock=\S+ offset_s=\S+( clock_age_s=\S+)?`)
 
 func normalize(s string) string {
 	var out []string
@@ -322,6 +323,7 @@ func normalize(s string) string {
 		}
 		// device now / host now / clock offset depend on host now
 		ln = reClockLine.ReplaceAllString(ln, "")
+		ln = reClockLineOld.ReplaceAllString(ln, "")
 		out = append(out, ln)
 	}
 	return strings.Join(out, "\n")

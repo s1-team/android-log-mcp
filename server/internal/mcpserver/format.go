@@ -2,12 +2,12 @@ package mcpserver
 
 import (
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/s1crab/android-log-mcp/server/internal/model"
+	"github.com/s1crab/android-log-mcp/server/internal/store"
 )
 
 const (
@@ -15,7 +15,10 @@ const (
 	maxMsgChars     = 2000  // per line
 	maxStackChars   = 8000  // per line holding a stack, stack="full"
 	shortStackChars = 2000  // per line holding a stack, stack="short" (#23)
-	identicalLabel  = "↳"
+	identicalLabel  = "^"
+	// fmtVersion is the output-format version printed as fmt=N in every
+	// response header (#85); one bump per breaking change of the format.
+	fmtVersion = 1
 )
 
 func tzLabel(loc *time.Location, name string, at time.Time) string {
@@ -55,21 +58,33 @@ func dateOf(ns int64, loc *time.Location) string {
 	return time.Unix(0, ns).In(loc).Format("2006-01-02")
 }
 
-// procLabel names the process of a line. When the pid is unknown (short-lived
-// processes such as `log`/`sh`/crash helpers), the uid tells who wrote it:
-// "?(uid shell)", "?(uid com.example.app)". The app is never claimed as the
-// process without evidence.
+// procLabel names the process of a line as ONE token (no spaces; #85 P5).
+// When the pid is unknown (short-lived processes such as `log`/`sh`/crash
+// helpers), the uid tells who wrote it: "uid:shell", "uid:com.example.app".
+// The app is never claimed as the process without evidence; "?" = unknown.
 func procLabel(r *model.Record) string {
 	if r.Process != "" {
-		return r.Process
+		return noSpace(r.Process)
 	}
 	switch {
 	case r.Package != "":
-		return "?(uid " + r.Package + ")"
+		return "uid:" + noSpace(r.Package)
 	case r.UID >= 0:
-		return "?(uid " + model.UIDName(r.UID) + ")"
+		return "uid:" + noSpace(model.UIDName(r.UID))
 	}
 	return "?"
+}
+
+func noSpace(s string) string {
+	if strings.ContainsAny(s, " \t") {
+		return strings.Map(func(r rune) rune {
+			if r == ' ' || r == '\t' {
+				return '_'
+			}
+			return r
+		}, s)
+	}
+	return s
 }
 
 func levelLetter(l model.Level) string {
@@ -94,16 +109,14 @@ func formatRecord(r *model.Record, loc *time.Location, indent string) string {
 // the marker says that narrowing does not help.
 func capMsg(msg string) string {
 	limit := maxMsgChars
-	what := "lines are cut"
 	if looksLikeStack(msg) {
 		limit = maxStackChars
-		what = "stacks are cut"
 	}
 	if len(msg) <= limit {
 		return msg
 	}
 	cut := cutAt(msg, limit)
-	return msg[:cut] + fmt.Sprintf("…[+%s chars; %s at %s chars in every query, narrowing does not show more]", commas(len(msg)-cut), what, commas(limit))
+	return msg[:cut] + lineCut(limit, len(msg)-cut, "none")
 }
 
 // cutAt is the largest UTF-8 boundary <= n.
@@ -118,7 +131,7 @@ func cutAt(s string, n int) int {
 }
 
 func formatLine(r *model.Record, loc *time.Location, indent, msg string) string {
-	msg = strings.ReplaceAll(msg, "\n", "\n"+indent+"    ")
+	msg = strings.ReplaceAll(msg, "\n", "\n"+indent+"| ")
 	return fmt.Sprintf("%s%s %s %d/%d %s %s: %s", indent, clock(r.TimeNs, loc), levelLetter(r.Level), r.PID, r.TID, procLabel(r), r.Tag, msg)
 }
 
@@ -147,7 +160,7 @@ func sameContent(a, b *model.Record) bool {
 
 func (w *lineWriter) flushRepeat() {
 	if w.repeat > 0 {
-		w.lines = append(w.lines, fmt.Sprintf("  %s ×%d identical until %s", identicalLabel, w.repeat, clock(w.repeatTo, w.loc)))
+		w.lines = append(w.lines, fmt.Sprintf("%s rep=%d until=%s", identicalLabel, w.repeat, clock(w.repeatTo, w.loc)))
 		w.repeat = 0
 	}
 }
@@ -222,8 +235,6 @@ func (w *lineWriter) size() int {
 	return n
 }
 
-var reDigits = regexp.MustCompile(`\d+`)
-
 // template normalizes digits for "top repeated messages".
 func template(r *model.Record) string {
 	first := r.Msg
@@ -231,7 +242,123 @@ func template(r *model.Record) string {
 		first = first[:i]
 	}
 	if len(first) > 160 {
-		first = first[:160] + "…"
+		first = first[:cutAt(first, 160)] + "..."
 	}
-	return r.Tag + ": " + reDigits.ReplaceAllString(first, "#")
+	return r.Tag + ": " + collapseDigits(first)
+}
+
+// ---- shared response grammar (#85, docs/GOALS.md "Agent-first") ----------
+//
+// Every tool response starts with one header line "ok|empty|error k=v ...".
+// Truncation, empty and error lines share one shape: "<word> k=v ... next:
+// param=value [| param=value]". Plain functions over key=value pairs; no
+// state, so tests assert the text of the tool response, not these helpers.
+
+// val formats a header value: integers, floats (1 decimal) and bools (1/0)
+// plain, strings quoted only when they contain a space, quote or are empty.
+func val(v any) string {
+	switch x := v.(type) {
+	case string:
+		if x == "" || strings.ContainsAny(x, " \t\"=") {
+			return strconv.Quote(x)
+		}
+		return x
+	case bool:
+		if x {
+			return "1"
+		}
+		return "0"
+	case float64:
+		return strconv.FormatFloat(x, 'f', 1, 64)
+	}
+	return fmt.Sprint(v)
+}
+
+// hdr builds "word k=v k=v" from alternating keys and values.
+func hdr(word string, kv ...any) string {
+	var b strings.Builder
+	b.WriteString(word)
+	for i := 0; i+1 < len(kv); i += 2 {
+		b.WriteString(" " + kv[i].(string) + "=" + val(kv[i+1]))
+	}
+	return b.String()
+}
+
+// param formats one executable parameter for a next: clause: strings are
+// always quoted (copy-paste safe), numbers and bools plain.
+func param(k string, v any) string {
+	if s, ok := v.(string); ok {
+		return k + "=" + strconv.Quote(s)
+	}
+	return k + "=" + val(v)
+}
+
+// nextClause is " next: a=b | c=d" (empty without alternatives).
+func nextClause(alts ...string) string {
+	if len(alts) == 0 {
+		return ""
+	}
+	return " next: " + strings.Join(alts, " | ")
+}
+
+// truncLine is the one-line truncation marker: "truncated what=N exact=1
+// [k=v ...] next: ...". exact=0 replaces the old ">=" glyph (a lower bound).
+func truncLine(what string, n int, exact bool, extra []any, alts ...string) string {
+	kv := append([]any{what, n, "exact", exact}, extra...)
+	return hdr("truncated", kv...) + nextClause(alts...) + "\n"
+}
+
+// lineCut marks a per-line cut inside a row, at the place it was cut. next
+// is "none" when no parameter shows more.
+func lineCut(limit, more int, next string) string {
+	return fmt.Sprintf("...[line_cut=%d more_chars=%d next: %s]", limit, more, next)
+}
+
+// isoNs is an ISO-8601 time with offset and milliseconds in loc.
+func isoNs(ns int64, loc *time.Location) string {
+	return time.Unix(0, ns).In(loc).Format("2006-01-02T15:04:05.000Z07:00")
+}
+
+// isoSec is an ISO-8601 time with offset, seconds precision.
+func isoSec(t time.Time) string { return t.Format("2006-01-02T15:04:05Z07:00") }
+
+// secs is a signed duration in seconds with one decimal (key suffix _s).
+func secs(d time.Duration) float64 { return d.Seconds() }
+
+// gapLine is a recording gap overlapping the result.
+func gapLine(g store.Gap, loc *time.Location) string {
+	to, from := "ongoing", "?"
+	if g.ToNs > 0 {
+		to = isoNs(g.ToNs, loc)
+	}
+	if g.FromNs > 0 {
+		from = isoNs(g.FromNs, loc)
+	}
+	return hdr("gap", "from", from, "to", to, "reason", g.Reason)
+}
+
+// collapseDigits replaces every run of ASCII digits by one "#" (the same as
+// \d+ -> "#", without a regexp: it runs for thousands of hits per call).
+func collapseDigits(s string) string {
+	i := 0
+	for i < len(s) && (s[i] < '0' || s[i] > '9') {
+		i++
+	}
+	if i == len(s) {
+		return s
+	}
+	b := make([]byte, 0, len(s))
+	b = append(b, s[:i]...)
+	for i < len(s) {
+		if c := s[i]; c >= '0' && c <= '9' {
+			b = append(b, '#')
+			for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+				i++
+			}
+			continue
+		}
+		b = append(b, s[i])
+		i++
+	}
+	return string(b)
 }
