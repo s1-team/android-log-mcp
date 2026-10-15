@@ -6,7 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,7 +17,8 @@ import (
 )
 
 // refCrashes is the pre-index LoadCrashes: decode the whole file, newest
-// version of each id, first-appearance order, then newest time first.
+// version of each id, in first-appearance order, reversed: newest arrival
+// first (issue #55: device time is not an order).
 func refCrashes(st *store.Store) []*analysis.Crash {
 	byID := map[string]*analysis.Crash{}
 	var order []string
@@ -34,7 +36,9 @@ func refCrashes(st *store.Store) []*analysis.Crash {
 	for _, id := range order {
 		out = append(out, byID[id])
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].TimeNs > out[j].TimeNs })
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
+	}
 	return out
 }
 
@@ -218,8 +222,8 @@ func TestCrashIndexConcurrentReaders(t *testing.T) {
 				}
 				sums := CrashSummaries(st)
 				for i := 1; i < len(sums); i++ {
-					if sums[i].TimeNs > sums[i-1].TimeNs {
-						t.Errorf("summaries not newest first")
+					if idNum(sums[i].ID) > idNum(sums[i-1].ID) {
+						t.Errorf("summaries not newest arrival first")
 						return
 					}
 				}
@@ -250,4 +254,11 @@ func TestCrashIndexConcurrentReaders(t *testing.T) {
 	close(done)
 	wg.Wait()
 	checkIndex(t, st, "after concurrent ingest")
+}
+
+// idNum: the arrival number of an id "crN" / "anrN" (ids are assigned in
+// arrival order).
+func idNum(id string) int {
+	n, _ := strconv.Atoi(strings.TrimLeft(id, "abcdefghijklmnopqrstuvwxyz"))
+	return n
 }

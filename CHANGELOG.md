@@ -9,10 +9,13 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 ### Changed
 
 - Documentation reorganised ([#87](https://github.com/s1crab/android-log-mcp/issues/87)): the README only covers install, a short tools list, filter syntax and FAQ. Details moved to [docs/tools.md](docs/tools.md), [docs/reference.md](docs/reference.md) and [docs/compatibility.md](docs/compatibility.md); the repository layout is in [AGENTS.md](AGENTS.md). The README "Upgrading" section is removed: upgrade notes and breaking changes are only in this changelog.
+- `logcat_crashes` lists crashes newest first by arrival, no longer by device time ([#55](https://github.com/s1crab/android-log-mcp/issues/55)). After the device clock is set back, crashes that arrive later have older device times and used to sort as old, so the newest page could leave them out. Shown times and the `from`/`to` window stay device time; ids are unchanged. A DropBox-only crash of an old event that is imported late appears at the top of the list.
 
 ### Fixed
 
 - A lock that was just released could look held for a few milliseconds while a child process was being started (macOS and Linux) ([#82](https://github.com/s1crab/android-log-mcp/issues/82)). The recorder then logged "being written by another process … not recording it", `set-root` could fail with "is being written by another process", and the service could report "already running for this user" or take a stopped service for a running one. The cause is that a `flock` belongs to the open file description, and a forked child holds a copy of every open fd until its `exec`. A lock that looks held is now retried for up to 200 ms (1 ms to 10 ms backoff) before it is reported held; the worst wait measured on a macOS CI runner was 23 ms. A lock that really is held is reported after the 200 ms. Windows is not affected and is unchanged.
+
+- The crash detector follows device clock jumps ([#55](https://github.com/s1crab/android-log-mcp/issues/55)). Its matching windows (15 s Java, 30 s ANR, 60 s `am_crash` native) and its quiet period are counted on a time line without the jumps. A clock set no longer splits one crash into two (the `am_crash` event and its stack, or the native crash and its tombstone), no longer merges two crashes of a reused pid, and no longer keeps a pending native crash open until the device clock catches up. A pending native crash now also ends when no more lines arrive: until now only the next line ended it.
 
 ## [0.6.0] - 2026-10-15
 

@@ -72,9 +72,11 @@ const possibleJumpNs = int64(time.Hour)
 // at the next line), a step back of more than the threshold between
 // consecutive lines, or a step forward of more than possibleJumpNs
 // (a forward jump or a quiet period).
-func (p *Pipeline) detectJumps(batch []*model.Record, arrived []time.Time, live, late []bool) {
+// It returns the jumps found, in arrival order.
+func (p *Pipeline) detectJumps(batch []*model.Record, arrived []time.Time, live, late []bool) []store.ClockJump {
 	th := store.ClockJumpThreshold
 	event := false
+	var found []store.ClockJump
 	for i, r := range batch {
 		if late[i] {
 			continue
@@ -101,6 +103,7 @@ func (p *Pipeline) detectJumps(batch []*model.Record, arrived []time.Time, live,
 		}
 		if j != nil {
 			event = true
+			found = append(found, *j)
 			if j.DeltaNs < 0 {
 				js.max = r.TimeNs
 			}
@@ -114,6 +117,7 @@ func (p *Pipeline) detectJumps(batch []*model.Record, arrived []time.Time, live,
 	if event && p.OnClockEvent != nil {
 		p.OnClockEvent()
 	}
+	return found
 }
 
 // clockSetLine: the framework logs "Setting time of day to sec=N" right
@@ -256,8 +260,17 @@ func (p *Pipeline) Drain(all bool, now time.Time) error {
 	if err := p.Store.Append(batch); err != nil {
 		return err
 	}
-	p.detectJumps(batch, arrived, live, late)
+	jumps := p.detectJumps(batch, arrived, live, late)
 	for _, r := range batch {
+		// the detector sees each clock set before the first line that
+		// carries the new clock (issue #55); a "possible" jump is a quiet
+		// period, not a clock change
+		for len(jumps) > 0 && jumps[0].Seq <= r.Seq {
+			if jumps[0].Source != "possible" {
+				p.Det.ClockJump(jumps[0].DeltaNs)
+			}
+			jumps = jumps[1:]
+		}
 		p.Det.Feed(r)
 	}
 	if unknown && p.OnUnknownPID != nil {

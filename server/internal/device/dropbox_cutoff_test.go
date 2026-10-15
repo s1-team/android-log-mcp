@@ -59,7 +59,7 @@ func TestDropboxCutoffAfter1970Reset(t *testing.T) {
 	p.ApplyDropbox(out)
 	p.ApplyDropbox(out) // idempotent
 	got := crashTimes(st)
-	if len(got) != 3 || got[2] != "1970-01-01 00:59:00" {
+	if len(got) != 3 || got[0] != "1970-01-01 00:59:00" { // newest arrival first (issue #55)
 		t.Fatalf("after the reset: %q", got)
 	}
 }
@@ -79,7 +79,7 @@ func TestDropboxCutoffYearAheadUndone(t *testing.T) {
 	p.ApplyDropbox(out)
 	p.ApplyDropbox(out)
 	got := crashTimes(st)
-	if len(got) != 2 || got[0] != "2027-10-10 11:59:00" || got[1] != "2026-10-10 12:30:00" {
+	if len(got) != 2 || got[0] != "2026-10-10 12:30:00" || got[1] != "2027-10-10 11:59:00" { // newest arrival first (issue #55)
 		t.Fatalf("crashes %q", got)
 	}
 }
