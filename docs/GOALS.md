@@ -4,6 +4,10 @@
 
 Give any AI coding agent reliable, low-friction access to what an Android app is doing at runtime (logs, crashes, ANRs, lifecycle and timing), in a form the agent can query precisely and read correctly.
 
+## Audience
+
+**This repo serves agents almost exclusively; human readability is secondary.** When two designs conflict, choose in this order: (1) accurate machine parsing, (2) fewest tokens, (3) no ambiguity. Prefer `key=value` and fixed units (ISO-8601 times with offset, plain integers, `_s`/`_ms`/`_bytes` suffixes) over prose. Put static explanations in the tool description, not in every response. Never print a field twice.
+
 ## Principles
 
 1. **Zero-setup.** One command works on a developer's machine, with no extra runtimes or services to install.
@@ -11,7 +15,7 @@ Give any AI coding agent reliable, low-friction access to what an Android app is
 3. **Bounded.** Every resource it uses (memory, disk, files, processes, connections) has a limit and a lifetime.
 4. **Truthful.** It never silently guesses, drops data, or changes behavior. Gaps and errors are explicit and actionable.
 5. **Private by default.** Nothing leaves the machine unless the user exports it, and exports are redacted.
-6. **Agent-first.** The surface is small and stable; outputs are compact, structured, and unambiguous.
+6. **Agent-first.** The surface is small and stable; outputs are compact, structured and unambiguous. The first token of every response says `ok`, `empty` or `error`. Every truncation, empty result and error carries a directly executable next step (a `param=value` or a command), never prose-only advice and never a placeholder the agent must guess. Anything cut is marked at the place it was cut, with the parameter that shows the rest.
 7. **Predictable evolution.** Breaking changes are deliberate, versioned, and documented with an upgrade path.
 
 ## Must not
@@ -31,6 +35,8 @@ This document is intentionally product-level. The concrete constraints that impl
 ## 中文摘要
 
 **目标**：让任何 AI 编程 agent 都能可靠、低成本地知道 Android App 在运行时做了什么，包括日志、崩溃、ANR、生命周期和耗时。数据的形式要让 agent 能精确查询、正确理解。
+
+**受众**：本仓库几乎只服务于 agent，人类可读性是次要的。优先级：准确的机器解析 > 最少 token > 无歧义。错误、截断、空结果都必须带可直接执行的下一步（参数或命令）。
 
 **原则**
 1. 零配置：一条命令就能用，不用另装运行时或服务。
