@@ -17,13 +17,13 @@ func runRoot(args []string) int {
 	fs := flag.NewFlagSet("root", flag.ContinueOnError)
 	asJSON := fs.Bool("json", false, "machine-readable output")
 	if err := fs.Parse(args); err != nil || fs.NArg() > 0 {
-		fmt.Fprintln(os.Stderr, "usage: android-log-mcp root [--json]")
+		fmt.Fprintln(os.Stderr, mcpserver.CLIError("usage", "android-log-mcp root", "msg", "no_arguments_besides_json"))
 		return 2
 	}
 	ctrl := service.DefaultControl()
 	root, err := service.ConfiguredRoot(ctrl)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "android-log-mcp root:", err)
+		fmt.Fprintln(os.Stderr, mcpserver.CLIError("config_unusable", "android-log-mcp service status", "msg", err.Error()))
 		return 1
 	}
 	if *asJSON {

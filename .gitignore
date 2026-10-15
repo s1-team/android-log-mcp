@@ -1,6 +1,7 @@
 # Go binaries / build output
 /server/android-log-mcp
 /server/android-log-mcp.exe
+/server/cmd/android-log-mcp/android-log-mcp
 *.exe
 *.test
 *.out

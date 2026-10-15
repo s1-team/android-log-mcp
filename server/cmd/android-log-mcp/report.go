@@ -77,12 +77,11 @@ func runReport(ctx context.Context, offlineDir string, args []string) int {
 	offline := fs.Bool("no-adb", false, "do not use adb (no live device info, DropBox or --am-start)")
 	out := fs.String("o", "", "output zip (default ./android-log-mcp-report-<time>.zip)")
 	fs.StringVar(out, "out", "", "same as -o")
-	if err := fs.Parse(args); err != nil {
-		return 2
+	if code, ok := parseFlags(fs, args, "android-log-mcp report --since 2h"); !ok {
+		return code
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintf(os.Stderr, "report: unexpected argument %q\n", fs.Arg(0))
-		fs.Usage()
+		fmt.Fprintln(os.Stderr, mcpserver.CLIError("usage", "android-log-mcp report --since 2h", "value", fs.Arg(0), "msg", "unexpected_argument"))
 		return 2
 	}
 	a := service.ReportArgs{Serials: serials, From: *from, To: *to, Package: *pkg, AmStart: *amStart, Out: *out, NoADB: *offline, LogsOnly: *logsOnly}
@@ -92,7 +91,7 @@ func runReport(ctx context.Context, offlineDir string, args []string) int {
 			if n, err2 := strconv.ParseFloat(strings.TrimSuffix(*since, "d"), 64); err2 == nil && strings.HasSuffix(*since, "d") {
 				d = time.Duration(n * 24 * float64(time.Hour))
 			} else {
-				fmt.Fprintf(os.Stderr, "report: --since %q: expected a duration like 30m, 2h, 1d\n", *since)
+				fmt.Fprintln(os.Stderr, mcpserver.CLIError("bad_param", "android-log-mcp report --since 2h", "param", "--since", "value", *since))
 				return 2
 			}
 		}
@@ -100,14 +99,14 @@ func runReport(ctx context.Context, offlineDir string, args []string) int {
 	}
 	var err error
 	if a.MaxBytes, err = parseSize(*maxSize); err != nil {
-		fmt.Fprintln(os.Stderr, "report:", err)
+		fmt.Fprintln(os.Stderr, mcpserver.CLIError("bad_param", "android-log-mcp report --max-size 50MB", "param", "--max-size", "value", *maxSize, "msg", err.Error()))
 		return 2
 	}
 	a.Note = *note
 	if strings.HasPrefix(a.Note, "@") {
 		b, err := os.ReadFile(a.Note[1:])
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "report: --note:", err)
+			fmt.Fprintln(os.Stderr, mcpserver.CLIError("bad_param", "android-log-mcp report --note TEXT", "param", "--note", "msg", err.Error()))
 			return 2
 		}
 		a.Note = string(b)
@@ -134,7 +133,7 @@ func runReport(ctx context.Context, offlineDir string, args []string) int {
 			a.Control = ctrl // this user's own dataset: say who holds the lock
 		}
 		if a.AmStart != "" {
-			fmt.Fprintln(os.Stderr, "report: --am-start cannot be combined with --offline")
+			fmt.Fprintln(os.Stderr, mcpserver.CLIError("usage", "android-log-mcp report --no-adb", "msg", "am_start_with_offline"))
 			return 2
 		}
 		rep, err = service.BuildReport(ctx, offlineDir, mcpserver.Version, a, nil)
@@ -143,29 +142,29 @@ func runReport(ctx context.Context, offlineDir string, args []string) int {
 	}
 	if rep != nil {
 		for _, l := range rep.Log {
-			fmt.Fprintln(os.Stderr, "report:", l)
+			fmt.Fprintln(os.Stderr, mcpserver.KV("report_log", "msg", l))
 		}
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "report:", err)
+		fmt.Fprintln(os.Stderr, mcpserver.CLIError("report_failed", "android-log-mcp report --logs-only", "msg", err.Error()))
 		return 1
 	}
 	if rep.PID != os.Getpid() {
-		fmt.Fprintf(os.Stderr, "report: built by the android-log-mcp service (pid %d, version %s) from %s\n", rep.PID, rep.Version, rep.Root)
+		fmt.Fprintln(os.Stderr, mcpserver.KV("report", "built_by", "service", "pid", rep.PID, "version", rep.Version, "root", rep.Root))
 	} else {
-		fmt.Fprintf(os.Stderr, "report: built in this process from %s (--offline)\n", rep.Root)
+		fmt.Fprintln(os.Stderr, mcpserver.KV("report", "built_by", "offline", "root", rep.Root))
 	}
 	man := rep.Manifest
 	for _, d := range man.Devices {
-		fmt.Fprintf(os.Stderr, "report: %s: %d records (%s … %s), %d crashes/ANRs, device info: %s\n", d.Serial, d.Records, d.FirstRecord, d.LastRecord, d.Crashes, d.DeviceInfo)
+		fmt.Fprintln(os.Stderr, mcpserver.KV("report", "device", d.Serial, "records", d.Records, "first", d.FirstRecord, "last", d.LastRecord, "crashes", d.Crashes, "device_info", d.DeviceInfo))
 	}
 	if man.Redaction.Enabled {
-		fmt.Fprintf(os.Stderr, "report: redacted: %s\n", fmtHits(man.Redaction.Hits))
+		fmt.Fprintln(os.Stderr, mcpserver.KV("report", "redacted", sumHits(man.Redaction.Hits), "hits", fmtHits(man.Redaction.Hits)))
 	}
 	for _, w := range man.Warnings {
-		fmt.Fprintln(os.Stderr, "report: warning:", w)
+		fmt.Fprintln(os.Stderr, mcpserver.KV("warning", "msg", w))
 	}
-	fmt.Fprintln(os.Stderr, "report: review the zip before sharing it: redaction is pattern based")
+	fmt.Fprintln(os.Stderr, "notice: review the zip before sharing it: redaction is pattern based")
 	fmt.Println(a.Out)
 	return 0
 }
@@ -212,4 +211,12 @@ func maskArgs(a []string) []string {
 		}
 	}
 	return out
+}
+
+func sumHits(h map[string]int) int {
+	n := 0
+	for _, v := range h {
+		n += v
+	}
+	return n
 }

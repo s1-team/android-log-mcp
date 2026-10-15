@@ -22,8 +22,8 @@ import (
 const serviceUsage = `usage:
   android-log-mcp service                run the background service in the foreground
                                          (clients normally start it themselves, detached)
-  android-log-mcp service status [--json]
-                                         show the running service (pid, version, protocol, root, clients)
+  android-log-mcp service status [--json] [--verbose]
+                                         show the running service (default: pid, version, root; --verbose: all)
   android-log-mcp service stop [--force] stop it (clients restart it when they need it);
                                          --force also ends a service that holds the lock but
                                          does not answer (SIGTERM, then SIGKILL; Windows:
@@ -130,7 +130,18 @@ func runService(detached bool) int {
 }
 
 func serviceStatus(args []string) int {
-	asJSON := len(args) > 0 && (args[0] == "--json" || args[0] == "-json")
+	asJSON, verbose := false, false
+	for _, a := range args {
+		switch a {
+		case "--json", "-json":
+			asJSON = true
+		case "--verbose", "-verbose":
+			verbose = true
+		default:
+			fmt.Fprintln(os.Stderr, mcpserver.CLIError("usage", "android-log-mcp service status --json", "value", a, "msg", "unknown_argument"))
+			return 2
+		}
+	}
 	ctrl := service.DefaultControl()
 	c, err := service.Dial(context.Background(), ctrl, mcpserver.Version, "cli")
 	if err != nil {
@@ -144,14 +155,14 @@ func serviceStatus(args []string) int {
 				}{false, true, d.PID, d.Text(ctrl)})
 				fmt.Println(string(b))
 			} else {
-				fmt.Printf("service: %s but does not answer on %s; use `android-log-mcp service stop --force`\n", d.Text(ctrl), ctrl.Socket())
+				fmt.Println(mcpserver.KV("error code=unresponsive", "pid", d.PID, "socket", ctrl.Socket(), "msg", d.Text(ctrl)) + " next: android-log-mcp service stop --force")
 			}
 			return 1
 		}
 		if asJSON {
 			fmt.Println(`{"running":false}`)
 		} else {
-			fmt.Printf("service: not running (socket %s)\n", ctrl.Socket())
+			fmt.Println(mcpserver.KV("empty service", "running", false, "socket", ctrl.Socket()) + " next: android-log-mcp record --for 2h")
 		}
 		return 3
 	}
@@ -169,7 +180,12 @@ func serviceStatus(args []string) int {
 		fmt.Println(string(b))
 		return 0
 	}
-	fmt.Print(info.Text())
-	fmt.Printf("socket: %s\n", info.Socket)
+	fmt.Println(mcpserver.KV("ok service", "running", true, "pid", info.PID, "version", info.Version, "root", info.Root))
+	if verbose {
+		fmt.Print(info.Text())
+		fmt.Printf("socket: %s\n", info.Socket)
+	} else {
+		fmt.Println(mcpserver.KV("note", "code", "more_fields", "uptime_s", info.UptimeS, "clients", info.Clients) + " next: android-log-mcp service status --verbose")
+	}
 	return 0
 }

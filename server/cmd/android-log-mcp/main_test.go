@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/s1crab/android-log-mcp/server/internal/fakeadb"
@@ -43,4 +44,29 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 	os.Exit(testhome.Run(m))
+}
+
+// `call` reports a usage or JSON mistake as one coded line with an executable
+// next step (#85), never a Go error or the usage block.
+func TestCallErrorsAreCoded(t *testing.T) {
+	t.Parallel()
+	env := isoEnv(t)
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"call"}, "error code=usage msg=missing_tool next: android-log-mcp call logcat_status"},
+		{[]string{"call", "logcat_status", "{nope"}, "error code=bad_json col="},
+		{[]string{"call", "logcat_status", "[1]"}, "error code=bad_json msg=not_a_json_object next: android-log-mcp call logcat_status"},
+	} {
+		out, errOut, code := cliEnv(t, env, c.args...)
+		if code != 2 || out != "" || !strings.HasPrefix(errOut, c.want) || strings.Count(errOut, "\n") != 1 {
+			t.Fatalf("%v: exit %d out %q err %q", c.args, code, out, errOut)
+		}
+	}
+	// a service-less `record` state is one header and the next step stays executable
+	out, _, code := cliEnv(t, env, "record", "--for", "0")
+	if code != 2 || out != "" {
+		t.Fatalf("record --for 0: %d %q", code, out)
+	}
 }

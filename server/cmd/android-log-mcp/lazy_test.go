@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -72,7 +73,10 @@ func TestLazyRecording(t *testing.T) {
 	if c := e.Calls(); len(c) != 0 {
 		t.Fatalf("adb run before the first log tool call: %q", c)
 	}
-	if out, _, _ := cliEnv(t, env, "service", "status"); !strings.Contains(out, "recording: idle") {
+	if out, _, _ := cliEnv(t, env, "service", "status"); !strings.HasPrefix(out, "ok service running=1 pid="+strconv.Itoa(pid)+" ") || strings.Count(out, "\n") != 2 {
+		t.Fatalf("service status (default):\n%s", out)
+	}
+	if out, _, _ := cliEnv(t, env, "service", "status", "--verbose"); !strings.Contains(out, "recording: idle") {
 		t.Fatalf("service status:\n%s", out)
 	}
 	if c := e.Calls(); len(c) != 0 {
@@ -115,7 +119,7 @@ func TestRecordForWithoutService(t *testing.T) {
 		pin, check = 10*time.Second, 7*time.Second
 	}
 	out, errOut, code := cliEnv(t, env, "record", "--for", pin.String())
-	if code != 0 || !strings.Contains(out, "pinned until") || !strings.Contains(out, "FAKEA: recording") {
+	if code != 0 || !strings.HasPrefix(out, "ok record action=pinned ") || !strings.Contains(out, "device id=FAKEA state=recording ") {
 		t.Fatalf("record --for: %d\n%s\n%s", code, out, errOut)
 	}
 	pid := statePID(t, env)
@@ -126,7 +130,7 @@ func TestRecordForWithoutService(t *testing.T) {
 	// its pid a moment later (slow process starts on macOS runners)
 	eventually(t, "logcat running", 5*time.Second, func() bool { return e.LogcatRunning("FAKEA") })
 	out, _, _ = cliEnv(t, env, "record")
-	if !strings.Contains(out, "pinned until") || !strings.Contains(out, "set by android-log-mcp record") {
+	if !strings.Contains(out, "device id=FAKEA ") || strings.Contains(out, "pinned_until=- ") || !strings.Contains(out, "pin_by=\"android-log-mcp record") {
 		t.Fatalf("record state:\n%s", out)
 	}
 	time.Sleep(time.Until(t0.Add(check)))
@@ -141,7 +145,7 @@ func TestRecordForWithoutService(t *testing.T) {
 	// instant the service is.
 	eventually(t, "logcat outlived the service", 20*time.Second, func() bool { return !e.LogcatRunning("FAKEA") })
 	out, _, _ = cliEnv(t, env, "record")
-	if !strings.Contains(out, "service: not running") || strings.Contains(out, "FAKEA") {
+	if !strings.HasPrefix(out, "empty record action=state service=not_running") || strings.Contains(out, "FAKEA") {
 		t.Fatalf("state after the pin:\n%s", out)
 	}
 }
