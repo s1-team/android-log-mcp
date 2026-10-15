@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+### Fixed
+
+- One ANR is no longer reported twice when the `ANR in` block follows the `am_anr` event by more than 30 s (slow ANR dumps on loaded devices and emulators): events, logcat block and DropBox entry are now matched per process over up to 120 s ([#111](https://github.com/s1crab/android-log-mcp/issues/111)).
+
 ## [0.7.0] - 2026-10-15
 
 ### Upgrade notes
