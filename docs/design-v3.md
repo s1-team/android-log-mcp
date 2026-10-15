@@ -485,7 +485,7 @@ agent 可以借此发现自己写的 `message:foo message:bar` 实际被解释�
 
 ## 8. 诊断包：`report` 子命令（v0.2.0，issue #1）
 
-目的：用户把诊断数据发给维护者，用来回放、复现和补回归测试。用法和打码规则见 README「诊断包」一节，这里只记设计取舍。
+目的：用户把诊断数据发给维护者，用来回放、复现和补回归测试。用法和打码规则见 docs/reference.md「Diagnostic reports and privacy」一节，这里只记设计取舍。
 
 - **不是 MCP 工具，而是 CLI 子命令**：打包要写本地文件、可能启动 App（`--am-start`），不适合交给 agent 随手调用。子命令只用 `store.OpenReadOnly` 读数据目录，不抢 writer 锁、不开始录制，和正在运行的录制进程（现为后台服务进程）互不影响。
 - **日志以两种形式放进包里**：
@@ -572,7 +572,7 @@ agent 可以借此发现自己写的 `message:foo message:bar` 实际被解释�
 - 辅助文件清理和日志用同一个保留期（见 9.2）。
 - `logcat_status` 的 `stored …` 行显示生效的保留期和每台设备的上限。
 - `report` 的默认窗口仍然是 2 小时，在 1 天以内。`--since` 超出已保留的历史时，照旧在 manifest 和输出里注明 history 起点。
-- 升级提示见 README「升级到 0.3.0」。
+- 升级提示见 CHANGELOG 0.3.0 的 Breaking 条目。
 
 ## 10. Storage layout and device identity (issues #3, #5, #7, #9, #10)
 
