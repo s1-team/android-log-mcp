@@ -26,6 +26,7 @@ type searchArgs struct {
 	After    string   `json:"after"`
 	WaitMs   int      `json:"wait_ms"`
 	Stack    string   `json:"stack"`
+	Verbose  bool     `json:"verbose"`
 }
 
 type crashArgs struct {
@@ -67,19 +68,21 @@ func toolDefs() []toolDef {
 		{
 			name:  "logcat_search",
 			title: "Search recorded logcat",
-			desc: "Search recorded logcat lines (buffers main, system, crash, events) of one device. Returns matching lines oldest→newest in a compact format; by default the NEWEST `limit` matches.\n" +
+			desc: "Search recorded logcat lines (buffers main, system, crash, events) of one device. Returns matching lines oldest to newest in a compact format; by default the NEWEST `limit` matches.\n" +
 				"Filtering = `filter` (Android Studio Logcat query syntax) AND the structured params (package, tags, min_level, from, to). All parts are ANDed.\n" +
 				"Filter syntax (Android Studio): key:value contains (case-insensitive), key=:value exact, key~:regex (RE2, case-sensitive), -key:value negates. Keys: tag message package process line level age is, plus extensions pid tid buffer (main|system|crash|events). level:error = error and above (also accepts V D I W E F). age:5m. is:crash, is:stacktrace. Bare words search the whole line.\n" +
 				"Combining: `&` AND, `|` OR (put spaces around them), parentheses group. Space-separated terms are ANDed, EXCEPT repeated positive terms on the same key, which are ORed: `tag:A tag:B` = A OR B; use `message:foo & message:bar` for AND. Quote values with spaces or colons: message:\"Start proc\".\n" +
 				"Examples:\n  tag=:OkHttp tag=:MyRepo level:debug\n  is:crash | tag~:\"^am_(anr|crash)$\"\n  message~:\"Displayed com\\.foo\" -tag:chatty\n" +
-				"Invalid filters return an error with the position and a fix; nothing is guessed. The response echoes how the filter was interpreted — check it.\n" +
 				"The `package` param is an EXACT application id covering all its processes (filter's package: is a substring match).\n" +
-				"Counts: the `count:` line has total and count_exact; count_exact=false means total is a lower bound counted back to counted_from (or up to counted_to): narrow with from/to for an exact count.\n" +
-				"Paging: response gives `before`/`after` cursors. To wait for new lines (e.g. while the user reproduces), pass `after` plus `wait_ms` (≤25000).\n" +
-				"The first call for a device starts recording it and backfills its log buffer (waits up to 10 s); a \"backfill in progress\" note means results may be incomplete: call again.\n" +
-				"Java stacks in lines are short by default: each exception and Caused by keeps its first 3 frames (\"↳ K more frames\"), and a stack already shown in the response is \"↳ same K frames as <time>\"; stack=\"full\" shows every frame.\n" +
-				"Use view=\"summary\" first for broad or unknown ranges (counts by level/tag/package, top repeated messages).\n" +
-				"Clocks: lines are in arrival order and every time-valued param and line uses device time. If the device clock was changed (clock jump), device times jump there: the output says so (`clock:` / `clock_jump:` lines with matches on each side); the default (no from/to) shows the newest lines by arrival whatever their device time.",
+				"Response format (fmt=1). Line 1 is `ok`, `empty` or `error`, then key=value fields: view, device, matched (count) and exact (1 = exact, 0 = lower bound; then counted_from / counted_to says where counting stopped), shown, order=arrival, range=<first>/<last> (ISO-8601 with offset, device time), dev_now, clock=observed|estimated|unknown, offset_s (device minus host, seconds), clock_age_s, fmt. Counts are plain integers, durations are seconds (_s) or milliseconds (_ms). `filter parsed=...` echoes how a filter was read (only when filter is set).\n" +
+				"Rows: `HH:MM:SS.mmm L pid/tid process tag: message` (L = V D I W E F). The first 5 whitespace-separated tokens are time, level, pid/tid, process, `tag:`; process is one token (`uid:system` = process name unknown, uid shown; `?` = unknown). Continuation lines of a multi-line message start with `| `. `^ rep=N until=T` = N more identical lines until T. `--- YYYY-MM-DD ---` separates dates. Context lines (context>0) are indented by two spaces. Java stacks: `^ frames_hidden=K` and `^ same_frames=K as=T`. Rows come in arrival order, not necessarily device-time order.\n" +
+				"Every cut is one line `truncated <what>=N exact=0|1 ... next: param=value` (older/newer matches, output cap of ~30k chars, shortened stacks, per-line cut `...[line_cut=N more_chars=M next: ...]`); next is directly executable. When more matches exist than shown, a `summary` line (<=300 chars) lists the top tags (percent of `of` matches) and top message templates (`N x \"tag: message with # for digits\"`).\n" +
+				"Errors: `error code=<code> ... next: ...`; empty results: `empty ... scanned=N range=<stored first>/<stored last>` plus `hint code=... next: ...` lines. verbose=true adds host_now, tz, the column legend and full clock-jump and shared-uid detail.\n" +
+				"Paging: response gives `newer: after=...` and (when truncated) `next: before=...` cursors. To wait for new lines (e.g. while the user reproduces), pass `after` plus `wait_ms` (max 25000).\n" +
+				"The first call for a device starts recording it and backfills its log buffer (waits up to 10 s); a `note code=backfill` line means results may be incomplete: call again.\n" +
+				"Java stacks in lines are short by default: each exception and Caused by keeps its first 3 frames; stack=\"full\" shows every frame.\n" +
+				"Use view=\"summary\" first for broad or unknown ranges (counts by level/tag/process, top repeated messages).\n" +
+				"Clocks: every time-valued param and line uses device time. If the device clock was changed (clock jump), device times jump there: a `clock_jumps=N splitting=S seq=... next: after=...` line appears when a jump splits the matches (after= shows only what came after it); the default (no from/to) shows the newest lines by arrival whatever their device time.",
 			schema: `{"type":"object","properties":{
 "device":{"type":"string","description":"adb serial. Omit when only one device has logs."},
 "filter":{"type":"string","description":"Android Studio Logcat query, e.g. ` + "`tag=:OkHttp level:warn -message:heartbeat`" + `. Optional."},
@@ -94,7 +97,8 @@ func toolDefs() []toolDef {
 "context":{"type":"integer","minimum":0,"maximum":20,"default":0,"description":"Also show N lines before/after each match from the same process (like grep -C)."},
 "before":{"type":"string","description":"Cursor: return matches older than this (from a previous response)."},
 "after":{"type":"string","description":"Cursor: return matches newer than this (from a previous response or logcat_status)."},
-"wait_ms":{"type":"integer","minimum":0,"maximum":25000,"default":0,"description":"With ` + "`after`" + `: block up to this long until at least one new match arrives."}
+"wait_ms":{"type":"integer","minimum":0,"maximum":25000,"default":0,"description":"With ` + "`after`" + `: block up to this long until at least one new match arrives."},
+"verbose":{"type":"boolean","default":false,"description":"Also print host_now, tz, the column legend, every clock jump in detail and the shared-uid package list."}
 },"additionalProperties":false}`,
 		},
 		{

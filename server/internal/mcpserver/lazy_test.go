@@ -125,7 +125,7 @@ func TestStatusSeveralDevicesStartsNone(t *testing.T) {
 	t.Parallel()
 	l := newLazy(t, 2, "FAKEA", "FAKEB")
 	out, isErr := l.call(t, "logcat_status", `{}`)
-	if isErr || strings.Contains(out, "cursor (newest line") || !strings.Contains(out, "2 devices are connected; pass device=one of: FAKEA, FAKEB") || !strings.Contains(out, "No device was started") {
+	if isErr || strings.Contains(out, "cursor (newest line") || !strings.Contains(out, "code=several_devices count=2 devices=FAKEA,FAKEB") || !strings.Contains(out, "No device was started") {
 		t.Fatalf("status:\n%s", out)
 	}
 	if l.m.Wanted("FAKEA") || l.m.Wanted("FAKEB") || len(l.e.CallsMatching("logcat -b")) != 0 {
@@ -155,7 +155,7 @@ func TestStatusNoCursorDuringBackfill(t *testing.T) {
 		t.Fatalf("status during backfill:\n%s", out)
 	}
 	out, _ = l.call(t, "logcat_search", `{}`)
-	if !strings.Contains(out, "note: backfill in progress (") || !strings.Contains(out, "results may be incomplete, call again") {
+	if !strings.Contains(out, "\nnote code=backfill msg=\"backfill in progress (") || !strings.Contains(out, "results may be incomplete, call again") || !strings.HasPrefix(out, "ok ") {
 		t.Fatalf("search during backfill:\n%s", out)
 	}
 	deadline := time.Now().Add(20 * time.Second)
@@ -250,10 +250,10 @@ func TestSlowIdentity(t *testing.T) {
 	}
 	l.m.CatchUpWait = 300 * time.Millisecond
 	out, isErr := l.call(t, "logcat_status", `{}`)
-	if isErr || !strings.Contains(out, "adb lists FAKEA but reading its identity has not finished yet") || strings.Contains(out, "cursor (newest line") {
+	if isErr || !strings.Contains(out, "code=device_identifying devices=FAKEA") || strings.Contains(out, "cursor (newest line") {
 		t.Fatalf("status:\n%s", out)
 	}
-	if out, isErr := l.call(t, "logcat_search", `{}`); !isErr || !strings.Contains(out, "call again") {
+	if out, isErr := l.call(t, "logcat_search", `{}`); !isErr || !strings.Contains(out, "error code=device_identifying") || !strings.Contains(out, "next: retry_after_s=3") {
 		t.Fatalf("search (error %v):\n%s", isErr, out)
 	}
 	l.m.CatchUpWait = device.DefaultCatchUpWait

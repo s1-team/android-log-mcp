@@ -33,9 +33,9 @@ func TestShortStackCausedByChain(t *testing.T) {
 		one("Caused by: java.io.IOException: middle"), frames("b.Mid", 12), one("\t... 20 more"),
 		one("Caused by: java.net.SocketTimeoutException: root cause here"), frames("c.Root", 9), one("\t... 30 more"))
 	out, hidden, changed := shortStack(msg)
-	want := stackMsg(one("request failed"), one("java.lang.RuntimeException: wrapper"), frames("a.Top", 3), one("\t↳ 22 more frames"),
-		one("Caused by: java.io.IOException: middle"), frames("b.Mid", 3), one("\t↳ 29 more frames"),
-		one("Caused by: java.net.SocketTimeoutException: root cause here"), frames("c.Root", 3), one("\t↳ 36 more frames"))
+	want := stackMsg(one("request failed"), one("java.lang.RuntimeException: wrapper"), frames("a.Top", 3), one("\t^ frames_hidden=22"),
+		one("Caused by: java.io.IOException: middle"), frames("b.Mid", 3), one("\t^ frames_hidden=29"),
+		one("Caused by: java.net.SocketTimeoutException: root cause here"), frames("c.Root", 3), one("\t^ frames_hidden=36"))
 	if out != want || !changed || hidden != 22+29+36 {
 		t.Fatalf("hidden %d changed %v:\n%s\nwant:\n%s", hidden, changed, out, want)
 	}
@@ -47,9 +47,9 @@ func TestShortStackSuppressedAndMore(t *testing.T) {
 		one("\tSuppressed: java.io.IOException: flush"), []string{"\t\tat x.Flush.a(F.java:1)", "\t\tat x.Flush.b(F.java:2)", "\t\t... 5 more"},
 		one("Caused by: java.lang.Error: root"), frames("c.Root", 2), one("\t... 4 more"))
 	out, hidden, _ := shortStack(msg)
-	want := stackMsg(one("java.lang.IllegalStateException: close failed"), frames("a.Main", 3), one("\t↳ 2 more frames"),
-		one("\tSuppressed: java.io.IOException: flush"), one("\t\t↳ 7 more frames"),
-		one("Caused by: java.lang.Error: root"), frames("c.Root", 2), one("\t↳ 4 more frames"))
+	want := stackMsg(one("java.lang.IllegalStateException: close failed"), frames("a.Main", 3), one("\t^ frames_hidden=2"),
+		one("\tSuppressed: java.io.IOException: flush"), one("\t\t^ frames_hidden=7"),
+		one("Caused by: java.lang.Error: root"), frames("c.Root", 2), one("\t^ frames_hidden=4"))
 	if out != want || hidden != 2+7+4 {
 		t.Fatalf("hidden %d:\n%s\nwant:\n%s", hidden, out, want)
 	}
@@ -63,7 +63,7 @@ func TestShortStackUnchangedWhenShort(t *testing.T) {
 	}
 	// 4-space "at" (some loggers) is a frame too
 	msg = "java.lang.Error: x\n    at a.b(C.java:1)\n    at a.c(C.java:2)\n    at a.d(C.java:3)\n    at a.e(C.java:4)"
-	if out, _, _ := shortStack(msg); out != "java.lang.Error: x\n    at a.b(C.java:1)\n    at a.c(C.java:2)\n    at a.d(C.java:3)\n    ↳ 1 more frames" {
+	if out, _, _ := shortStack(msg); out != "java.lang.Error: x\n    at a.b(C.java:1)\n    at a.c(C.java:2)\n    at a.d(C.java:3)\n    ^ frames_hidden=1" {
 		t.Fatalf("4-space frames:\n%s", out)
 	}
 }
@@ -89,7 +89,7 @@ func TestShortStackCapKeepsCauses(t *testing.T) {
 			t.Fatalf("cause %d or its first frame lost:\n%s", i, out)
 		}
 	}
-	if !strings.Contains(out, `chars; stack="full" shows the whole stack]`) || !strings.HasPrefix(out, "java.lang.RuntimeException: top message") {
+	if !strings.Contains(out, `next: stack="full"]`) || !strings.HasPrefix(out, "java.lang.RuntimeException: top message") {
 		t.Fatalf("cut marker / head:\n%s", out)
 	}
 	// fewer frames first: a stack that fits with 1 frame each is not cut
@@ -104,11 +104,11 @@ func TestShortStackCapKeepsCauses(t *testing.T) {
 func TestPerLineCapHints(t *testing.T) {
 	t.Parallel()
 	plain := strings.Repeat("y", 2500)
-	if got := capMsg(plain); !strings.HasSuffix(got, "…[+500 chars; lines are cut at 2,000 chars in every query, narrowing does not show more]") {
+	if got := capMsg(plain); !strings.HasSuffix(got, "...[line_cut=2000 more_chars=500 next: none]") {
 		t.Fatalf("plain: %s", got[2000:])
 	}
 	stack := stackMsg(one("java.lang.Error: x"), frames("a."+strings.Repeat("z", 300), 30))
-	if got := capMsg(stack); !strings.Contains(got, "chars; stacks are cut at 8,000 chars in every query, narrowing does not show more]") {
+	if got := capMsg(stack); !strings.Contains(got, "...[line_cut=8000 more_chars=") || !strings.HasSuffix(got, "next: none]") {
 		t.Fatalf("stack: %s", got[7900:])
 	}
 }
@@ -151,20 +151,20 @@ func TestSearchShortStacksReplay(t *testing.T) {
 	e.replay(s1riusPattern(10))
 	q := `{"filter":"pid:7777 level:warn","limit":10}`
 	out := e.ok("logcat_search", q,
-		"showing newest 10 ",
-		"\t↳ 27 more frames\n    Caused by: java.io.EOFException",
-		"    Caused by: java.io.EOFException: \\n not found: limit=0 content=…\n    \t↳ same 60 frames as 03:11:41.049\n",
-		"stacks: 10 shortened (594 frames hidden) · stack=\"full\" shows every frame\n")
-	if len(out) > 5000 || strings.Count(out, "same 60 frames as 03:11:41.049") != 9 {
+		" shown=10 ",
+		"\t^ frames_hidden=27\n| Caused by: java.io.EOFException",
+		"| Caused by: java.io.EOFException: \\n not found: limit=0 content=…\n| \t^ same_frames=60 as=03:11:41.049\n",
+		"\ntruncated stack_frames=594 stacks=10 exact=1 next: stack=\"full\"\n")
+	if len(out) > 5000 || strings.Count(out, "same_frames=60 as=03:11:41.049") != 9 {
 		t.Fatalf("%d chars:\n%s", len(out), out)
 	}
-	notContains(t, out, "[output cap")
+	notContains(t, out, "cap=output")
 	dump(t, out)
 	// stack="full": every frame, and the 30k cap shows only 7 of the 10
 	full := e.ok("logcat_search", `{"filter":"pid:7777 level:warn","limit":10,"stack":"full"}`,
-		"showing newest 7 ", "readResponseHeaders29(", "\t... 22 more",
-		"[output cap: only 7 of the 10 matches asked for fit in ~30k chars · view=\"summary\" gives an overview; or narrow from/to or the filter]\n")
-	notContains(t, full, "↳ same", "stacks:")
+		" shown=7 ", "readResponseHeaders29(", "\t... 22 more",
+		" cap=output_30000 next: before=")
+	notContains(t, full, "^ same_frames", "stack_frames=")
 	if _, isErr := e.call("logcat_search", `{"stack":"brief"}`); !isErr {
 		t.Fatal("stack=brief accepted")
 	}
@@ -175,9 +175,9 @@ func TestSearchDefaultLimit50(t *testing.T) {
 	t.Parallel()
 	e := newReplay(t, fxBoot1)
 	e.file("session-raw.log")
-	out := e.ok("logcat_search", `{}`, "matched 6,447 lines; showing newest 50 ",
-		"[truncated: 6,397 older matches not shown · view=\"summary\" shows what the whole range contains]\n")
-	notContains(t, out, "[output cap")
+	out := e.ok("logcat_search", `{}`, " matched=6447 exact=1 shown=50 ",
+		"\ntruncated older=6397 exact=1 next: before=")
+	notContains(t, out, "cap=output")
 }
 
 // With context, the cap drops whole records, so every "same frames as T"
@@ -186,8 +186,8 @@ func TestSearchSameStackReferencesSurviveCap(t *testing.T) {
 	t.Parallel()
 	e := newReplay(t, fxBoot2)
 	e.replay(s1riusPatternPad(40, strings.Repeat(" .", 200)))
-	out := e.ok("logcat_search", `{"filter":"pid:7777 level:warn","limit":40,"context":20}`, "[output cap: context lines cut")
-	refs := regexp.MustCompile(`same \d+ frames as (\d\d:\d\d:\d\d\.\d{3})`).FindAllStringSubmatch(out, -1)
+	out := e.ok("logcat_search", `{"filter":"pid:7777 level:warn","limit":40,"context":20}`, "\ntruncated context=")
+	refs := regexp.MustCompile(`same_frames=\d+ as=(\d\d:\d\d:\d\d\.\d{3})`).FindAllStringSubmatch(out, -1)
 	if len(refs) == 0 {
 		t.Fatalf("no references:\n%s", out)
 	}
@@ -198,45 +198,44 @@ func TestSearchSameStackReferencesSurviveCap(t *testing.T) {
 	}
 }
 
-var (
-	reOldCut = regexp.MustCompile(`…\[\+(\d+) chars; narrow with filter pid:\d+ and from/to around this time to see it whole\]`)
-	reNewCut = regexp.MustCompile(`…\[\+([\d,]+) chars; (lines|stacks) are cut at [\d,]+ chars in every query, narrowing does not show more\]`)
-)
-
-// lineBlock is the record lines of a lines response, with the cut marker
-// normalised (its text changed in #23, the cut did not).
+// lineBlock is the row lines of a lines response: everything from the
+// first row (or date separator) up to the first truncated / newer: line.
 func lineBlock(out string) string {
-	_, rest, _ := strings.Cut(out, "format: time level pid/tid process tag: message\n")
 	var keep []string
-	for _, l := range strings.Split(rest, "\n") {
-		if strings.HasPrefix(l, "[") || strings.HasPrefix(l, "more") || strings.HasPrefix(l, "stacks:") {
+	in := false
+	for _, l := range strings.Split(out, "\n") {
+		if !in && (regexp.MustCompile(`^\d\d:\d\d:\d\d\.\d{3} `).MatchString(l) || strings.HasPrefix(l, "--- ")) {
+			in = true
+		}
+		if in && (strings.HasPrefix(l, "truncated ") || strings.HasPrefix(l, "newer:")) {
 			break
 		}
-		keep = append(keep, l)
+		if in {
+			keep = append(keep, l)
+		}
 	}
-	s := reOldCut.ReplaceAllString(strings.Join(keep, "\n"), "…[+$1 chars]")
-	return reNewCut.ReplaceAllStringFunc(s, func(m string) string {
-		return "…[+" + strings.ReplaceAll(reNewCut.FindStringSubmatch(m)[1], ",", "") + " chars]"
-	})
+	return strings.Join(keep, "\n")
 }
 
-// stack="full" shows the lines exactly as 0.5.2 did with limit=200: hashes
-// of lineBlock taken from main at ba2035f.
+// stack="full" shows every record exactly as the current format prints it
+// (fmt=1): hashes of lineBlock. They were recorded for #85 (0.8.0), which
+// changed the row format (one-token process, "| " continuation lines,
+// "^ rep=" markers); before that they pinned the 0.5.2 lines.
 func TestSearchStackFullMatchesOldOutput(t *testing.T) {
 	t.Parallel()
 	gold := []struct{ file, q, sum string }{
-		{"session-raw.log", `{"limit":200}`, "b3473278bd597391ceb4721a92bd3ae9533bcebfd59bcc096a860f340ca8c8f2"},
-		{"session-raw.log", `{"filter":"level:warn","limit":200}`, "3b185a49df2ef8dd69936f3cd7af50e8c707c3e185ef9f853161a7113584fa6b"},
-		{"session-raw.log", `{"filter":"tag:AndroidRuntime","limit":200}`, "6c83407c77a9fdf845076bf740a0529cbdb7e9112c26d6d2b9612209a8e72cf9"},
-		{"session-raw.log", `{"filter":"tag:MediaPlayer","limit":30,"context":2}`, "de61b730b5f5fe3feee1792d0533b1bfa85704b6b17080bae7e9c2775f7fc67f"},
-		{"session-raw.log", `{"min_level":"error","limit":200}`, "196516b2c4f12e4e320d6957f8640cd786d155305fafcf61be416c78a8f0232d"},
-		{"session-raw.log", `{"filter":"is:crash","limit":5,"context":3}`, "383fb5582daf4a996467080dd5c8e1d3bd963016febccc913fd46c8c92012d36"},
-		{"session3-raw.log", `{"limit":200}`, "3a203caf0fbe31424b2eea2bc52a8edca8d3fb09f7a2f565e22558f17af462dc"},
-		{"session3-raw.log", `{"filter":"level:warn","limit":200}`, "8232e15b4cc8db5b494867e37f61a5ffb13fb81c6043562a0f85cff465a35c91"},
-		{"session3-raw.log", `{"filter":"tag:AndroidRuntime","limit":200}`, "4ba1b4d56fe722921a9a74e631427cad625d2efc61a45688ed12a7e398ca493d"},
-		{"session3-raw.log", `{"filter":"tag:MediaPlayer","limit":30,"context":2}`, "ef9183d9aaf2925d7721d95c63cec82553096e96e565e72c794166627f374fb4"},
-		{"session3-raw.log", `{"min_level":"error","limit":200}`, "4acbd3661ec05457a9856523dea54117955e0d7b94c71a05be736a77ff21e363"},
-		{"session3-raw.log", `{"filter":"is:crash","limit":5,"context":3}`, "50f102d91924fcf5d76395b1d21057235c0eb0402677d1dd527d9024b8af1a95"},
+		{"session-raw.log", `{"limit":200}`, "1d1a9990b3a57fbe99d39303f2e8094692bad5672c3c4705a328683423f418c6"},
+		{"session-raw.log", `{"filter":"level:warn","limit":200}`, "2f04586d03a4ced60fbed008fa42a05d67b5a2a1398c32bd9038ae007fac7a38"},
+		{"session-raw.log", `{"filter":"tag:AndroidRuntime","limit":200}`, "e2874bae9aadaad19eca6947702f54447f80a0bf711aff0aa49cddbe96d666b8"},
+		{"session-raw.log", `{"filter":"tag:MediaPlayer","limit":30,"context":2}`, "0c4fbe772ee6d63c3c6eddb7c6246d789782bee460bffb1f7dfb372892071dc3"},
+		{"session-raw.log", `{"min_level":"error","limit":200}`, "88a6b638300bdefa2a116f251aee507b0ec6cd91285e5a860f111040912956fa"},
+		{"session-raw.log", `{"filter":"is:crash","limit":5,"context":3}`, "8b8d26a2518daa43b9ff7c677ee8c548e6e246416f8e7da3d7db3e14c05fdd65"},
+		{"session3-raw.log", `{"limit":200}`, "06899e870a2f16a623ec0994eb82a0bd445277539ab0f761c96510bef241c203"},
+		{"session3-raw.log", `{"filter":"level:warn","limit":200}`, "bf7de083d7a5cd80d618798c6e69f0e0a333718515cf1d52529438fe524137a5"},
+		{"session3-raw.log", `{"filter":"tag:AndroidRuntime","limit":200}`, "e3ea1cbaf0aee3003597af24f6f2c3260f0c24dc6c9fbb601dbd4a24c08bbf2c"},
+		{"session3-raw.log", `{"filter":"tag:MediaPlayer","limit":30,"context":2}`, "bc51ce8359bcb476a4ac1ae5375a05083a5ddf2d437696daafd4581657854260"},
+		{"session3-raw.log", `{"min_level":"error","limit":200}`, "e364985608603cff61520a256b49f36443a28f50c36c8fd657970dc149af7a96"},
+		{"session3-raw.log", `{"filter":"is:crash","limit":5,"context":3}`, "e5da8541477556337b76cbc7453dec94cc223c0639a74c92716611ddac35e665"},
 	}
 	envs := map[string]*replayEnv{}
 	for _, g := range gold {
@@ -253,7 +252,7 @@ func TestSearchStackFullMatchesOldOutput(t *testing.T) {
 		q := strings.TrimSuffix(g.q, "}") + `,"stack":"full"}`
 		out := e.ok("logcat_search", q)
 		if sum := fmt.Sprintf("%x", sha256.Sum256([]byte(lineBlock(out)))); sum != g.sum {
-			t.Errorf("%s %s: lines differ from 0.5.2 (sha256 %s)", g.file, q, sum)
+			t.Errorf("%s %s: lines differ from the recorded fmt=1 rows (sha256 %s)", g.file, q, sum)
 		}
 	}
 }

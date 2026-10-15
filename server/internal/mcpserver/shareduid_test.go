@@ -76,19 +76,22 @@ func TestPackageSharedUID(t *testing.T) {
 	}
 
 	// each package of the uid: its own process and the shared one, with the note
-	note := "shares uid 10054 with"
+	note := "shares uid 10054 with" // logcat_crashes
 	out := e.ok("logcat_search", `{"package":"com.android.providers.contacts","filter":"tag=:Attr"}`,
-		"matched 2 lines", "2100/", "2300/", note, "com.android.calllogbackup, com.android.contacts: android.process.acore (shared-uid process) is included")
-	notContains(t, out, "2200/", "2400/")
+		" matched=2 ", "2100/", "2300/", "note code=shares_uid package=com.android.providers.contacts uid=10054 shares_uid=2 next: verbose=true")
+	notContains(t, out, "2200/", "2400/", "calllogbackup")
 	dump(t, out)
-	out = e.ok("logcat_search", `{"package":"com.android.contacts","filter":"tag=:Attr"}`, "matched 2 lines", "2100/", "2200/", note)
+	// verbose lists the packages and the shared processes
+	e.ok("logcat_search", `{"package":"com.android.providers.contacts","filter":"tag=:Attr","verbose":true}`,
+		"with=com.android.calllogbackup,com.android.contacts shared_processes=android.process.acore")
+	out = e.ok("logcat_search", `{"package":"com.android.contacts","filter":"tag=:Attr"}`, " matched=2 ", "2100/", "2200/", "note code=shares_uid package=com.android.contacts")
 	notContains(t, out, "2300/")
 	// not on a shared uid: no note, no shared lines
-	out = e.ok("logcat_search", `{"package":"com.foo","filter":"tag=:Attr"}`, "matched 1 line", "2400/")
-	notContains(t, out, note, "2100/")
+	out = e.ok("logcat_search", `{"package":"com.foo","filter":"tag=:Attr"}`, " matched=1 ", "2400/")
+	notContains(t, out, "code=shares_uid", "2100/")
 	// the package: filter keeps its Android Studio meaning (name prefix)
 	out = e.ok("logcat_search", `{"filter":"tag=:Attr package:com.android.providers.contacts"}`, "2300/")
-	notContains(t, out, "2100/", note)
+	notContains(t, out, "2100/", "code=shares_uid")
 
 	// crashes: the acore crash is listed for the uid's packages, never for android
 	out = e.ok("logcat_crashes", `{"package":"com.android.contacts"}`, "acore broke", note)

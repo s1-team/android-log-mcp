@@ -105,15 +105,15 @@ func TestPackageIncludesDottedProcesses(t *testing.T) {
 
 	// all three gms device processes, the queued line included
 	out := e.ok("logcat_search", `{"package":"com.google.android.gms","filter":"tag=:Attr","from":"`+from+`"}`,
-		"matched 4 lines", "3187/", "3278/", "5443/", "queued while the package list was read")
+		" matched=4 ", "3187/", "3278/", "5443/", "queued while the package list was read")
 	notContains(t, out, "4100/", "4200/")
 	dump(t, out)
 	// an installed package that extends another one keeps its own lines
 	out = e.ok("logcat_search", `{"package":"com.android.providers.downloads","filter":"tag=:Attr"}`)
 	notContains(t, out, "4100/")
-	e.ok("logcat_search", `{"package":"com.android.providers.downloads.ui","filter":"tag=:Attr","from":"`+from+`"}`, "matched 1 line", "4100/")
+	e.ok("logcat_search", `{"package":"com.android.providers.downloads.ui","filter":"tag=:Attr","from":"`+from+`"}`, " matched=1 ", "4100/")
 	// negatives: no prefix match on package ids
-	out = e.ok("logcat_search", `{"package":"com.google","from":"`+from+`"}`, "matched 0 lines", "com.google.android.gms")
+	out = e.ok("logcat_search", `{"package":"com.google","from":"`+from+`"}`, "empty view=lines", " matched=0 ", "com.google.android.gms")
 	notContains(t, out, "com.google.android.gms.persistent", "com.google.android.gms.unstable")
 	dump(t, out)
 	out = e.ok("logcat_search", `{"package":"com.foo","filter":"tag=:Attr"}`)

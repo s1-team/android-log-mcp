@@ -129,7 +129,7 @@ func TestSearchLines(t *testing.T) {
 	t.Parallel()
 	tl := fixture(t)
 	out, e := call(t, tl, "logcat_search", `{"filter":"tag:Net","limit":5}`)
-	must(t, out, e, "filter parsed as:", "matched 30 lines; showing newest 5", "Net: request 29 ok", "before=\"c1.")
+	must(t, out, e, "\nfilter parsed=", " matched=30 exact=1 shown=5 ", "Net: request 29 ok", "truncated older=25 exact=1 next: before=\"c1.")
 	if strings.Contains(out, "request 24 ok") {
 		t.Error("limit not applied")
 	}
@@ -148,7 +148,7 @@ func TestSearchPackageAndCollapse(t *testing.T) {
 	t.Parallel()
 	tl := fixture(t)
 	out, e := call(t, tl, "logcat_search", `{"filter":"tag:Noise","limit":50}`)
-	must(t, out, e, "identical")
+	must(t, out, e, "\n^ rep=")
 	out, e = call(t, tl, "logcat_search", `{"package":"com.foo","min_level":"error"}`)
 	must(t, out, e, "FATAL EXCEPTION")
 	if strings.Contains(out, "Noise") {
@@ -160,19 +160,19 @@ func TestSearchSummary(t *testing.T) {
 	t.Parallel()
 	tl := fixture(t)
 	out, e := call(t, tl, "logcat_search", `{"view":"summary"}`)
-	must(t, out, e, "top tags:", "Noise", "crashes in range: 1")
+	must(t, out, e, "\ntags ", "Noise", "\ncrashes=1 anrs=0")
 }
 
 func TestSearchErrors(t *testing.T) {
 	t.Parallel()
 	tl := fixture(t)
 	for args, want := range map[string]string{
-		`{"filter":"tag:Net foo:bar"}`: `unknown key "foo"`,
-		`{"filter":"level:loud"}`:      "level",
+		`{"filter":"tag:Net foo:bar"}`: `error code=bad_filter col=`,
+		`{"filter":"level:loud"}`:      "error code=bad_filter",
 		`{"filter":"tag:a && tag:b"}`:  "&&",
-		`{"filtr":"x"}`:                "unknown parameter",
-		`{"limit":"5"}`:                "wrong type",
-		`{"device":"nope"}`:            "nope",
+		`{"filtr":"x"}`:                "error code=unknown_param param=filtr valid=",
+		`{"limit":"5"}`:                "error code=bad_type param=limit",
+		`{"device":"nope"}`:            "error code=unknown_device value=nope",
 	} {
 		out, isErr := call(t, tl, "logcat_search", args)
 		if !isErr || !strings.Contains(out, want) {

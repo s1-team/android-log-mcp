@@ -55,15 +55,20 @@ func ParsePin(s string) (time.Duration, error) {
 type errSeveral struct{ ids []device.Identity }
 
 func (e *errSeveral) Error() string {
-	var names []string
+	var ids []string
 	for _, i := range e.ids {
-		n := i.ID
-		if i.Addr != "" && i.Addr != i.ID {
-			n += " (adb " + i.Addr + ")"
-		}
-		names = append(names, n)
+		ids = append(ids, i.ID)
 	}
-	return fmt.Sprintf("%d devices are connected; pass device=one of: %s.", len(e.ids), strings.Join(names, ", "))
+	return severalErr(ids).Error()
+}
+
+// severalErr: several devices and no device= given; each is an executable next.
+func severalErr(ids []string) error {
+	var next []string
+	for _, id := range ids {
+		next = append(next, param("device", id))
+	}
+	return errc("several_devices", next, "count", len(ids), "devices", strings.Join(ids, ","))
 }
 
 // target resolves the device a log-tool call is about, without starting
@@ -79,7 +84,7 @@ func (t *Tools) target(name string) (id string, d *device.Device, err error) {
 	online := t.M.OnlineIDs()
 	identifying := t.M.Identifying()
 	slow := func() error {
-		return errf("adb lists %s but reading its identity has not finished yet (slow device); call again in a few seconds", strings.Join(identifying, ", "))
+		return errc("device_identifying", []string{"retry_after_s=3"}, "devices", strings.Join(identifying, ","))
 	}
 	if name != "" {
 		for _, i := range online {

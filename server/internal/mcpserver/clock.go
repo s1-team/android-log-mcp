@@ -106,34 +106,39 @@ func jumpWord(j store.ClockJump) string {
 	return "device clock jumped forward " + fmtDur(time.Duration(j.DeltaNs), false)
 }
 
-// jumpLines: the human `clock:` line and the machine-readable
-// `clock_jump:` line of one jump. before/after: matches on each side
-// (-1: not counted).
+// clockKV are the clock fields of a response header (#85): device now in
+// ISO-8601 with offset, clock=observed|estimated|unknown (enum), the offset
+// in seconds and, for observed/estimated, the age of the reading. Host now
+// is printed only with verbose (glossary: host time never selects lines).
+func clockKV(ci device.ClockInfo, verbose bool) []any {
+	kv := []any{"dev_now", isoSec(ci.Now), "clock", ci.State, "offset_s", secs(ci.Offset)}
+	if ci.State == "observed" || ci.State == "estimated" {
+		kv = append(kv, "clock_age_s", int(max(ci.HostNow.Sub(ci.ObservedAt).Seconds(), 0)))
+	}
+	if verbose {
+		kv = append(kv, "host_now", isoSec(ci.HostNow))
+	}
+	return kv
+}
+
+// jumpLines is the `clock_jump` line of one jump (verbose detail; the
+// default response carries the one-line summary of clockSummary). before /
+// after: matches on each side (-1: not counted).
 func jumpLines(j store.ClockJump, loc *time.Location, before, after int, afterCursor string) string {
-	var b strings.Builder
-	host := "host time unknown (seen in backfill)"
-	if j.HostNs != 0 {
-		host = "host time " + hostTime(time.Unix(0, j.HostNs))
-	}
-	dev := ""
-	if j.BeforeNs != 0 || j.AfterNs != 0 {
-		dev = fmt.Sprintf("device time %s → %s; ", time.Unix(0, j.BeforeNs).In(loc).Format("2006-01-02 15:04:05"), time.Unix(0, j.AfterNs).In(loc).Format("2006-01-02 15:04:05"))
-	}
-	fmt.Fprintf(&b, "clock: %s at seq %s (%s%s); lines stay in arrival order, so device times jump there", jumpWord(j), commas(int(j.Seq)), dev, host)
-	if before >= 0 {
-		fmt.Fprintf(&b, "; matches: %s before the jump, %s after", commas(before), commas(after))
-	}
-	if afterCursor != "" {
-		fmt.Fprintf(&b, " (only after it: after=%q)", afterCursor)
-	}
-	b.WriteString("\n")
-	hostISO := ""
+	hostISO := "-"
 	if j.HostNs != 0 {
 		hostISO = time.Unix(0, j.HostNs).Local().Format(time.RFC3339)
 	}
-	fmt.Fprintf(&b, "clock_jump: seq=%d delta=%s device_before=%s device_after=%s host=%s source=%s\n", j.Seq, time.Duration(j.DeltaNs),
-		isoOrDash(j.BeforeNs, loc), isoOrDash(j.AfterNs, loc), orStr(hostISO, "-"), j.Source)
-	return b.String()
+	kv := []any{"seq", j.Seq, "delta_s", secs(time.Duration(j.DeltaNs)), "source", j.Source,
+		"device_before", isoOrDash(j.BeforeNs, loc), "device_after", isoOrDash(j.AfterNs, loc), "host", hostISO}
+	if before >= 0 {
+		kv = append(kv, "matches_before", before, "matches_after", after)
+	}
+	l := hdr("clock_jump", kv...)
+	if afterCursor != "" {
+		l += nextClause(param("after", afterCursor))
+	}
+	return l + "\n"
 }
 
 func isoOrDash(ns int64, loc *time.Location) string {

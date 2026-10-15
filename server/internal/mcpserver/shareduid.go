@@ -77,3 +77,21 @@ func others(l []string, x string) []string {
 }
 
 func crashPackage(pkg, process string) string { return procs.CrashPackage(pkg, process) }
+
+// noteLine is the shared-uid note of a search response: the count and how
+// to list the packages by default (the 24-package list is pure token cost
+// for a single package query), the full list with verbose.
+func (s *sharedUID) noteLine(verbose bool) string {
+	oth := others(s.pkgs, s.pkg)
+	kv := []any{"code", "shares_uid", "package", s.pkg, "uid", s.appID, "shares_uid", len(oth)}
+	if !verbose {
+		return hdr("note", kv...) + nextClause("verbose=true")
+	}
+	var ns []string
+	for n := range s.names {
+		ns = append(ns, n)
+	}
+	sort.Strings(ns)
+	kv = append(kv, "with", strings.Join(oth, ","), "shared_processes", strings.Join(ns, ","))
+	return hdr("note", kv...)
+}

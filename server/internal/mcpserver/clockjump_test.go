@@ -150,11 +150,11 @@ func TestClockJumpFullScanEquality(t *testing.T) {
 		if total != strconv.Itoa(want) || !exact {
 			t.Errorf("%s: total %s exact %v, want %d", args, total, exact, want)
 		}
-		if ids := msgIDs(out); len(ids) != min(want, 1000) && !strings.Contains(out, "[output cap") {
+		if ids := msgIDs(out); len(ids) != min(want, 1000) && !strings.Contains(out, "cap=output_30000") {
 			t.Errorf("%s: %d lines shown, want %d", args, len(ids), min(want, 1000))
 		}
 		sum := fx.call(t, "logcat_search", fmt.Sprintf(`{"from":%q,"to":%q,"view":"summary"}`, iso(w[0]), iso(w[1])))
-		if want > 0 && !strings.Contains(sum, fmt.Sprintf("total %s lines", commas(want))) {
+		if want > 0 && !strings.Contains(firstLine(sum), fmt.Sprintf(" matched=%d ", want)) {
 			t.Errorf("summary %s: want total %d in:\n%s", args, want, sum)
 		}
 	}
@@ -171,11 +171,11 @@ func TestRelativeWindowUpperBound(t *testing.T) {
 		if total, exact, _, _ := parseCount(t, out); total != strconv.Itoa(want) || !exact {
 			t.Errorf("%s: total %s, want %d:\n%s", args, total, want, out)
 		}
-		if !strings.Contains(out, "clock: 151 matching lines are dated after device now") {
+		if !strings.Contains(out, "\nclock_future matches=151 exact=1 range=") {
 			t.Errorf("%s: future note missing:\n%s", args, out)
 		}
-		if !strings.Contains(out, "device now ") || !strings.Contains(out, "host now ") {
-			t.Errorf("%s: header without device now / host now:\n%s", args, out)
+		if !strings.Contains(firstLine(out), " dev_now=") || strings.Contains(firstLine(out), "host_now") {
+			t.Errorf("%s: header without dev_now (or with host_now):\n%s", args, out)
 		}
 	}
 	// explicit to: no +2 s bound
@@ -192,8 +192,13 @@ func TestRelativeWindowUpperBound(t *testing.T) {
 	if len(ids) == 0 || ids[len(ids)-1] != len(fx.recs)-1 {
 		t.Errorf("{}: last line shown is not the newest by arrival: %v", ids[max(0, len(ids)-3):])
 	}
-	if c := strings.Count(out, "\nclock_jump: "); c != 3 || !strings.Contains(out, "clock: 4 device clock jumps in the scanned range; 4 split the matches; the newest 3") {
-		t.Errorf("{}: %d clock_jump lines:\n%s", c, out)
+	// default: ONE clock line for the newest splitting jump, with the cursor
+	if c := strings.Count(out, "\nclock_jumps=4 splitting=4 seq="); c != 1 || strings.Contains(out, "\nclock_jump ") || !strings.Contains(out, " next: after=\"") {
+		t.Errorf("{}: clock summary line:\n%s", out)
+	}
+	// verbose: the full detail of the newest 3 splitting jumps
+	if v := fx.call(t, "logcat_search", `{"limit":1000,"verbose":true}`); strings.Count(v, "\nclock_jump seq=") != 3 {
+		t.Errorf("verbose: want 3 clock_jump lines:\n%s", v)
 	}
 }
 
@@ -202,7 +207,7 @@ func TestRelativeWindowUpperBound(t *testing.T) {
 func TestMoreWalkExactlyOnce(t *testing.T) {
 	t.Parallel()
 	fx := expiryFx(t)
-	reMore := regexp.MustCompile(`more: before="([^"]+)"`)
+	reMore := regexp.MustCompile(`next: before="([^"]+)"`)
 	for _, base := range []string{`"limit":37`, fmt.Sprintf(`"limit":37,"from":%q,"to":%q`, iso(time.Unix(0, 0)), iso(fx.devNow.Add(2*yearD)))} {
 		seen := map[int]int{}
 		args := "{" + base + "}"
@@ -236,20 +241,20 @@ func TestHostPrefixRejected(t *testing.T) {
 	t.Parallel()
 	fx := expiryFx(t)
 	for _, c := range []struct{ args, want string }{
-		{`{"from":"host:5m"}`, "from: host time is not supported: from/to/age: use device time"},
-		{`{"to":"host:2026-10-10 15:00"}`, "to: host time is not supported"},
-		{`{"filter":"tag:T age:host:5m"}`, "age:host:5m: age: always counts back from device now ("},
+		{`{"from":"host:5m"}`, "error code=host_time param=from dev_now="},
+		{`{"to":"host:2026-10-10 15:00"}`, "error code=host_time param=to dev_now="},
+		{`{"filter":"tag:T age:host:5m"}`, "error code=host_time param=age value=host:5m dev_now="},
 	} {
 		out, isErr := fx.tools.Call(context.Background(), "logcat_search", json.RawMessage(c.args))
 		if !isErr || !strings.Contains(out, c.want) {
 			t.Errorf("%s: %v %q", c.args, isErr, out)
 		}
-		if !strings.Contains(c.args, "age:") && !strings.Contains(out, "take the cursor from logcat_status") {
-			t.Errorf("%s: no cursor advice: %q", c.args, out)
+		if !strings.Contains(out, " next: ") {
+			t.Errorf("%s: no next: %q", c.args, out)
 		}
 	}
 	out, isErr := fx.tools.Call(context.Background(), "logcat_app_launches", json.RawMessage(`{"from":"host:5m"}`))
-	if !isErr || !strings.Contains(out, "host time is not supported") {
+	if !isErr || !strings.Contains(out, "error code=host_time") {
 		t.Errorf("launches host: %q", out)
 	}
 }

@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -38,13 +39,14 @@ type query struct {
 	pkg        string
 	tags       []string
 	filterUsed bool
+	verbose    bool
 	clock      device.ClockInfo // device now used for relative values
 	relUpper   bool             // toNs is device now + relSlack (relative window)
 }
 
 func (q *query) interp() string {
 	if len(q.parts) == 0 {
-		return "(none — all lines)"
+		return "(none)"
 	}
 	if len(q.parts) == 1 {
 		return q.parts[0]
@@ -121,6 +123,7 @@ func topLevelAge(n filter.Node) (time.Duration, string, bool) {
 }
 
 type commonArgs struct {
+	verbose                                        bool
 	filter, pkg, minLevel, from, to, before, after string
 	tags                                           []string
 	wait                                           bool // waiting for new lines (wait_ms): no upper bound
@@ -134,12 +137,20 @@ const relSlack = 2 * time.Second
 
 // hostRejected is the error for a host: value (issue #48 D2): queries use
 // device time only.
-func hostRejected(param, v string, ci device.ClockInfo) error {
-	if param == "age" {
-		return errf("age:host:%s: age: always counts back from device now (%s); host time is not supported", v, ci.Now.Format("2006-01-02 15:04:05"))
+func hostRejected(name, v string, ci device.ClockInfo) error {
+	if name == "age" {
+		return errc("host_time", []string{`filter="age:5m"`}, "param", "age", "value", "host:"+v, "dev_now", isoSec(ci.Now))
 	}
-	return errf("%s: host time is not supported: from/to/age: use device time (the Android device's clock, as printed in logcat lines). Device now is %s; host now is %s. For \"what happens from now on\" whatever the clocks, take the cursor from logcat_status and call logcat_search(after=<cursor>).",
-		param, ci.Now.Format("2006-01-02 15:04:05"), hostTime(ci.HostNow))
+	return errc("host_time", []string{name + `="30m"`, "logcat_status"}, "param", name, "dev_now", isoSec(ci.Now))
+}
+
+// badTime maps a from/to parse failure to the coded error.
+func badTime(name, v string) error {
+	ex := `from="30m"`
+	if name == "to" {
+		ex = `to="now"`
+	}
+	return errc("bad_time", []string{ex}, "param", name, "value", v, "valid", "30m|2h|HH:MM:SS|YYYY-MM-DD[ HH:MM:SS]|ISO-8601")
 }
 
 func (t *Tools) buildQuery(d *device.Device, a commonArgs) (*query, error) {
@@ -155,7 +166,7 @@ func (t *Tools) buildQuery(d *device.Device, a commonArgs) (*query, error) {
 	// device now comes from the stream: no device clock read per query
 	ci := d.Clock()
 	now := ci.Now
-	q := &query{d: d, loc: d.Loc(), ectx: &filter.Ctx{Now: now, Loc: d.Loc()}, pkg: a.pkg, tags: a.tags, clock: ci}
+	q := &query{d: d, loc: d.Loc(), ectx: &filter.Ctx{Now: now, Loc: d.Loc()}, verbose: a.verbose, pkg: a.pkg, tags: a.tags, clock: ci}
 	var kids []filter.Node
 	var root filter.Node // the parsed filter
 	if a.pkg != "" {
@@ -164,13 +175,13 @@ func (t *Tools) buildQuery(d *device.Device, a commonArgs) (*query, error) {
 		su := newSharedUID(pkg, d.Packages(), d.Procs)
 		kids = append(kids, &filter.Pred{Desc: "package == " + pkg, Fn: func(r *model.Record, _ *filter.Ctx) bool { return pkgMatches(r, pkg) || su.line(r.UID, r.Process) }})
 		if su != nil {
-			q.notes = append(q.notes, su.note())
+			q.notes = append(q.notes, su.noteLine(a.verbose))
 		}
 		q.parts = append(q.parts, "package == "+pkg)
 	}
 	if len(a.tags) > 0 {
 		if len(a.tags) > 20 {
-			return nil, errf("tags: at most 20 tags (got %d)", len(a.tags))
+			return nil, errc("bad_param", []string{"tags=[first 20 tags]"}, "param", "tags", "value", len(a.tags), "valid", "max 20")
 		}
 		set := map[string]bool{}
 		var ds []string
@@ -185,6 +196,14 @@ func (t *Tools) buildQuery(d *device.Device, a commonArgs) (*query, error) {
 	if strings.TrimSpace(a.filter) != "" {
 		p, err := filter.Parse(a.filter)
 		if err != nil {
+			var fe *filter.Error
+			if errors.As(err, &fe) {
+				kv := []any{"col", fe.Col(), "msg", fe.Msg}
+				if fe.Hint != "" {
+					kv = append(kv, "hint", fe.Hint)
+				}
+				return nil, errc("bad_filter", nil, kv...)
+			}
 			return nil, err
 		}
 		if p.Root != nil {
@@ -194,13 +213,13 @@ func (t *Tools) buildQuery(d *device.Device, a commonArgs) (*query, error) {
 			q.parts = append(q.parts, p.Root.String())
 		}
 		for _, n := range p.Notes {
-			q.notes = append(q.notes, n)
+			q.notes = append(q.notes, hdr("note", "code", "filter", "msg", n))
 		}
 	}
 	if a.minLevel != "" {
 		lv, ok := filter.ParseLevel(a.minLevel)
 		if !ok {
-			return nil, errf("min_level=%q is not a level. Use one of verbose debug info warn error fatal.", a.minLevel)
+			return nil, errc("bad_param", []string{`min_level="info"`}, "param", "min_level", "value", a.minLevel, "valid", "verbose,debug,info,warn,error,fatal")
 		}
 		kids = append(kids, &filter.Level{Min: lv})
 		q.parts = append(q.parts, "level >= "+lv.Name())
@@ -208,14 +227,14 @@ func (t *Tools) buildQuery(d *device.Device, a commonArgs) (*query, error) {
 	if a.from != "" {
 		tm, err := timeparse.Parse("from", a.from, now)
 		if err != nil {
-			return nil, errf("%v", err)
+			return nil, badTime("from", a.from)
 		}
 		q.fromNs = tm.UnixNano()
 	}
 	if a.to != "" {
 		tm, err := timeparse.Parse("to", a.to, now)
 		if err != nil {
-			return nil, errf("%v", err)
+			return nil, badTime("to", a.to)
 		}
 		q.toNs = tm.UnixNano()
 	}
@@ -235,25 +254,25 @@ func (t *Tools) buildQuery(d *device.Device, a commonArgs) (*query, error) {
 	}
 	if q.fromNs != 0 && q.toNs != 0 && q.fromNs >= q.toNs {
 		if ageSrc != "" {
-			return nil, errf("age:%s starts at %s, which is not before to (%s): the device-time window is empty.", ageSrc, dateTime(q.fromNs, q.loc), dateTime(q.toNs, q.loc))
+			return nil, errc("empty_window", []string{param("to", isoNs(q.fromNs+int64(time.Hour), q.loc))}, "age", ageSrc, "from", isoNs(q.fromNs, q.loc), "to", isoNs(q.toNs, q.loc))
 		}
-		return nil, errf("from (%s) is not before to (%s): the device-time window is empty.", dateTime(q.fromNs, q.loc), dateTime(q.toNs, q.loc))
+		return nil, errc("empty_window", []string{param("to", isoNs(q.fromNs+int64(time.Hour), q.loc))}, "from", isoNs(q.fromNs, q.loc), "to", isoNs(q.toNs, q.loc))
 	}
 	// age: alone needs no window part: the filter line says "age <= …"
 	if ageOnly := ageSrc != "" && a.from == "" && (q.toNs == 0 || q.relUpper); !ageOnly && (q.fromNs != 0 || q.toNs != 0) {
-		f, to := "…", "…"
+		f, to := "...", "..."
 		if q.fromNs != 0 {
 			f = dateTime(q.fromNs, q.loc)
 		}
 		if q.relUpper {
-			to = "device now + 2 s"
+			to = "dev_now+2s"
 		} else if q.toNs != 0 {
 			to = dateTime(q.toNs, q.loc)
 		}
 		q.parts = append(q.parts, fmt.Sprintf("device time in [%s, %s)", f, to))
 	}
 	if a.before != "" && a.after != "" {
-		return nil, errf("pass either before or after, not both (before pages to older matches, after to newer ones).")
+		return nil, errc("bad_param", []string{param("before", a.before), param("after", a.after)}, "param", "before,after", "valid", "one of them")
 	}
 	for _, c := range []struct {
 		name, v string
@@ -264,20 +283,20 @@ func (t *Tools) buildQuery(d *device.Device, a commonArgs) (*query, error) {
 		}
 		cur, err := store.ParseCursor(c.v)
 		if err != nil {
-			return nil, errf("%s: %v", c.name, err)
+			return nil, errc("bad_cursor", []string{"logcat_status"}, "param", c.name, "msg", err.Error())
 		}
 		if !d.Matches(cur.Serial) {
-			return nil, errf("%s cursor belongs to device %s; pass device=%q or take a cursor from this device.", c.name, cur.Serial, cur.Serial)
+			return nil, errc("cursor_device", []string{param("device", cur.Serial)}, "param", c.name, "cursor_device", cur.Serial)
 		}
 		last := d.Store.LastSeq()
 		first := d.Store.FirstSeq()
 		seq := cur.Seq
 		if seq > last {
-			q.notes = append(q.notes, fmt.Sprintf("%s cursor is ahead of stored data (store was reset?); using the newest position instead.", c.name))
+			q.notes = append(q.notes, hdr("note", "code", "cursor_ahead", "param", c.name, "using", "newest"))
 			seq = last
 		}
 		if c.name == "after" && first > 0 && seq+1 < first {
-			q.notes = append(q.notes, fmt.Sprintf("cursor refers to boot %s data that has been pruned; showing from oldest available instead.", cur.Boot))
+			q.notes = append(q.notes, hdr("note", "code", "cursor_pruned", "boot", cur.Boot, "using", "oldest"))
 		}
 		*c.dst = seq
 		if c.name == "before" && seq == 0 {
@@ -306,6 +325,7 @@ type scanResult struct {
 	total      int             // matches counted (≥ len(matches))
 	countDone  bool            // total is exact
 	tagCount   map[string]int  // tags of the matches visited (tagN of them)
+	tmplCount  map[string]int  // message templates of the same matches (summary head)
 	tagN       int
 	byRange    bool              // total counted from the store's record range (no filter), tags only of the page
 	firstNs    int64             // time of the first record scanned (desc: newest)
@@ -320,7 +340,7 @@ type scanResult struct {
 // scan runs the query. desc=true collects the newest `limit` matches.
 func (q *query) scan(limit int, desc bool) *scanResult {
 	st := q.d.Store
-	res := &scanResult{tagCount: map[string]int{}, countDone: true}
+	res := &scanResult{tagCount: map[string]int{}, tmplCount: map[string]int{}, countDone: true}
 	res.upper = q.beforeSeq
 	if res.upper == 0 {
 		res.upper = st.LastSeq() + 1
@@ -346,6 +366,10 @@ func (q *query) scan(limit int, desc bool) *scanResult {
 		if n&4095 == 0 {
 			el := time.Since(start)
 			if !fullAt.IsZero() && time.Since(fullAt) > countBudget {
+				if byRange { // exact count comes from the record range; only the digest sample ends here
+					res.byRange = true
+					return false
+				}
 				res.countDone = false
 				return false
 			}
@@ -360,17 +384,20 @@ func (q *query) scan(limit int, desc bool) *scanResult {
 		}
 		res.total++
 		res.addSide(r.Seq)
-		res.tagCount[r.Tag]++
-		res.tagN++
+		if res.tagN < headSample { // the digest is of the first headSample matches
+			res.tagCount[r.Tag]++
+			res.tmplCount[template(r)]++
+			res.tagN++
+		}
 		if len(res.matches) < limit {
 			res.matches = append(res.matches, r)
 			if len(res.matches) == limit {
 				fullAt = time.Now()
-				if byRange {
-					res.byRange = true
-					return false // the total comes from the record range
-				}
 			}
+		}
+		if byRange && len(res.matches) == limit && res.tagN >= headSample {
+			res.byRange = true
+			return false // the total comes from the record range
 		}
 		return true
 	})
@@ -394,28 +421,28 @@ func (t *Tools) search(ctx context.Context, a searchArgs) (out string, err error
 		a.Limit = defaultLimit
 	}
 	if a.Limit < 1 || a.Limit > 1000 {
-		return "", errf("limit must be 1..1000 (got %d)", a.Limit)
+		return "", errc("bad_param", []string{"limit=1000"}, "param", "limit", "value", a.Limit, "valid", "1..1000")
 	}
 	if a.Context < 0 || a.Context > 20 {
-		return "", errf("context must be 0..20 (got %d)", a.Context)
+		return "", errc("bad_param", []string{"context=20"}, "param", "context", "value", a.Context, "valid", "0..20")
 	}
 	if a.WaitMs < 0 || a.WaitMs > maxWaitMs {
-		return "", errf("wait_ms must be 0..%d (got %d); call again with the same after cursor to keep waiting", maxWaitMs, a.WaitMs)
+		return "", errc("bad_param", []string{param("wait_ms", maxWaitMs)}, "param", "wait_ms", "value", a.WaitMs, "valid", "0.."+strconv.Itoa(maxWaitMs))
 	}
 	if a.View == "" {
 		a.View = "lines"
 	}
 	if a.View != "lines" && a.View != "summary" {
-		return "", errf("view must be \"lines\" or \"summary\" (got %q)", a.View)
+		return "", errc("bad_param", []string{`view="lines"`, `view="summary"`}, "param", "view", "value", a.View)
 	}
 	if a.Stack == "" {
 		a.Stack = "short"
 	}
 	if a.Stack != "short" && a.Stack != "full" {
-		return "", errf("stack must be \"short\" or \"full\" (got %q)", a.Stack)
+		return "", errc("bad_param", []string{`stack="short"`, `stack="full"`}, "param", "stack", "value", a.Stack)
 	}
 	if a.WaitMs > 0 && a.After == "" {
-		return "", errf("wait_ms needs an after cursor: call logcat_status to get `cursor`, then logcat_search(after=<cursor>, wait_ms=%d)", a.WaitMs)
+		return "", errc("missing_param", []string{"logcat_status", param("wait_ms", 0)}, "param", "after", "needed_by", "wait_ms")
 	}
 	d, done, note, err := t.useAndWait(ctx, a.Device)
 	defer done()
@@ -423,12 +450,13 @@ func (t *Tools) search(ctx context.Context, a searchArgs) (out string, err error
 		return "", err
 	}
 	defer func() {
-		if note != "" && err == nil {
-			out = "note: " + note + "\n" + out
+		if note != "" && err == nil { // after the header line: it stays the first line
+			head, rest, _ := strings.Cut(out, "\n")
+			out = head + "\n" + hdr("note", "code", "backfill", "msg", note) + nextClause("logcat_status") + "\n" + rest
 		}
 	}()
 	d.Store.Refresh()
-	q, err := t.buildQuery(d, commonArgs{filter: a.Filter, pkg: a.Package, minLevel: a.MinLevel, from: a.From, to: a.To, before: a.Before, after: a.After, tags: a.Tags, wait: a.WaitMs > 0})
+	q, err := t.buildQuery(d, commonArgs{verbose: a.Verbose, filter: a.Filter, pkg: a.Package, minLevel: a.MinLevel, from: a.From, to: a.To, before: a.Before, after: a.After, tags: a.Tags, wait: a.WaitMs > 0})
 	if err != nil {
 		return "", err
 	}
@@ -456,23 +484,27 @@ func (t *Tools) search(ctx context.Context, a searchArgs) (out string, err error
 	return t.renderLines(q, res, a, true, false), nil
 }
 
-func (t *Tools) header(q *query, firstNs int64) string {
-	ns := firstNs
-	if ns == 0 {
-		ns = q.clock.Now.UnixNano()
+// head is the first line of a search response (#85 P1): ok|empty, then
+// key=value fields, ending with the clock fields and fmt.
+func (t *Tools) head(q *query, word, view string, extra ...any) string {
+	kv := append([]any{"view", view, "device", q.d.Serial}, extra...)
+	if q.verbose {
+		kv = append(kv, "tz", q.d.TZName())
 	}
-	return fmt.Sprintf("device %s · device time %s, date %s · %s\n", q.d.Serial, tzLabel(q.loc, q.d.TZName(), time.Unix(0, ns)), dateOf(ns, q.loc), clockLine(q.clock))
+	kv = append(kv, clockKV(q.clock, q.verbose)...)
+	kv = append(kv, "fmt", fmtVersion)
+	return hdr(word, kv...) + "\n"
 }
 
-// clockNotes: the clock jumps inside the scanned range (at most 3, newest
-// first, with matches on each side) and, for a relative window, the lines
-// excluded because they are dated after device now (issue #48).
+// clockNotes: the clock jumps inside the scanned range. Default: ONE line,
+// only when a jump splits the matches (matches on both sides), for the
+// newest such jump, with the cursor that shows only what is after it;
+// verbose: every splitting jump (at most 3, newest first) in full, or the
+// newest jump of the range when none splits. For a relative window, the
+// lines excluded because they are dated after device now (issue #48).
 func (t *Tools) clockNotes(b *strings.Builder, q *query, res *scanResult) {
-	// the jumps that split the matches (matches on both sides); with
-	// none, the newest jump in the range for context. At most 3, newest
-	// first.
 	n := len(res.jumps)
-	var show []int
+	var show []int // jumps that split the matches, newest first
 	sides := make([][2]int, n)
 	for i := n - 1; i >= 0; i-- {
 		for k, c := range res.side {
@@ -486,28 +518,33 @@ func (t *Tools) clockNotes(b *strings.Builder, q *query, res *scanResult) {
 			show = append(show, i)
 		}
 	}
-	split := len(show)
-	if split == 0 && n > 0 {
-		show = []int{n - 1}
-	}
-	if n > 1 {
-		what := fmt.Sprintf("%d split the matches", split)
-		if split > 3 {
-			what += "; the newest 3"
-		} else if split == 0 {
-			what = "none splits the matches; the newest"
-		}
-		fmt.Fprintf(b, "clock: %d device clock jumps in the scanned range; %s:\n", n, what)
-	}
-	for k, i := range show {
-		if k == 3 {
-			break
-		}
-		before, after := sides[i][0], sides[i][1]
+	counts := func(i int) (int, int) {
 		if !res.countDone {
-			before, after = -1, -1
+			return -1, -1
 		}
-		fmt.Fprint(b, jumpLines(res.jumps[i], q.loc, before, after, t.cursor(q, res.jumps[i].Seq-1)))
+		return sides[i][0], sides[i][1]
+	}
+	if len(show) > 0 {
+		i := show[0]
+		j := res.jumps[i]
+		fmt.Fprintf(b, "clock_jumps=%d splitting=%d seq=%d delta_s=%s", n, len(show), j.Seq, val(secs(time.Duration(j.DeltaNs))))
+		if bf, af := counts(i); bf >= 0 {
+			fmt.Fprintf(b, " matches_before=%d matches_after=%d", bf, af)
+		}
+		b.WriteString(nextClause(param("after", t.cursor(q, j.Seq-1))) + "\n")
+	}
+	if q.verbose {
+		list := show
+		if len(list) == 0 && n > 0 {
+			list = []int{n - 1}
+		}
+		for k, i := range list {
+			if k == 3 {
+				break
+			}
+			bf, af := counts(i)
+			b.WriteString(jumpLines(res.jumps[i], q.loc, bf, af, t.cursor(q, res.jumps[i].Seq-1)))
+		}
 	}
 	if q.relUpper {
 		t.futureNote(b, q, res)
@@ -549,12 +586,8 @@ func (t *Tools) futureNote(b *strings.Builder, q *query, res *scanResult) {
 	if cnt == 0 {
 		return
 	}
-	c := commas(cnt)
-	if partial {
-		c = "≥" + c
-	}
-	fmt.Fprintf(b, "clock: %s matching lines are dated after device now (logged before the device clock was set back), device time %s – %s; not in this relative window · from=%q to=%q shows them\n",
-		c, dateTime(lo, q.loc), dateTime(hi, q.loc), dateTime(lo, q.loc), dateTime(hi+int64(time.Second), q.loc))
+	fmt.Fprintf(b, "clock_future matches=%d exact=%s range=%s/%s%s\n", cnt, val(!partial), isoNs(lo, q.loc), isoNs(hi, q.loc),
+		nextClause(param("from", isoNs(lo, q.loc))+" "+param("to", isoNs(hi+int64(time.Second), q.loc))))
 }
 
 func (t *Tools) cursor(q *query, seq uint64) string {
@@ -604,6 +637,86 @@ func (q *query) withContext(shown []*model.Record, n int) ([]*model.Record, map[
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Seq < out[j].Seq })
 	return out, isMatch
+}
+
+// headSample bounds the matches that the wide-search summary head (#85)
+// is computed from (tags and message templates); of= says how many.
+const headSample = 2000
+
+// summaryHead is the one-line digest of a wide search (#85): the top tags
+// and message templates of the matches, so one call tells what the hidden
+// matches are. At most headCap chars: msgs go first, then tags.
+const headCap = 300
+
+func summaryHead(res *scanResult) string {
+	of := res.tagN
+	if of == 0 {
+		return ""
+	}
+	type kv struct {
+		k string
+		v int
+	}
+	top := func(m map[string]int, n int) []kv {
+		var l []kv
+		for k, v := range m {
+			l = append(l, kv{k, v})
+		}
+		sort.Slice(l, func(i, j int) bool { return l[i].v > l[j].v || l[i].v == l[j].v && l[i].k < l[j].k })
+		if len(l) > n {
+			l = l[:n]
+		}
+		return l
+	}
+	pct := func(v int) string {
+		p := (100*v + of/2) / of
+		if p < 1 {
+			return "<1%"
+		}
+		return strconv.Itoa(p) + "%"
+	}
+	tl := top(res.tagCount, 5)
+	var ml []kv
+	for _, m := range top(res.tmplCount, 6) {
+		if m.v > 1 {
+			ml = append(ml, m)
+		}
+	}
+	build := func(nt, nm int) string {
+		var b strings.Builder
+		fmt.Fprintf(&b, "summary of=%d tags=", of)
+		for i, t := range tl[:min(nt, len(tl))] {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			b.WriteString(noSpace(t.k) + ":" + pct(t.v))
+		}
+		if nm > 0 && len(ml) > 0 {
+			b.WriteString(" msgs=")
+			for i, m := range ml[:min(nm, len(ml))] {
+				if i > 0 {
+					b.WriteByte(',')
+				}
+				t := m.k
+				if len(t) > 60 {
+					t = t[:cutAt(t, 60)] + "..."
+				}
+				fmt.Fprintf(&b, "%dx%s", m.v, strconv.Quote(t))
+			}
+		}
+		return b.String()
+	}
+	for nm := len(ml); nm >= 0; nm-- {
+		if s := build(len(tl), nm); len(s) <= headCap {
+			return s + "\n"
+		}
+	}
+	for nt := len(tl) - 1; nt >= 1; nt-- {
+		if s := build(nt, 0); len(s) <= headCap {
+			return s + "\n"
+		}
+	}
+	return build(1, 0)[:headCap] + "\n"
 }
 
 func (t *Tools) renderLines(q *query, res *scanResult, a searchArgs, desc, waited bool) string {
@@ -684,139 +797,112 @@ func (t *Tools) renderLines(q *query, res *scanResult, a searchArgs, desc, waite
 		}
 	}
 
-	first := int64(0)
-	if len(sel) > 0 {
-		first = sel[0].TimeNs
-	}
-	b.WriteString(t.header(q, first))
-	b.WriteString("filter parsed as: " + q.interp() + "\n")
-	for _, n := range q.notes {
-		b.WriteString("note: " + n + "\n")
-	}
-	t.rangeNotes(&b, q, sel)
-	t.clockNotes(&b, q, res)
-	totalStr := commas(res.total)
-	partial := !res.countDone
-	if partial {
-		totalStr = "≥" + totalStr
-	}
-	switch {
-	case len(sel) == 0:
-		if waited {
-			fmt.Fprintf(&b, "no new matches within %d ms; call again with the same after cursor to keep waiting.\n", a.WaitMs)
-		} else {
-			b.WriteString("matched 0 lines\n")
-			b.WriteString(t.zeroHints(q))
-		}
-	case desc:
-		fmt.Fprintf(&b, "matched %s lines%s; showing newest %d (%s–%s)\n", totalStr, countScope(res, q.loc, desc), len(sel), clock(sel[0].TimeNs, q.loc), clock(sel[len(sel)-1].TimeNs, q.loc))
-	default:
-		fmt.Fprintf(&b, "matched %s new lines%s; showing oldest %d (%s–%s)\n", totalStr, countScope(res, q.loc, desc), len(sel), clock(sel[0].TimeNs, q.loc), clock(sel[len(sel)-1].TimeNs, q.loc))
-	}
-	b.WriteString(countFields(res, q.loc, desc))
-	if len(sel) > 0 {
-		b.WriteString("format: time level pid/tid process tag: message\n")
-		for _, l := range w.lines {
-			b.WriteString(l)
-			b.WriteByte('\n')
-		}
-	}
-	if w.stats.shortened > 0 {
-		fmt.Fprintf(&b, "stacks: %d shortened (%s frames hidden) · stack=\"full\" shows every frame\n", w.stats.shortened, commas(w.stats.hidden))
-	}
-	if capped {
-		fmt.Fprintf(&b, "[output cap: only %d of the %d matches asked for fit in ~30k chars · view=\"summary\" gives an overview; or narrow from/to or the filter]\n", len(sel), len(matches))
-	}
-	if trimmed && a.Context > 0 {
-		b.WriteString("[output cap: context lines cut to fit in ~30k chars · use a smaller context or limit, or narrow from/to or the filter]\n")
-	} else if trimmed {
-		b.WriteString("[output cap: lines cut to fit in ~30k chars · view=\"summary\" gives an overview; or narrow from/to or the filter]\n")
-	}
+	// ---- header
 	rest := res.total - len(sel)
-	if desc {
-		if rest > 0 || !res.countDone {
-			fmt.Fprintf(&b, "[truncated: %s older matches not shown · view=\"summary\" shows what the whole range contains]\n", map[bool]string{true: commas(rest), false: "≥" + commas(rest)}[res.countDone])
-		}
-		older := res.scannedTo
-		if len(sel) > 0 {
-			older = sel[0].Seq
-		}
-		fmt.Fprintf(&b, "more: before=%q  ·  newer/wait: after=%q\n", t.cursor(q, older), t.cursor(q, res.upper-1))
+	order := "arrival"
+	var extra []any
+	if len(sel) == 0 {
+		extra = []any{"matched", res.total, "exact", res.countDone, "scanned", 0}
 	} else {
-		next := res.upper - 1
-		if rest > 0 || !res.countDone {
-			next = sel[len(sel)-1].Seq
-			fmt.Fprintf(&b, "[truncated: %s newer matches not shown]\n", map[bool]string{true: commas(rest), false: "≥" + commas(rest)}[res.countDone])
-		}
-		fmt.Fprintf(&b, "more/wait: after=%q\n", t.cursor(q, next))
+		extra = []any{"matched", res.total, "exact", res.countDone}
 	}
-	if res.incomplete {
-		fmt.Fprintf(&b, "note: scan stopped after %s to stay responsive (range not fully searched); continue: before=%q, or narrow from/to\n", scanBudget, t.cursor(q, res.scannedTo))
-	}
-	if res.total > len(sel) && len(res.tagCount) > 0 {
-		which := "all " + totalStr + " matches"
-		switch {
-		case res.byRange:
-			which = fmt.Sprintf("the newest %s matches only", commas(res.tagN))
-		case partial && desc:
-			which = fmt.Sprintf("the %s counted matches only (newest %s)", commas(res.tagN), spanText(res.firstNs-res.lastNs))
-		case partial:
-			which = fmt.Sprintf("the %s counted matches only (oldest %s)", commas(res.tagN), spanText(res.lastNs-res.firstNs))
-		}
-		fmt.Fprintf(&b, "top tags in %s: %s · narrow with e.g. -message:<noise>, min_level=info, or a smaller from/to\n", which, topN(res.tagCount, 5))
-	}
-	return b.String()
-}
-
-// countScope explains a partial count (issue #20): which part of the range
-// was counted and how to get an exact count. Empty when the count is exact.
-func countScope(res *scanResult, loc *time.Location, desc bool) string {
-	if res.countDone || res.lastNs == 0 {
-		return ""
-	}
-	if desc {
-		return fmt.Sprintf(" (counted the newest %s only, since %s; older history not counted — narrow with from/to, e.g. from=\"1h\", for an exact count)",
-			spanText(res.firstNs-res.lastNs), clock(res.lastNs, loc))
-	}
-	return fmt.Sprintf(" (counted the oldest %s only, up to %s; newer lines not counted — page with the after cursor, or narrow with from/to for an exact count)",
-		spanText(res.lastNs-res.firstNs), clock(res.lastNs, loc))
-}
-
-// countFields is the machine-readable count line: total, whether it is
-// exact, and for a lower bound where counting stopped (device-local).
-func countFields(res *scanResult, loc *time.Location, desc bool) string {
-	s := fmt.Sprintf("count: total=%d count_exact=%t", res.total, res.countDone)
 	if !res.countDone && res.lastNs != 0 {
 		key := "counted_from"
 		if !desc {
 			key = "counted_to"
 		}
-		s += fmt.Sprintf(" %s=%q", key, time.Unix(0, res.lastNs).In(loc).Format("2006-01-02 15:04:05.000"))
+		extra = append(extra, key, isoNs(res.lastNs, q.loc))
 	}
-	return s + "\n"
-}
-
-// spanText renders a counted span: "40 s", "21 min", "3 h 5 min".
-func spanText(d int64) string {
-	t := time.Duration(max(d, 0))
-	switch {
-	case t < time.Minute:
-		return fmt.Sprintf("%d s", int(t.Seconds()))
-	case t < time.Hour:
-		return fmt.Sprintf("%d min", int(t.Minutes()))
+	var hints string
+	word := "ok"
+	if len(sel) == 0 {
+		word = "empty"
+		scanned := 0
+		if !waited {
+			scanned, hints = t.zeroHints(q)
+		}
+		extra[5] = scanned
+		if st := q.d.Store.Stats(); st.Records > 0 {
+			extra = append(extra, "range", isoNs(st.OldestNs, q.loc)+"/"+isoNs(st.NewestNs, q.loc))
+		}
+		extra = append(extra, "order", order)
+		if waited {
+			extra = append(extra, "waited_ms", a.WaitMs)
+		}
+	} else {
+		lo, hi := sel[0].TimeNs, sel[0].TimeNs
+		for _, r := range sel {
+			lo, hi = min(lo, r.TimeNs), max(hi, r.TimeNs)
+		}
+		extra = append(extra, "shown", len(sel), "order", order, "range", isoNs(lo, q.loc)+"/"+isoNs(hi, q.loc))
 	}
-	h := int(t.Hours())
-	if m := int(t.Minutes()) - 60*h; m > 0 {
-		return fmt.Sprintf("%d h %d min", h, m)
+	b.WriteString(t.head(q, word, "lines", extra...))
+	if q.filterUsed || q.verbose {
+		b.WriteString(hdr("filter", "parsed", q.interp()) + "\n")
 	}
-	return fmt.Sprintf("%d h", h)
+	for _, n := range q.notes {
+		b.WriteString(n + "\n")
+	}
+	t.rangeNotes(&b, q, sel)
+	t.clockNotes(&b, q, res)
+	if rest > 0 && len(sel) > 0 {
+		b.WriteString(summaryHead(res))
+	}
+	if q.verbose && len(sel) > 0 {
+		b.WriteString("columns: time level pid/tid process tag: message\n")
+	}
+	if len(sel) == 0 {
+		b.WriteString(hints)
+		if waited {
+			b.WriteString(hdr("wait", "ms", a.WaitMs) + nextClause(param("after", t.cursor(q, res.upper-1))+" "+param("wait_ms", a.WaitMs)) + "\n")
+		}
+	}
+	for _, l := range w.lines {
+		b.WriteString(l)
+		b.WriteByte('\n')
+	}
+	if w.stats.shortened > 0 {
+		b.WriteString(hdr("truncated", "stack_frames", w.stats.hidden, "stacks", w.stats.shortened, "exact", 1) + nextClause(`stack="full"`) + "\n")
+	}
+	if trimmed {
+		what := "lines"
+		if a.Context > 0 {
+			what = "context"
+		}
+		b.WriteString(hdr("truncated", what, len(w.lines), "exact", 1, "cap", "output_30000") + nextClause(param("limit", max(1, len(sel)/2))) + "\n")
+	}
+	capKV := []any{}
+	if capped {
+		capKV = append(capKV, "cap", "output_30000")
+	}
+	if desc {
+		older := res.scannedTo
+		if len(sel) > 0 {
+			older = sel[0].Seq
+		}
+		if len(sel) > 0 && (rest > 0 || !res.countDone) {
+			b.WriteString(truncLine("older", rest, res.countDone, capKV, param("before", t.cursor(q, older)), `view="summary"`))
+		}
+		b.WriteString(hdr("newer") + ": " + param("after", t.cursor(q, res.upper-1)) + "\n")
+	} else {
+		next := res.upper - 1
+		if len(sel) > 0 && (rest > 0 || !res.countDone) {
+			next = sel[len(sel)-1].Seq
+			b.WriteString(truncLine("newer", rest, res.countDone, capKV, param("after", t.cursor(q, next))))
+		}
+		b.WriteString(hdr("newer") + ": " + param("after", t.cursor(q, next)) + "\n")
+	}
+	if res.incomplete {
+		b.WriteString(truncLine("scan_stopped_ms", int(scanBudget.Milliseconds()), false, nil, param("before", t.cursor(q, res.scannedTo))))
+	}
+	return b.String()
 }
 
 func (t *Tools) rangeNotes(b *strings.Builder, q *query, sel []*model.Record) {
 	m := q.d.Store.Meta()
 	stats := q.d.Store.Stats()
 	if q.fromNs != 0 && stats.OldestNs != 0 && q.fromNs < stats.OldestNs && len(q.d.Store.ClockJumps()) == 0 {
-		fmt.Fprintf(b, "note: history starts at device time %s; earlier logs were not recorded (device buffer had rolled over or recording had not started).\n", dateTime(stats.OldestNs, q.loc))
+		b.WriteString(hdr("note", "code", "history_starts", "oldest", isoNs(stats.OldestNs, q.loc)) + "\n")
 	}
 	lo, hi := q.fromNs, q.toNs
 	if len(sel) > 0 {
@@ -836,20 +922,23 @@ func (t *Tools) rangeNotes(b *strings.Builder, q *query, sel []*model.Record) {
 			gto = 1 << 62
 		}
 		if (hi == 0 || g.FromNs < hi) && gto > lo {
-			b.WriteString("gap: " + gapText(g, q.loc) + "\n")
+			b.WriteString(gapLine(g, q.loc) + "\n")
 		}
 	}
 }
 
-// zeroHints explains the most likely reasons for an empty result.
-func (t *Tools) zeroHints(q *query) string {
+// zeroHints explains the most likely reasons for an empty result as
+// "hint code=... next: ..." lines, and returns how many records it scanned
+// (the empty header's scanned=, so "no data in range" differs from "the
+// filter matched nothing").
+func (t *Tools) zeroHints(q *query) (int, string) {
 	var b strings.Builder
 	stats := q.d.Store.Stats()
 	if stats.Records == 0 {
-		return "hint: nothing recorded for this device yet (recording starts automatically when it is connected).\n"
+		return 0, hdr("hint", "code", "no_records") + nextClause("logcat_status") + "\n"
 	}
 	if q.toNs != 0 && stats.OldestNs != 0 && q.toNs <= stats.OldestNs {
-		fmt.Fprintf(&b, "hint: the device-time window ends before the oldest stored line (device time %s).\n", dateTime(stats.OldestNs, q.loc))
+		b.WriteString(hdr("hint", "code", "window_before_oldest", "oldest", isoNs(stats.OldestNs, q.loc)) + nextClause(param("from", isoNs(stats.OldestNs, q.loc))) + "\n")
 	}
 	tags := map[string]int{}
 	pkgs := map[string]int{}
@@ -872,20 +961,28 @@ func (t *Tools) zeroHints(q *query) string {
 		for p := range pkgs {
 			names = append(names, p)
 		}
-		fmt.Fprintf(&b, "hint: no logs from package %q in range.", q.pkg)
-		if s := similar(q.pkg, names); len(s) > 0 {
-			fmt.Fprintf(&b, " Did you mean %s?", strings.Join(s, ", "))
-		}
+		kv := []any{"code", "no_logs_for_package", "package", q.pkg}
 		if pk := q.d.Packages(); len(pk) > 0 {
-			inst := "no"
+			inst := false
 			for _, p := range allPkgs(pk) {
 				if p == q.pkg {
-					inst = "yes"
+					inst = true
 				}
 			}
-			fmt.Fprintf(&b, " (installed: %s)", inst)
+			kv = append(kv, "installed", inst)
 		}
-		fmt.Fprintf(&b, " Packages with logs in range: %s\n", topN(pkgs, 8))
+		sim := similar(q.pkg, names)
+		if len(sim) > 0 {
+			kv = append(kv, "similar", strings.Join(sim, ","))
+		}
+		if top := topKeys(pkgs, 8); top != "" {
+			kv = append(kv, "packages_in_range", top)
+		}
+		alt := []string{`view="summary"`}
+		if len(sim) > 0 {
+			alt = []string{param("package", sim[0])}
+		}
+		b.WriteString(hdr("hint", kv...) + nextClause(alt...) + "\n")
 	}
 	for _, tg := range q.tags {
 		if tags[tg] == 0 {
@@ -902,23 +999,26 @@ func (t *Tools) zeroHints(q *query) string {
 				}
 				near = similar(tg, names)
 			}
-			fmt.Fprintf(&b, "hint: tag %q has no lines in range (tags are exact and case-sensitive)", tg)
+			kv := []any{"code", "no_logs_for_tag", "tag", tg}
+			alt := []string{`view="summary"`}
 			if len(near) > 0 {
-				fmt.Fprintf(&b, "; similar tags: %s", strings.Join(near, ", "))
+				kv = append(kv, "similar", strings.Join(near, ","))
+				alt = []string{`tags=[` + strconv.Quote(near[0]) + `]`}
 			}
-			b.WriteString("\n")
+			b.WriteString(hdr("hint", kv...) + nextClause(alt...) + "\n")
 		}
 	}
-	if q.filterUsed {
-		b.WriteString("hint: check the 'filter parsed as' line above — e.g. same-key terms are ORed, =: is exact and case-sensitive, ~: regexes are case-sensitive.\n")
+	if q.filterUsed && b.Len() == 0 {
+		b.WriteString(hdr("hint", "code", "filter_no_match") + nextClause(`view="summary"`, `filter=""`) + "\n")
 	}
 	if b.Len() == 0 {
-		b.WriteString("hint: try a wider from/to, drop min_level, or use view=\"summary\" to see what is there.\n")
+		b.WriteString(hdr("hint", "code", "no_match_in_range") + nextClause(`view="summary"`, `min_level="verbose"`) + "\n")
 	}
-	return b.String()
+	return n, b.String()
 }
 
-func topN(m map[string]int, n int) string {
+// topKeys: "a:12,b:3" for the n most frequent keys.
+func topKeys(m map[string]int, n int) string {
 	type kv struct {
 		k string
 		v int
@@ -927,21 +1027,12 @@ func topN(m map[string]int, n int) string {
 	for k, v := range m {
 		l = append(l, kv{k, v})
 	}
-	sort.Slice(l, func(i, j int) bool {
-		if l[i].v != l[j].v {
-			return l[i].v > l[j].v
-		}
-		return l[i].k < l[j].k
-	})
+	sort.Slice(l, func(i, j int) bool { return l[i].v > l[j].v || l[i].v == l[j].v && l[i].k < l[j].k })
 	var parts []string
 	for i := 0; i < len(l) && i < n; i++ {
-		parts = append(parts, fmt.Sprintf("%s %s", l[i].k, commas(l[i].v)))
+		parts = append(parts, noSpace(l[i].k)+":"+strconv.Itoa(l[i].v))
 	}
-	s := strings.Join(parts, " · ")
-	if len(l) > n {
-		s += fmt.Sprintf(" · …(%d more)", len(l)-n)
-	}
-	return s
+	return strings.Join(parts, ",")
 }
 
 // summary implements view="summary".
@@ -985,27 +1076,41 @@ func (t *Tools) summary(q *query) string {
 		return true
 	})
 	var b strings.Builder
-	rng := ""
-	if total > 0 {
-		rng = fmt.Sprintf(" · %s–%s", dateTime(oldest, q.loc), dateTime(newest, q.loc))
+	extra := []any{"matched", total, "exact", !incomplete}
+	if total == 0 {
+		st := q.d.Store.Stats()
+		extra = append(extra, "scanned", n)
+		if st.Records > 0 {
+			extra = append(extra, "range", isoNs(st.OldestNs, q.loc)+"/"+isoNs(st.NewestNs, q.loc))
+		}
+	} else {
+		extra = append(extra, "order", "arrival", "range", isoNs(oldest, q.loc)+"/"+isoNs(newest, q.loc))
 	}
-	fmt.Fprintf(&b, "device %s · device time %s%s · %s\n", q.d.Serial, tzLabel(q.loc, q.d.TZName(), q.clock.Now), rng, clockLine(q.clock))
-	b.WriteString("filter parsed as: " + q.interp() + "\n")
+	word := "ok"
+	if total == 0 {
+		word = "empty"
+	}
+	b.WriteString(t.head(q, word, "summary", extra...))
+	if q.filterUsed || q.verbose {
+		b.WriteString(hdr("filter", "parsed", q.interp()) + "\n")
+	}
 	for _, n := range q.notes {
-		b.WriteString("note: " + n + "\n")
+		b.WriteString(n + "\n")
 	}
 	t.rangeNotes(&b, q, nil)
 	res.countDone = !incomplete
 	t.clockNotes(&b, q, res)
 	if total == 0 {
-		b.WriteString("total 0 lines\n")
-		b.WriteString(t.zeroHints(q))
+		_, hints := t.zeroHints(q)
+		b.WriteString(hints)
 		return b.String()
 	}
-	fmt.Fprintf(&b, "total %s lines · by level: V %s D %s I %s W %s E %s F %s\n", commas(total),
-		commas(levels[1]), commas(levels[2]), commas(levels[3]), commas(levels[4]), commas(levels[5]), commas(levels[6]))
-	fmt.Fprintf(&b, "top tags: %s\n", topN(tags, 10))
-	fmt.Fprintf(&b, "top processes: %s\n", topN(procs, 5))
+	fmt.Fprintf(&b, "levels V=%d D=%d I=%d W=%d E=%d F=%d\n", levels[1], levels[2], levels[3], levels[4], levels[5], levels[6])
+	b.WriteString("tags " + topKeys(tags, 10))
+	if len(tags) > 10 {
+		fmt.Fprintf(&b, " more=%d", len(tags)-10)
+	}
+	b.WriteString("\nprocs " + topKeys(procs, 5) + "\n")
 	type kv struct {
 		k string
 		v int
@@ -1018,12 +1123,13 @@ func (t *Tools) summary(q *query) string {
 	}
 	sort.Slice(tl, func(i, j int) bool { return tl[i].v > tl[j].v || tl[i].v == tl[j].v && tl[i].k < tl[j].k })
 	if len(tl) > 0 {
-		b.WriteString("top repeated messages (digits normalized to #):\n")
+		var parts []string
 		for i := 0; i < len(tl) && i < 5; i++ {
-			fmt.Fprintf(&b, "  %s× %s\n", commas(tl[i].v), tl[i].k)
+			parts = append(parts, fmt.Sprintf("%dx%s", tl[i].v, strconv.Quote(tl[i].k)))
 		}
+		b.WriteString("msgs " + strings.Join(parts, ",") + "\n")
 	}
-	// crashes in range
+	// crashes in range: counts and the call that lists them
 	var crs, anrs []string
 	own := procspkg.NameOwner(q.d.Packages())
 	for _, c := range q.d.Crashes() {
@@ -1033,47 +1139,43 @@ func (t *Tools) summary(q *query) string {
 		if q.pkg != "" && c.Package != q.pkg && own(c.Process) != q.pkg {
 			continue
 		}
-		s := fmt.Sprintf("%s %s %s", c.ID, clock(c.TimeNs, q.loc)[:8], shortHeadline(c.Headline))
 		if c.Kind == "anr" {
-			anrs = append(anrs, s)
+			anrs = append(anrs, c.ID)
 		} else {
-			crs = append(crs, s)
+			crs = append(crs, c.ID)
 		}
 	}
-	fmt.Fprintf(&b, "crashes in range: %d", len(crs))
-	if len(crs) > 0 {
-		fmt.Fprintf(&b, " (%s)", strings.Join(capList(crs, 3), "; "))
+	if len(crs)+len(anrs) > 0 {
+		fmt.Fprintf(&b, "crashes=%d anrs=%d%s\n", len(crs), len(anrs), nextClause("logcat_crashes "+param("from", isoNs(oldest, q.loc))+" "+param("to", isoNs(newest+int64(time.Second), q.loc))))
 	}
-	fmt.Fprintf(&b, " · ANRs: %d", len(anrs))
-	if len(anrs) > 0 {
-		fmt.Fprintf(&b, " (%s)", strings.Join(capList(anrs, 3), "; "))
-	}
-	b.WriteString("\n")
 	if len(errs) > 0 {
-		fmt.Fprintf(&b, "latest errors (%d):\n", len(errs))
+		fmt.Fprintf(&b, "latest_errors=%d\n", len(errs))
 		for i := len(errs) - 1; i >= 0; i-- {
 			r := errs[i]
 			first := strings.SplitN(r.Msg, "\n", 2)[0]
 			if len(first) > 200 {
-				first = first[:200] + "…"
+				first = first[:cutAt(first, 200)] + "..."
 			}
-			fmt.Fprintf(&b, "  %s %s %d %s %s: %s\n", clock(r.TimeNs, q.loc), levelLetter(r.Level), r.PID, procLabel(r), r.Tag, first)
+			b.WriteString(formatLine(r, q.loc, "", first) + "\n")
 		}
 	}
 	if incomplete {
-		fmt.Fprintf(&b, "note: summary covers only the newest part of the range (scan stopped after %s); narrow from/to for exact numbers\n", scanBudget)
+		b.WriteString(truncLine("scan_stopped_ms", int(scanBudget.Milliseconds()), false, nil, param("from", isoNs(newest-int64(time.Hour), q.loc)))) // narrow
 	}
-	next := "next: logcat_search with filter/tags/package narrowed (view=\"lines\")"
+	next := []string{`view="lines"`}
+	if top := topKeys(tags, 1); top != "" {
+		next = []string{`view="lines" ` + `tags=[` + strconv.Quote(strings.SplitN(top, ":", 2)[0]) + `]`}
+	}
 	if len(crs) > 0 {
-		next += fmt.Sprintf(", or logcat_crashes id=%q", strings.Fields(crs[0])[0])
+		next = append(next, "logcat_crashes "+param("id", crs[0]))
 	}
-	b.WriteString(next + "\n")
+	b.WriteString(strings.TrimPrefix(nextClause(next...), " ") + "\n")
 	return b.String()
 }
 
 func capList(l []string, n int) []string {
 	if len(l) > n {
-		return append(l[:n:n], fmt.Sprintf("…%d more", len(l)-n))
+		return append(l[:n:n], fmt.Sprintf("...%d more", len(l)-n))
 	}
 	return l
 }
@@ -1084,7 +1186,7 @@ func shortHeadline(h string) string {
 		h = h[:i]
 	}
 	if len(h) > 100 {
-		h = h[:100] + "…"
+		h = h[:cutAt(h, 100)] + "..."
 	}
 	return h
 }

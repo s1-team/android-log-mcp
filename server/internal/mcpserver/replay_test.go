@@ -493,7 +493,7 @@ func TestReplayShellLines(t *testing.T) {
 		"         1791572937.282000 shell  8182  8182 I LOGMCP_MARK: hello mark from shell\n" +
 		"         1791572937.504000 shell  8183  8183 E LOGMCP_MARK: error mark\n")
 	e.ok("logcat_search", `{"filter":"tag:LOGMCP_MARK","from":"2026-10-10 03:08:00"}`,
-		"8182/8182 ?(uid shell) LOGMCP_MARK: hello mark", "8183/8183 ?(uid shell)")
+		"8182/8182 uid:shell LOGMCP_MARK: hello mark", "8183/8183 uid:shell")
 }
 
 // §4.5: the echo shows explicit parentheses matching real precedence.
@@ -502,9 +502,9 @@ func TestReplayFilterEcho(t *testing.T) {
 	e := newReplay(t, fxBoot1)
 	e.file("remote.logcat.txt")
 	e.ok("logcat_search", `{"filter":"tag=:LogTest tag=:MyRepo","from":"2026-10-10 03:07:00"}`,
-		`filter parsed as: (tag == "LogTest" OR tag == "MyRepo") AND device time in [`)
+		`filter parsed="(tag == \"LogTest\" OR tag == \"MyRepo\") AND device time in [`)
 	e.ok("logcat_search", `{"filter":"tag=:LogTest | message:remote level:I","from":"2026-10-10 03:07:00"}`,
-		`filter parsed as: (tag == "LogTest" OR message contains "remote") AND level >= INFO AND device time in [`)
+		`filter parsed="(tag == \"LogTest\" OR message contains \"remote\") AND level >= INFO AND device time in [`)
 }
 
 // Live regression (v2 e2e): the recorder's first ps snapshot is taken while the

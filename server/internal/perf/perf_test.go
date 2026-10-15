@@ -159,7 +159,7 @@ func normalize(out, base string) string {
 }
 
 var (
-	reClock = regexp.MustCompile(`device now [^\n]*?· clock offset (?:\(device − host\) )?\S+`)
+	reClock = regexp.MustCompile(`device now [^\n]*?· clock offset (?:\(device − host\) )?\S+| dev_now=\S+ clock=\S+ offset_s=\S+(?: clock_age_s=\S+)?`)
 	reDigit = regexp.MustCompile(`[0-9]`)
 )
 
@@ -577,18 +577,18 @@ func scanMetrics(t *testing.T, r *Results, st *store.Store) {
 		Desc: "cold scan plus filter evaluation (-tag:chatty -message:binder level:info)"})
 }
 
-var countExactRe = regexp.MustCompile(`(?m)^count: total=\d+ count_exact=(true|false)`)
+var countExactRe = regexp.MustCompile(`^(?:ok|empty) view=lines .*? exact=([01]) `)
 
 // noteCountExact records whether a search's match count is exact (1) or a
 // lower bound (0) (issue #20). A search without a filter must stay exact
 // (Store.Count): budget 1, any machine.
 func noteCountExact(r *Results, name, out string) {
-	m := countExactRe.FindStringSubmatch(out)
+	m := countExactRe.FindStringSubmatch(strings.SplitN(out, "\n", 2)[0])
 	if m == nil {
 		return // not a lines search
 	}
 	v := 0.0
-	if m[1] == "true" {
+	if m[1] == "1" {
 		v = 1
 	}
 	met := Metric{Value: v, Unit: "flag", Kind: Info, Desc: "1: the match count is exact; 0: a lower bound (count stopped 100 ms after the page was full)"}
@@ -602,7 +602,7 @@ func noteCountExact(r *Results, name, out string) {
 // noteIncomplete records whether a query hit the scan time budget (its
 // answer then covers only part of the range).
 func noteIncomplete(t *testing.T, r *Results, name, out string) {
-	if strings.Contains(out, "scan stopped after") {
+	if strings.Contains(out, "\ntruncated scan_stopped_ms=") {
 		t.Logf("note: %s hit the scan budget", name)
 		r.Set("query."+name+".incomplete", Metric{Value: 1, Unit: "flag", Kind: Info, Desc: "the scan time budget stopped the query"})
 	}
