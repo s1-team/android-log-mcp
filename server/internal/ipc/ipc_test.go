@@ -219,3 +219,17 @@ func TestPermissions(t *testing.T) {
 		t.Fatalf("not tightened: %v", di.Mode().Perm())
 	}
 }
+
+func TestSocketPathFallbackIsUnderCacheDir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows keeps its temp dir")
+	}
+	home := filepath.Dir(shortDir(t))
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", home)
+	long := filepath.Join(os.TempDir(), strings.Repeat("d", 120), "run")
+	got := SocketPath(long)
+	if !strings.HasPrefix(got, home) || strings.HasPrefix(got, "/tmp/alm-") {
+		t.Fatalf("fallback %s, want it under the cache dir %s", got, home)
+	}
+}

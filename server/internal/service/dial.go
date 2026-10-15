@@ -17,12 +17,16 @@ type Conn struct {
 // Dial connects to the running service of ctrl and says hello (no start,
 // no version handling; see Connect for that).
 func Dial(ctx context.Context, ctrl Control, version, role string) (*Conn, error) {
+	return dialWait(ctx, ctrl, version, role, 5*time.Second)
+}
+
+func dialWait(ctx context.Context, ctrl Control, version, role string, helloWait time.Duration) (*Conn, error) {
 	c, err := ipc.Dial(ctrl.Socket(), 2*time.Second)
 	if err != nil {
 		return nil, err
 	}
 	var r HelloReply
-	hctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	hctx, cancel := context.WithTimeout(ctx, helloWait)
 	defer cancel()
 	if err := c.Do(hctx, "hello", Hello{Proto: Proto, Version: version, PID: os.Getpid(), Role: role}, &r); err != nil {
 		c.Close()

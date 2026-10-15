@@ -18,9 +18,12 @@ const maxSocketPath = 100
 
 // SocketPath is the service socket for the run directory runDir:
 // runDir/service.sock, or, when that is too long for sun_path, a short
-// per-user path derived from runDir (unix: /tmp/alm-<uid>/<hash>.sock;
-// Windows: %TEMP%\alm-<hash>\s.sock). It is a pure function of runDir, so
-// every client finds the service without reading any file.
+// per-user path derived from runDir (unix: <user cache dir>/android-log-mcp/
+// run/s-<hash>.sock, i.e. inside the default data root, which no tmp cleaner
+// touches; /tmp/alm-<uid>/<hash>.sock only when that is too long as well;
+// Windows: %TEMP%\alm-<hash>\s.sock). It is a pure function of runDir (and
+// the user's cache dir), so every client finds the service without reading
+// any file.
 func SocketPath(runDir string) string {
 	p := filepath.Join(runDir, "service.sock")
 	if len(p) <= maxSocketPath {
@@ -30,6 +33,11 @@ func SocketPath(runDir string) string {
 	h := hex.EncodeToString(sum[:])[:16]
 	if runtime.GOOS == "windows" {
 		return filepath.Join(os.TempDir(), "alm-"+h, "s.sock")
+	}
+	if cache, err := os.UserCacheDir(); err == nil {
+		if q := filepath.Join(cache, "android-log-mcp", "run", "s-"+h+".sock"); len(q) <= maxSocketPath {
+			return q
+		}
 	}
 	return filepath.Join("/tmp", fmt.Sprintf("alm-%d", os.Getuid()), h+".sock")
 }

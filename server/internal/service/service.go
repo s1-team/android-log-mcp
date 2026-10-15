@@ -38,6 +38,9 @@ type Options struct {
 	// Drain bounds how long in-flight calls may finish at shutdown
 	// (default 5 s).
 	Drain time.Duration
+	// SocketWatch is how often the service checks that its socket file
+	// still exists and recreates it if not (default 30 s).
+	SocketWatch time.Duration
 	// OnRootChange is called when set-root moves the data root (e.g. to
 	// move the crash log).
 	OnRootChange func(root string)
@@ -192,6 +195,9 @@ func Start(opt Options) (*Service, error) {
 	if opt.Drain <= 0 {
 		opt.Drain = 5 * time.Second
 	}
+	if opt.SocketWatch <= 0 {
+		opt.SocketWatch = 30 * time.Second
+	}
 	if err := ipc.PrepareDir(opt.Control.Run()); err != nil {
 		return nil, fmt.Errorf("run directory: %w", err)
 	}
@@ -226,6 +232,7 @@ func Start(opt Options) (*Service, error) {
 	}
 	s.srv = &ipc.Server{Handler: s.handle, OnConn: s.onConn}
 	go s.srv.Serve(l)
+	go s.socketWatch()
 	go s.lifeLoop() // a service nobody uses does not stay forever
 	if err := s.writeState(); err != nil {
 		log.Printf("service: writing %s: %v", opt.Control.StatePath(), err)
@@ -277,8 +284,38 @@ func (s *Service) stopManager() {
 
 func (s *Service) writeState() error {
 	st := State{PID: os.Getpid(), Socket: s.opt.Control.Socket(), Version: s.opt.Version, Proto: Proto, Root: s.Root(), Exe: s.exe, Embedded: s.opt.Embedded != "", Started: s.started.UTC()}
+	st.StartTime, _, _ = inspectProc(os.Getpid())
 	b, _ := json.MarshalIndent(st, "", "  ")
 	return writeFileAtomic(s.opt.Control.StatePath(), append(b, '\n'), 0o600)
+}
+
+// socketWatch recreates the socket when its file is gone (a tmp cleaner, a
+// user): the service keeps running and holding the lock, but nobody could
+// connect any more (#83).
+func (s *Service) socketWatch() {
+	t := time.NewTicker(s.opt.SocketWatch)
+	defer t.Stop()
+	for {
+		select {
+		case <-s.stopping:
+			return
+		case <-t.C:
+		}
+		path := s.opt.Control.Socket()
+		if _, err := os.Lstat(path); err == nil || !os.IsNotExist(err) {
+			continue
+		}
+		select {
+		case <-s.stopping:
+			return
+		default:
+		}
+		if err := s.srv.Relisten(path); err != nil {
+			log.Printf("error: the socket %s was removed and could not be recreated: %v", path, err)
+			continue
+		}
+		log.Printf("warning: the socket %s was removed while the service was running; recreated it", path)
+	}
 }
 
 // Root is the current data root.

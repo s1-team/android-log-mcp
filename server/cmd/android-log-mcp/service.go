@@ -24,7 +24,10 @@ const serviceUsage = `usage:
                                          (clients normally start it themselves, detached)
   android-log-mcp service status [--json]
                                          show the running service (pid, version, protocol, root, clients)
-  android-log-mcp service stop           stop it (clients restart it when they need it)
+  android-log-mcp service stop [--force] stop it (clients restart it when they need it);
+                                         --force also ends a service that holds the lock but
+                                         does not answer (SIGTERM, then SIGKILL; Windows:
+                                         TerminateProcess, so unflushed lines may be lost)
 `
 
 func runServiceCmd(args []string) int {
@@ -33,7 +36,16 @@ func runServiceCmd(args []string) int {
 		case "status":
 			return serviceStatus(args[1:])
 		case "stop":
-			return serviceStop()
+			force := false
+			for _, a := range args[1:] {
+				if a == "--force" || a == "-force" {
+					force = true
+				} else {
+					fmt.Fprintf(os.Stderr, "service stop: unknown argument %q\n", a)
+					return 2
+				}
+			}
+			return service.RunStop(service.DefaultControl(), mcpserver.Version, force, os.Stdout, os.Stderr)
 		case "-h", "--help", "help":
 			fmt.Fprint(os.Stderr, serviceUsage)
 			return 0
@@ -122,6 +134,20 @@ func serviceStatus(args []string) int {
 	ctrl := service.DefaultControl()
 	c, err := service.Dial(context.Background(), ctrl, mcpserver.Version, "cli")
 	if err != nil {
+		if d := service.Diagnose(ctrl); d.Held {
+			if asJSON {
+				b, _ := json.Marshal(struct {
+					Running      bool   `json:"running"`
+					Unresponsive bool   `json:"unresponsive"`
+					PID          int    `json:"pid,omitempty"`
+					Detail       string `json:"detail"`
+				}{false, true, d.PID, d.Text(ctrl)})
+				fmt.Println(string(b))
+			} else {
+				fmt.Printf("service: %s but does not answer on %s; use `android-log-mcp service stop --force`\n", d.Text(ctrl), ctrl.Socket())
+			}
+			return 1
+		}
 		if asJSON {
 			fmt.Println(`{"running":false}`)
 		} else {
@@ -145,27 +171,5 @@ func serviceStatus(args []string) int {
 	}
 	fmt.Print(info.Text())
 	fmt.Printf("socket: %s\n", info.Socket)
-	return 0
-}
-
-func serviceStop() int {
-	ctrl := service.DefaultControl()
-	c, err := service.Dial(context.Background(), ctrl, mcpserver.Version, "cli")
-	if err != nil {
-		fmt.Println("service: not running")
-		return 0
-	}
-	pid := c.Hello.PID
-	err = c.Do(context.Background(), "stop", nil, nil)
-	c.Close()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "android-log-mcp service stop:", err)
-		return 1
-	}
-	if !service.WaitStopped(ctrl, 20*time.Second) {
-		fmt.Fprintf(os.Stderr, "android-log-mcp service stop: pid %d is still running after 20 s\n", pid)
-		return 1
-	}
-	fmt.Printf("service: stopped (pid %d)\n", pid)
 	return 0
 }

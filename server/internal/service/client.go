@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -37,6 +36,31 @@ type ClientOptions struct {
 	// crashed and an unsuspended recording pin is active, start a new
 	// service at once instead of on the next call (issue #11 §8).
 	RestartPinned bool
+	// NoDetach runs the service in this process instead of detached (tests;
+	// NoSpawn does it for the whole process).
+	NoDetach bool
+	// Repair tunes waiting for, and replacing, a service that holds the
+	// lock but does not answer (#83). Zero values are the defaults.
+	Repair RepairTiming
+}
+
+// RepairTiming are the waits of the hung-service handling.
+type RepairTiming struct {
+	SilentFor    time.Duration // how long a service may be silent before it is replaced (10 s)
+	StoppingWait time.Duration // how long a service that is shutting down is waited for (30 s)
+	TermWait     time.Duration // graceful stop before the kill (10 s)
+	KillWait     time.Duration // wait for the lock after the kill (5 s)
+	WaiterWait   time.Duration // how long another client's repair is waited for (60 s)
+	HelloWait    time.Duration // how long a probe waits for the hello reply (3 s)
+}
+
+func (r *RepairTiming) defaults() {
+	for p, d := range map[*time.Duration]time.Duration{&r.SilentFor: 10 * time.Second, &r.StoppingWait: 30 * time.Second,
+		&r.TermWait: 10 * time.Second, &r.HelloWait: 3 * time.Second, &r.KillWait: 5 * time.Second, &r.WaiterWait: 60 * time.Second} {
+		if *p <= 0 {
+			*p = d
+		}
+	}
 }
 
 // ErrIncompatible: the running service is newer and no longer speaks this
@@ -66,6 +90,7 @@ type Client struct {
 	spawned  int  // pid of the last service this client started detached
 	lastNote string
 	closed   bool
+	lg       clientLog
 }
 
 // NewClient returns a client; nothing is connected yet.
@@ -76,6 +101,7 @@ func NewClient(opt ClientOptions) *Client {
 	if opt.StartTimeout <= 0 {
 		opt.StartTimeout = 10 * time.Second
 	}
+	opt.Repair.defaults()
 	return &Client{opt: opt}
 }
 
@@ -125,7 +151,7 @@ func (c *Client) ensure(ctx context.Context) (*Conn, error) {
 	if c.conn != nil {
 		c.conn.Close()
 		c.conn = nil
-		log.Printf("connection to the service lost; reconnecting")
+		c.infof("connection to the service lost; reconnecting")
 	}
 	if c.embedded != nil {
 		select {
@@ -139,7 +165,7 @@ func (c *Client) ensure(ctx context.Context) (*Conn, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		conn, err := Dial(ctx, c.opt.Control, c.opt.Version, c.opt.Role)
+		conn, err := dialWait(ctx, c.opt.Control, c.opt.Version, c.opt.Role, c.opt.Repair.HelloWait+2*time.Second)
 		if err == nil {
 			ok, err := c.checkVersion(ctx, conn)
 			if err != nil {
@@ -153,7 +179,7 @@ func (c *Client) ensure(ctx context.Context) (*Conn, error) {
 				if conn.Hello.Recording != "" {
 					rec = ", recording: " + conn.Hello.Recording
 				}
-				log.Printf("using the android-log-mcp service pid %d (version %s, protocol %d, root %s%s)", conn.Hello.PID, conn.Hello.Version, conn.Hello.Proto, conn.Hello.Root, rec)
+				c.infof("using the android-log-mcp service pid %d (version %s, protocol %d, root %s%s)", conn.Hello.PID, conn.Hello.Version, conn.Hello.Proto, conn.Hello.Root, rec)
 				if c.opt.RestartPinned {
 					go c.watch(conn)
 				}
@@ -182,7 +208,7 @@ func (c *Client) ensure(ctx context.Context) (*Conn, error) {
 func (c *Client) checkVersion(ctx context.Context, conn *Conn) (bool, error) {
 	h := conn.Hello
 	if CompareVersions(c.opt.Version, h.Version) > 0 {
-		log.Printf("the running service (pid %d, version %s) is older than this client (version %s): replacing it", h.PID, h.Version, c.opt.Version)
+		c.infof("the running service (pid %d, version %s) is older than this client (version %s): replacing it", h.PID, h.Version, c.opt.Version)
 		err := conn.Do(ctx, "handoff", nil, nil)
 		conn.Close()
 		if err != nil {
@@ -211,39 +237,45 @@ func (c *Client) start(ctx context.Context) error {
 	if err := ipc.PrepareDir(ctrl.Run()); err != nil {
 		return fmt.Errorf("run directory: %w", err)
 	}
-	deadline := time.Now().Add(c.opt.StartTimeout + 5*time.Second)
+	// One client repairs, the others wait for its outcome: a waiter only
+	// polls whether the service answers and takes the lock when it is free.
+	deadline := time.Now().Add(c.opt.Repair.WaiterWait)
 	var lock *os.File
+	logged := false
 	for {
 		f, ok := store.TryLock(ctrl.SpawnLockPath())
 		if ok {
 			lock = f
 			break
 		}
+		if c.probe(ctx) == probeAnswers {
+			return nil
+		}
+		if !logged {
+			logged = true
+			c.infof("waiting for the client that is restarting the service (%s)", ctrl.SpawnLockPath())
+		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("another client has been starting the service for too long (%s)", ctrl.SpawnLockPath())
+			return c.fail("another client has been starting or repairing the android-log-mcp service for more than %s (%s)", c.opt.Repair.WaiterWait, ctrl.SpawnLockPath())
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(50 * time.Millisecond):
+			return fmt.Errorf("the android-log-mcp service is being started or repaired by another client; retry in a few seconds (%s): %w", c.logHintTail(), ctx.Err())
+		case <-time.After(100 * time.Millisecond):
 		}
 	}
 	defer store.ReleaseLock(lock)
-	if reachable(ctrl) {
+	if c.probe(ctx) == probeAnswers {
 		return nil // started by another client meanwhile
 	}
 	if Running(ctrl) {
-		// the lock is held but the socket does not answer: starting up or
-		// shutting down
-		if waitReachable(ctx, ctrl, c.opt.StartTimeout, nil) || !Running(ctrl) {
-			return nil
+		replaced, err := c.repairHolder(ctx)
+		if err != nil {
+			return err
 		}
-		st := ctrl.ReadState()
-		pid := 0
-		if st != nil {
-			pid = st.PID
+		if !replaced {
+			return nil // it answers now, or it let go of the lock
 		}
-		return fmt.Errorf("an android-log-mcp service (pid %d) holds %s but does not answer on %s; stop that process", pid, ctrl.LockPath(), ctrl.Socket())
 	}
 	now := time.Now()
 	kept := c.spawns[:0]
@@ -255,7 +287,7 @@ func (c *Client) start(ctx context.Context) error {
 	c.spawns = kept
 	reason := ""
 	switch {
-	case NoSpawn:
+	case NoSpawn || c.opt.NoDetach:
 		reason = "detached start disabled"
 	case len(c.spawns) >= 3 && c.opt.NoEmbedded:
 		return fmt.Errorf("the background service stopped %d times within a minute; see %s", len(c.spawns), c.logHint())
@@ -276,7 +308,7 @@ func (c *Client) start(ctx context.Context) error {
 	if c.opt.NoEmbedded {
 		return fmt.Errorf("could not start the android-log-mcp service detached (%s); run `android-log-mcp service` in a terminal and retry", reason)
 	}
-	log.Printf("%s; running the service in this process (pid %d) instead", reason, os.Getpid())
+	c.warnf("%s; running the service in this process (pid %d) instead", reason, os.Getpid())
 	return c.startEmbedded(reason)
 }
 
@@ -303,35 +335,27 @@ func (c *Client) watch(conn *Conn) {
 	if st == nil || Running(c.opt.Control) || !HasActivePin(c.opt.Control, time.Now()) {
 		return
 	}
-	log.Printf("the service (pid %d) ended without shutting down while a recording pin is active: restarting it", st.PID)
+	c.warnf("the service (pid %d) ended without shutting down while a recording pin is active: restarting it", st.PID)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if _, err := c.ensure(ctx); err != nil {
-		log.Printf("restarting the service: %v", err)
+		c.errorf("restarting the service: %v", err)
 	}
 }
 
-func reachable(ctrl Control) bool {
-	cl, err := ipc.Dial(ctrl.Socket(), time.Second)
-	if err != nil {
-		return false
-	}
-	cl.Close()
-	return true
-}
-
-// waitReachable polls the socket until timeout (false) or exited fires.
-func waitReachable(ctx context.Context, ctrl Control, timeout time.Duration, exited <-chan struct{}) bool {
+// waitReachable polls until the service answers a hello (true), timeout
+// (false) or exited fires.
+func (c *Client) waitReachable(ctx context.Context, timeout time.Duration, exited <-chan struct{}) bool {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		if reachable(ctrl) {
+		if c.probe(ctx) == probeAnswers {
 			return true
 		}
 		select {
 		case <-ctx.Done():
 			return false
 		case <-exited:
-			return reachable(ctrl)
+			return c.probe(ctx) == probeAnswers
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
@@ -356,8 +380,8 @@ func (c *Client) spawn(ctx context.Context) (int, error) {
 	exited := make(chan struct{})
 	var werr error
 	go func() { werr = cmd.Wait(); close(exited) }() // reaps it if it exits while we run
-	if waitReachable(ctx, c.opt.Control, c.opt.StartTimeout, exited) {
-		log.Printf("started the android-log-mcp service (pid %d, %s)", cmd.Process.Pid, exe)
+	if c.waitReachable(ctx, c.opt.StartTimeout, exited) {
+		c.infof("started the android-log-mcp service (pid %d, %s)", cmd.Process.Pid, exe)
 		return cmd.Process.Pid, nil
 	}
 	select {
@@ -376,7 +400,8 @@ func (c *Client) startEmbedded(reason string) error {
 	}
 	lf, err := OpenLog(root)
 	if err == nil {
-		log.SetOutput(io.MultiWriter(os.Stderr, lf))
+		log.SetOutput(lf) // the in-process service's own lines: file only (#84)
+		c.lg.setFile(lf)
 	} else {
 		lf = nil
 	}
