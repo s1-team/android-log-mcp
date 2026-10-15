@@ -35,6 +35,11 @@ type Options struct {
 	KeepPrivateIP bool     // keep RFC 1918 / link-local / ULA addresses
 	KeepDomains   []string // --keep-domain: hostnames (and their subdomains) left as they are
 	Extra         []string // --redact-extra regexes (group 1 if present, else the whole match)
+	// Home is the home directory of the user running the tool: every
+	// occurrence (either slash type; case-insensitive for a Windows path) is
+	// replaced as a whole, so a home that is not under /home, /Users or
+	// C:\Users is covered too. Empty: only the generic user-path rules apply.
+	Home string
 }
 
 // Redactor is safe for concurrent use.
@@ -79,8 +84,44 @@ func New(o Options) (*Redactor, error) {
 		}
 		r.rules = append(r.rules, rule{typ: "custom", re: re, group: g})
 	}
+	// the whole home directory first, then the generic user-path rules
+	if hr := homeRule(o.Home); hr != nil {
+		r.rules = append(r.rules, *hr)
+	}
 	r.rules = append(r.rules, builtin(o)...)
 	return r, nil
+}
+
+// Mask returns the placeholder for a value that the caller knows is
+// sensitive (for example the serial in `adb devices -l`), counted like a
+// rule hit: the same value gets the same number as in the rest of the text.
+func (r *Redactor) Mask(typ, v string) string {
+	if r.opt.Disabled || v == "" {
+		return v
+	}
+	return r.placeholder(typ, v)
+}
+
+// homeRule redacts the literal home directory. The directory separators match
+// either slash type, repeated (a JSON-escaped path has "\\\\").
+func homeRule(home string) *rule {
+	h := strings.TrimRight(home, `/\`)
+	if len(h) < 3 {
+		return nil
+	}
+	parts := regexp.MustCompile(`[\\/]+`).Split(h, -1)
+	for i, p := range parts {
+		parts[i] = regexp.QuoteMeta(p)
+	}
+	expr := strings.Join(parts, `[\\/]+`)
+	if strings.Contains(h, `\`) || strings.Contains(h, ":") {
+		expr = "(?i)" + expr // a Windows path is case-insensitive
+	}
+	re, err := regexp.Compile(`(?:^|[^A-Za-z0-9_.-])(` + expr + `)(?:[\\/]|[^A-Za-z0-9_.-]|$)`)
+	if err != nil {
+		return nil
+	}
+	return &rule{typ: "home_dir", re: re, group: 1}
 }
 
 // Enabled reports whether redaction is on.
@@ -304,9 +345,19 @@ func credentialValue(v string) bool {
 	return true
 }
 
+// userName is the user-name segment of a home path: stops at a separator, a
+// quote or an existing placeholder.
+const userName = `[^\\/\s"'<>|:*?\[\]]+`
+
 func builtin(o Options) []rule {
 	keepIP := o.KeepPrivateIP
 	return []rule{
+		// user names inside home paths: /home/<user>, /Users/<user>,
+		// C:\Users\<user> (either slash type, JSON-escaped backslashes, any
+		// case for the Windows form; a Windows name may contain spaces)
+		{typ: "username", need: "uU", re: regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9_])[A-Za-z]:[\\/]+Users[\\/]+(` + userName + `(?: ` + userName + `)+)[\\/]`), group: 1},
+		{typ: "username", need: "uU", re: regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9_])(?:[A-Za-z]:[\\/]+|\\+)Users[\\/]+(` + userName + `)`), group: 1},
+		{typ: "username", need: "/", re: regexp.MustCompile(`/(?:home|Users)/(` + userName + `)`), group: 1},
 		// credentials embedded in URLs: scheme://user:password@host
 		{typ: "password", need: "@", re: regexp.MustCompile(`(?i)\b[a-z][a-z0-9+.-]*://[^\s/:@]+:([^\s/@]+)@`), group: 1},
 		// Authorization headers (value, with or without scheme)
