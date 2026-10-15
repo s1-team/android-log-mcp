@@ -21,7 +21,7 @@ import (
 //
 //	run/service.lock   held by the running service (single instance)
 //	run/service.json   the service's pid, version, protocol, socket, root
-//	run/service.sock   the socket (or a short fallback path, ipc.SocketPath)
+//	run/service.sock   the socket (long control dir paths: /tmp/alm-<uid>/<hash>.sock, ipc.SocketPath)
 //	run/spawn.lock     serializes clients starting the service
 //	run/config.lock    serializes set-root
 //	config.json        {"root": …} written by set-root only
