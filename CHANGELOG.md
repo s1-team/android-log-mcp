@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+### Fixed
+
+- Correction to the 0.7.0 upgrade notes: the long-path fallback socket did **not** move. When `<control dir>/run/service.sock` would exceed the socket path limit (a very long home or cache path), the socket is, as in 0.6.0, `/tmp/alm-<uid>/<hash>.sock` (Windows: `%TEMP%\alm-<hash>\s.sock`). Nothing needs to be done when upgrading; the unreachable cache-dir fallback code was removed ([#108](https://github.com/s1crab/android-log-mcp/issues/108)).
+
 ## [0.7.0] - 2026-10-15
 
 ### Upgrade notes
