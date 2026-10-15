@@ -31,10 +31,29 @@ Read [docs/GOALS.md](docs/GOALS.md) first, and check every change against its pr
    - **Never sit blocked.** While a node waits for a review, CI or the emulator, take the next unblocked node.
    - Design reviews still go to the release owner, but unrelated nodes continue in the meantime; only the nodes that depend on the design wait.
    - Keep the graph current in the pinned tracking issue [#67](https://github.com/s1crab/android-log-mcp/issues/67): update a node's status (and its PR) when it starts, blocks or merges.
+9. **Branch rules.**
+   - `0.7.x` and `0.8.x` are release branches; change them only via a PR.
+   - All dev branches start with `feat` (for example `feat-108-socket-doc`).
+   - PRs target `main` or the matching release branch.
+   - When several PRs are ready, state the merge order and rebase the later ones so they are not BEHIND each other.
 
 ## 3. Releases
 
 Release only after **explicit sign-off from the user or maintainer**.
+
+**Pre-release verification** ([#106](https://github.com/s1crab/android-log-mcp/issues/106)). CI alone is not enough: before the release PR is merged, run the checklist below on the emulator (API 29 and API 35, software emulation only, never KVM, §6) and copy the results into the release PR body (the [release PR template](.github/PULL_REQUEST_TEMPLATE/release.md) carries it). Keep run evidence under `validation/` (per API level and scenario).
+
+- [ ] CI green on all OSes for the release commit.
+- [ ] `scripts/service-e2e.sh` on API 29 and API 35.
+- [ ] `scripts/e2e-report.sh` on API 29 and API 35, including `--logs-only`.
+- [ ] SIGSTOP the real service process: automatic replacement, `service stop --force`, no data loss (production timings).
+- [ ] Upgrade: old-version service process + new MCP process or CLI process (version handoff, socket directory migration).
+- [ ] `adb shell date -s` back-jump plus a real app crash and ANR: attribution still correct.
+- [ ] `set-root`, then a whole-buffer re-read: no duplicates.
+- [ ] `go test -race -count=20` on `service`, `store`, `device` and every package the release touched; the `perf` job is green.
+- [ ] Windows / macOS: if not tested with a real or emulator-attached adb, mark them **unverified** in the release notes (CHANGELOG).
+
+Testing never blocks merges to `main`; findings are fixed as a patch release.
 
 1. In `CHANGELOG.md`, move the `[Unreleased]` entries under a new `## [X.Y.Z] - YYYY-MM-DD` heading (leave `[Unreleased]` empty) and update the compare links at the bottom. Bump `npm/VERSION` and the default `Version` in `server/internal/mcpserver/server.go`, plus version examples in the READMEs. Commit `chore: release X.Y.Z` on a branch, open a PR, wait for CI to be green and merge it (§2).
 2. Tag the merged, green commit on `main` `vX.Y.Z` (annotated) and push the tag. `.github/workflows/release.yml` then:
@@ -135,3 +154,4 @@ Large restructuring of the `device` package is evaluated with these criteria and
 - 绝不要杀 adb server。
 - 设计评审标准（§8）：（1）删除测试：删掉该模块后复杂度直接消失，说明只是透传；若在 N 个调用方重新出现，才值得保留；（2）一个 adapter 只是假想的接缝，两个才是真的：仅当生产与测试（或两个真实实现）不同时才加接口/注入点；（3）接口就是测试面：测试只通过公开接口断言可观察行为。设计评论可以用 module / interface / seam / adapter / depth；代码、工具输出和文档仍用 `docs/glossary.md` 的术语。`device` 包的大规模重构必须先走设计评论和评审，不得顺手重构。
 - 文档结构：README 只保留安装、精简工具表、过滤语法和 FAQ（约 200 行以内）；详细说明在 `docs/tools.md`、`docs/reference.md`、`docs/compatibility.md`；仓库结构表在 AGENTS.md §7。升级说明和破坏性变更只写在 CHANGELOG（Breaking 条目），README 不重复。
+- 发版前验证清单（§3）：发版前在模拟器（API 29 和 35）上跑清单，结果写进发版 PR；测试不阻塞 main，问题以 patch 版本修复。
