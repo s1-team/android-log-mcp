@@ -259,7 +259,11 @@ func AdoptDropbox(list []*Crash, c *Crash) bool {
 		if x.Kind != c.Kind || x.PID != c.PID || x.Boot != "" && c.Boot != "" && x.Boot != c.Boot || !dropboxOnly(x) {
 			continue
 		}
-		if d := abs(x.TimeNs - c.TimeNs); d < 60e9 && d < bestD {
+		win := int64(60e9)
+		if c.Kind == "anr" {
+			win = anrPairWindow
+		}
+		if d := abs(x.TimeNs - c.TimeNs); d < win && d < bestD {
 			best, bestD = x, d
 		}
 	}
