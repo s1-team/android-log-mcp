@@ -294,3 +294,88 @@ func TestStatusShowsLateHandover(t *testing.T) {
 		t.Fatalf("logcat_status:\n%s", out)
 	}
 }
+
+// Issue #109: a service process that replaced another one (version handoff,
+// hung service process) has no wanted devices; the first call naming a device whose
+// stored data exists must start it even while the device list or its
+// identity is still pending, not answer idle / not connected from the
+// stored data.
+func TestNamedStoredDeviceStartsWhileIdentityPending(t *testing.T) {
+	l := newLazy(t, 5, "FAKEA")
+	if out, isErr := l.call(t, "logcat_status", `{"device":"FAKEA"}`); isErr || !strings.Contains(out, "FAKEA") {
+		t.Fatalf("first service:\n%s", out)
+	}
+	// the old service process goes away; the new one finds the device slow
+	l.m.Close()
+	l.e.SetIdentDelay("FAKEA", 3*time.Second)
+	m := device.NewManager(l.m.Base, store.Config{})
+	m.Lazy = true
+	m.IdleTick = 20 * time.Millisecond
+	m.Linger = func(*device.Device) time.Duration { return time.Minute }
+	ctx, cancel := context.WithCancel(context.Background())
+	m.Start(ctx)
+	t.Cleanup(func() { cancel(); m.Close() })
+	tools := &Tools{M: m, Pins: l.pins}
+	old := device.CatchUpWait
+	device.CatchUpWait = 300 * time.Millisecond
+	t.Cleanup(func() { device.CatchUpWait = old })
+
+	out, _ := tools.Call(context.Background(), "logcat_status", json.RawMessage(`{"device":"FAKEA"}`))
+	if strings.Contains(out, "recording: idle") || strings.Contains(out, "not recording") || strings.Contains(out, "device not connected") {
+		t.Fatalf("answered from stored data:\n%s", out)
+	}
+	if !m.Wanted("FAKEA") {
+		t.Fatalf("device not started:\n%s", out)
+	}
+	if out, isErr := tools.Call(context.Background(), "logcat_search", json.RawMessage(`{"device":"FAKEA"}`)); isErr {
+		t.Fatalf("search (error):\n%s", out)
+	}
+	// once the identity is read, fakeadb sees logcat start for the device
+	for end := time.Now().Add(15 * time.Second); !l.e.LogcatRunning("FAKEA") || len(l.e.CallsMatching("logcat")) == 0; time.Sleep(20 * time.Millisecond) {
+		if time.Now().After(end) {
+			t.Fatalf("fakeadb never saw logcat start for FAKEA: %q", l.e.Calls())
+		}
+	}
+}
+
+// A name that matches no stored data and no listed device still starts
+// nothing while an identity is pending.
+func TestUnknownNameDoesNotStartWhileIdentityPending(t *testing.T) {
+	l := newLazy(t, 5, "FAKEA")
+	l.e.SetIdentDelay("FAKEA", 3*time.Second)
+	l.m.Track(0)
+	for end := time.Now().Add(10 * time.Second); len(l.m.Identifying()) == 0; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(end) {
+			t.Fatal("device never listed")
+		}
+	}
+	old := device.CatchUpWait
+	device.CatchUpWait = 300 * time.Millisecond
+	t.Cleanup(func() { device.CatchUpWait = old })
+	l.call(t, "logcat_status", `{"device":"NOSUCH"}`)
+	if ids := l.m.WantedIDs(); len(ids) != 0 {
+		t.Fatalf("started %v for an unknown name", ids)
+	}
+}
+
+// Issue #109: a device never recorded before, named by its adb serial, is
+// started by the first call when its identity is still pending.
+func TestNamedAdbSerialStartsWhileIdentityPending(t *testing.T) {
+	l := newLazy(t, 5, "FAKEB")
+	l.e.SetIdentDelay("FAKEB", 2*time.Second)
+	l.m.Track(0)
+	for end := time.Now().Add(10 * time.Second); len(l.m.Identifying()) == 0; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(end) {
+			t.Fatal("device never listed")
+		}
+	}
+	old := device.CatchUpWait
+	device.CatchUpWait = 300 * time.Millisecond
+	t.Cleanup(func() { device.CatchUpWait = old })
+	l.call(t, "logcat_status", `{"device":"FAKEB"}`)
+	for end := time.Now().Add(15 * time.Second); !l.m.Wanted("FAKEB") || !l.e.LogcatRunning("FAKEB"); time.Sleep(20 * time.Millisecond) {
+		if time.Now().After(end) {
+			t.Fatalf("FAKEB not started after its identity was read; calls %q", l.e.Calls())
+		}
+	}
+}

@@ -398,6 +398,8 @@ func (t *Tools) recText(d *device.Device, st device.Status) string {
 		rec = "starting recorder"
 	case lazy && st.State == "device":
 		rec = "connected, not recorded — pass device=" + d.Serial + " to start"
+	case lazy && t.M.Wanted(d.Serial) && t.M.Settling():
+		rec = "starting: waiting for adb to list the device and read its identity; recording begins as soon as it is online"
 	case lazy && t.M.Wanted(d.Serial):
 		rec = "not recording (device not connected; recording resumes when it reconnects)"
 	case st.State == "device" && !st.Owned && !t.M.NoADB:
