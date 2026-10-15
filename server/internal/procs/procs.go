@@ -820,29 +820,6 @@ func abs64(x int64) int64 {
 	return x
 }
 
-// ForPackage returns lifetimes of processes belonging to pkg (exact appId,
-// i.e. "com.foo" and "com.foo:remote"), newest first: live ones, then the others, each by arrival
-// of the lifetime (a device clock jump does not reorder them).
-func (t *Tracker) ForPackage(pkg string) []Proc {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	var out []Proc
-	for _, l := range t.byPID {
-		for _, p := range l {
-			if p.Package == pkg || ownerOfName(p.Name, t.uidPkgs, t.packages) == pkg {
-				out = append(out, *p)
-			}
-		}
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Alive() != out[j].Alive() {
-			return out[i].Alive()
-		}
-		return out[i].n > out[j].n // arrival order, not device time (issue #55)
-	})
-	return out
-}
-
 // PSEntry is one parsed `ps` row.
 type PSEntry struct {
 	PID  int

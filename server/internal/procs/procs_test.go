@@ -2,7 +2,6 @@ package procs
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -51,17 +50,8 @@ func TestLifecycleAndAnnotate(t *testing.T) {
 	if nw.Process != "com.bar" || nw.Package != "com.bar" {
 		t.Fatalf("new: %+v", nw)
 	}
-	ps := tr.ForPackage("com.foo")
-	if len(ps) != 2 {
-		t.Fatalf("for package: %+v", ps)
-	}
-	var dead *Proc
-	for i := range ps {
-		if ps[i].PID == 4321 {
-			dead = &ps[i]
-		}
-	}
-	if dead == nil || dead.Alive() || !dead.Crashed || dead.EndNs != 20e9+5e6 {
+	dead := tr.Lookup(4321, 19e9)
+	if dead == nil || dead.Name != "com.foo" || dead.Alive() || !dead.Crashed || dead.EndNs != 20e9+5e6 {
 		t.Fatalf("dead: %+v", dead)
 	}
 	if len(changes) < 4 {
@@ -207,7 +197,7 @@ func TestEndedAndReusedAcrossBackJump(t *testing.T) {
 	}
 }
 
-func TestStartSeqRestoreAndForPackageOrder(t *testing.T) {
+func TestStartSeqRestore(t *testing.T) {
 	tr := New()
 	tr.Reset("b")
 	tr.SetPackages(ParsePackagesU("package:com.foo uid:10001\n"))
@@ -216,22 +206,11 @@ func TestStartSeqRestoreAndForPackageOrder(t *testing.T) {
 	tr.Observe(seqEv(3, 400e9, 1, "am_proc_start", "[0,51,10001,com.foo:b,service,{com.foo/com.foo.T}]"))
 	tr.Observe(seqEv(4, 500e9, 1, "am_proc_start", "[0,52,10001,com.foo:c,service,{com.foo/com.foo.U}]"))
 	tr.Observe(seqEv(5, 510e9, 1, "am_proc_died", "[0,52,com.foo:c,900,19]"))
-	names := func(tr *Tracker) (out []string) {
-		for _, p := range tr.ForPackage("com.foo") {
-			out = append(out, p.Name)
-		}
-		return
-	}
-	// live first, then newest arrival first (not StartNs)
-	want := []string{"com.foo:b", "com.foo:c", "com.foo"}
-	if got := names(tr); fmt.Sprint(got) != fmt.Sprint(want) {
-		t.Fatalf("order %v, want %v", got, want)
+	// lifetimes as the persistence layer holds them
+	saved := []Proc{
+		*tr.LookupSeq(52, 505e9, 4), *tr.LookupSeq(51, 400e9, 3), *tr.LookupSeq(50, 1005e9, 2),
 	}
 	// persisted lines carry the seqs; a legacy line loads without them
-	var saved []Proc
-	for _, p := range tr.ForPackage("com.foo") {
-		saved = append(saved, p)
-	}
 	b, _ := json.Marshal(saved[2])
 	if !strings.Contains(string(b), `"start_seq":1`) || !strings.Contains(string(b), `"end_seq":2`) {
 		t.Fatalf("json: %s", b)
@@ -249,5 +228,35 @@ func TestStartSeqRestoreAndForPackageOrder(t *testing.T) {
 	tr2.Restore([]Proc{legacy})
 	if p := tr2.Lookup(9, 6); p == nil {
 		t.Fatal("legacy entry resolves by time")
+	}
+}
+
+// pid reuse across a FORWARD clock jump (device clock set ahead): lines are
+// owned by arrival, not by the (now far larger) device times.
+func TestLookupSeqAfterForwardJump(t *testing.T) {
+	tr := New()
+	tr.Reset("b")
+	tr.Observe(seqEv(1, 100e9, 1, "am_proc_start", "[0,90,10001,com.foo,service,{com.foo/com.foo.S}]"))
+	tr.Observe(seqEv(2, 110e9, 1, "am_proc_died", "[0,90,com.foo,900,19]"))
+	tr.ClockJump(3)
+	tr.Observe(seqEv(3, 9000e9, 1, "am_proc_start", "[0,90,10002,com.bar,service,{com.bar/com.bar.S}]"))
+	for _, c := range []struct {
+		seq  uint64
+		ns   int64
+		want string
+	}{
+		{2, 105e9, "com.foo"},
+		{4, 9001e9, "com.bar"},
+		{5, 9500e9, "com.bar"},
+		{6, 9e9, "com.bar"}, // stamped with an old-clock time but arrived after the start
+	} {
+		p := tr.LookupSeq(90, c.ns, c.seq)
+		if p == nil || p.Name != c.want {
+			t.Errorf("seq %d ns %d: %+v, want %s", c.seq, c.ns, p, c.want)
+		}
+	}
+	old := tr.LookupSeq(90, 105e9, 2)
+	if old == nil || old.EndSeq != 2 || old.EndNs != 110e9 {
+		t.Fatalf("old: %+v", old)
 	}
 }

@@ -57,9 +57,8 @@ func TestPidReuseAcrossBackJumpAttributedBySeq(t *testing.T) {
 			t.Errorf("%q attributed to %q, want %q", msg, got[msg], want)
 		}
 	}
-	ps := p.Procs.ForPackage("com.foo")
-	if len(ps) != 1 || ps[0].StartSeq != 1 || ps[0].EndSeq != 3 {
-		t.Fatalf("com.foo lifetime seqs: %+v", ps)
+	if lt := p.Procs.LookupSeq(50, 1005e9, 2); lt == nil || lt.Name != "com.foo" || lt.StartSeq != 1 || lt.EndSeq != 3 {
+		t.Fatalf("com.foo lifetime seqs: %+v", lt)
 	}
 }
 
