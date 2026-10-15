@@ -11,7 +11,7 @@ import (
 // identical header (time, uid, pid, tid, level, tag, buffer) are merged.
 type Assembler struct {
 	Loc     *time.Location
-	Year    int
+	Year    int // fallback for non-epoch "MM-DD HH:MM:SS" lines only (they carry no year). Every logcat read uses `-v epoch`, so it is never used; callers pass the host year, which would be wrong for a device whose clock is in another year (a device time, glossary: Clocks and times, issue #107)
 	buffer  string
 	pending *model.Record
 	Garbage int // unparseable lines not attached to a record
