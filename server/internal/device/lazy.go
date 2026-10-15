@@ -94,6 +94,42 @@ func (m *Manager) Identifying() []string {
 	return out
 }
 
+// Settling reports whether the current adb tracking session has not yet
+// delivered its first device list or still reads the identity of an online
+// device: a device that is not listed may merely not be known yet.
+func (m *Manager) Settling() bool {
+	ts := m.session()
+	if ts == nil {
+		return false
+	}
+	select {
+	case <-ts.ready:
+		return false
+	default:
+		return true
+	}
+}
+
+// WantAddr starts the device behind the adb serial addr, which adb lists
+// but whose identity (and so device ID) is not read yet: it is started as
+// soon as the identity is known. addr must be an identifying serial
+// (Identifying); anything else is ignored.
+func (m *Manager) WantAddr(addr string) {
+	if !m.Lazy || m.NoADB {
+		return
+	}
+	m.mu.Lock()
+	pending := false
+	if _, ok := m.addrs[addr]; !ok && m.states[addr] == "device" {
+		m.wantAddrs[addr] = true
+		pending = true
+	}
+	m.mu.Unlock()
+	if pending {
+		m.activity()
+	}
+}
+
 // Wanted reports whether the device is started (recorded or waiting to
 // come online).
 func (m *Manager) Wanted(id string) bool {
@@ -309,6 +345,7 @@ func (m *Manager) stopTracking() {
 	}
 	m.states = map[string]string{}
 	m.addrs = map[string]string{}
+	m.wantAddrs = map[string]bool{}
 	m.watchErr = nil
 	devs := make([]*Device, 0, len(m.devices))
 	for _, d := range m.devices {
