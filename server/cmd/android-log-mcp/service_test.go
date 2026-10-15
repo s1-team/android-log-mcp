@@ -165,8 +165,12 @@ func TestClientsShareServiceAndRecover(t *testing.T) {
 	if pa != pb || pa == a.cmd.Process.Pid || pa == b.cmd.Process.Pid {
 		t.Fatalf("service pids %d %d (clients %d %d)", pa, pb, a.cmd.Process.Pid, b.cmd.Process.Pid)
 	}
-	if !strings.Contains(a.err.String()+b.err.String(), "using the android-log-mcp service pid "+strconv.Itoa(pa)) {
-		t.Fatalf("stderr does not name the service:\n%s", a.err.String())
+	// info messages go to the service log only; stderr stays free of them (#84)
+	if lg := serviceLog(env); !strings.Contains(lg, "using the android-log-mcp service pid "+strconv.Itoa(pa)) {
+		t.Fatalf("the service log does not name the service:\n%s", lg)
+	}
+	if strings.Contains(a.err.String()+b.err.String(), "using the android-log-mcp service pid") {
+		t.Fatalf("an info message reached stderr:\n%s", a.err.String())
 	}
 	p, _ := os.FindProcess(pa)
 	p.Kill()
@@ -216,7 +220,7 @@ func TestVersionHandoff(t *testing.T) {
 	p1, v1 := servicePID(t, out)
 	out, errOut, code = call("0.4.1")
 	p2, v2 := servicePID(t, out)
-	if code != 0 || p2 == p1 || v1 != "0.4.0" || v2 != "0.4.1" || !strings.Contains(errOut, "older than this client") {
+	if code != 0 || p2 == p1 || v1 != "0.4.0" || v2 != "0.4.1" || !strings.Contains(serviceLog(env), "older than this client") || strings.Contains(errOut, "older than this client") {
 		t.Fatalf("0.4.1: %d %d/%s %d/%s\n%s", code, p1, v1, p2, v2, errOut)
 	}
 	waitGone(t, p1)
@@ -232,4 +236,10 @@ func TestVersionHandoff(t *testing.T) {
 	if pid := statePID(t, env); pid != p2 {
 		t.Fatalf("service after incompatible client: %d, want %d", pid, p2)
 	}
+}
+
+// serviceLog is the text of the service log of the isolated environment.
+func serviceLog(env []string) string {
+	b, _ := os.ReadFile(filepath.Join(controlDirOf(env), "log", "service.log"))
+	return string(b)
 }

@@ -14,6 +14,9 @@ func TestMain(m *testing.M) {
 		time.Sleep(60 * time.Second)
 		os.Exit(0)
 	}
+	if code, ok := holderMain(); ok { // a process that holds the service lock (hung_test.go)
+		os.Exit(code)
+	}
 	if fakeadb.Is() { // this test binary, copied as adb (pins_test.go)
 		os.Exit(fakeadb.Main(os.Args[1:]))
 	}

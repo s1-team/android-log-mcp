@@ -40,14 +40,18 @@ func (c Control) ConfigLockPath() string { return filepath.Join(c.Run(), "config
 
 // State is run/service.json (also read by layout.SweepRun: pid + socket).
 type State struct {
-	PID      int       `json:"pid"`
-	Socket   string    `json:"socket"`
-	Version  string    `json:"version"`
-	Proto    int       `json:"proto"`
-	Root     string    `json:"root"`
-	Exe      string    `json:"exe,omitempty"`
-	Embedded bool      `json:"embedded,omitempty"`
-	Started  time.Time `json:"started"`
+	PID     int    `json:"pid"`
+	Socket  string `json:"socket"`
+	Version string `json:"version"`
+	Proto   int    `json:"proto"`
+	Root    string `json:"root"`
+	Exe     string `json:"exe,omitempty"`
+	// StartTime is the OS-reported start time of the service process
+	// (an opaque value, only compared with a later reading of the same pid
+	// to tell the service from a process that reused its pid).
+	StartTime int64     `json:"start_time,omitempty"`
+	Embedded  bool      `json:"embedded,omitempty"`
+	Started   time.Time `json:"started"`
 }
 
 // ReadState reads run/service.json (nil if missing or unreadable).

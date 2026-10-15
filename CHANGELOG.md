@@ -6,13 +6,31 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+### Upgrade notes
+
+- **`android-log-mcp service stop` exits 1 when a service holds the lock but does not answer**, instead of printing `service: not running` and exiting 0. Scripts that treated that exit code as "stopped" should call `service stop --force` ([#83](https://github.com/s1crab/android-log-mcp/issues/83)).
+- **The long-path fallback socket moved** (unix only; used when `<control dir>/run/service.sock` would exceed the socket path limit, e.g. a very long home path). It is now `<user cache dir>/android-log-mcp/run/s-<hash>.sock` instead of `/tmp/alm-<uid>/<hash>.sock`. A service started by an older version keeps its old socket until it stops or is replaced ([#83](https://github.com/s1crab/android-log-mcp/issues/83)).
+
+### Added
+
+- `android-log-mcp service stop --force` ends a service that holds the lock but does not answer: SIGTERM first, SIGKILL after 10 s (Windows: a stop request, then TerminateProcess after 10 s; lines the service had not flushed yet can be lost, and the command says so). It only signals a process that is verified to be the service recorded in `run/service.json` (same executable and start time), and it never kills a service that runs inside an MCP process (that would kill the MCP process): it refuses and says to end that MCP process instead ([#83](https://github.com/s1crab/android-log-mcp/issues/83)).
+- `service status` says so when a service holds the lock but does not answer (exit 1; `{"running":false,"unresponsive":true,…}` with `--json`).
+- `run/service.json` records the service's OS start time (`start_time`).
+
 ### Changed
 
+- The service watches its socket every 30 s and recreates it when the file was removed (for example by a tmp cleaner), logging a warning ([#83](https://github.com/s1crab/android-log-mcp/issues/83)).
+- MCP process and CLI process messages are levelled: "using the service pid …", "replacing the older service …", "connection lost" and similar notes go to the service log only; only warnings and errors also reach stderr, which MCP hosts such as Cursor show as `[error]` ([#84](https://github.com/s1crab/android-log-mcp/issues/84)).
 - Documentation reorganised ([#87](https://github.com/s1crab/android-log-mcp/issues/87)): the README only covers install, a short tools list, filter syntax and FAQ. Details moved to [docs/tools.md](docs/tools.md), [docs/reference.md](docs/reference.md) and [docs/compatibility.md](docs/compatibility.md); the repository layout is in [AGENTS.md](AGENTS.md). The README "Upgrading" section is removed: upgrade notes and breaking changes are only in this changelog.
 - `logcat_crashes` lists crashes newest first by arrival, no longer by device time ([#55](https://github.com/s1crab/android-log-mcp/issues/55)). After the device clock is set back, crashes that arrive later have older device times and used to sort as old, so the newest page could leave them out. Shown times and the `from`/`to` window stay device time; ids are unchanged. A DropBox-only crash of an old event that is imported late appears at the top of the list.
 
 ### Fixed
 
+- An MCP process no longer gives up with "holds the lock but does not answer" or a vague `context deadline exceeded` when the service process is hung ([#83](https://github.com/s1crab/android-log-mcp/issues/83)):
+  - A service counts as reachable only when it answers a hello, not when the socket merely accepts a connection.
+  - A service that is verified as this tool's, is not shutting down and has been silent for more than 10 s is replaced automatically (at most 3 replacements per minute). A service that is not recognised as ours, or that runs inside an MCP process, is never signalled; the error names the pid and the manual command.
+  - When several MCP processes start at once, one repairs the service and the others wait for its result (up to 60 s) instead of each waiting in turn.
+  - Connection errors name the service log and the commands to try.
 - A lock that was just released could look held for a few milliseconds while a child process was being started (macOS and Linux) ([#82](https://github.com/s1crab/android-log-mcp/issues/82)). The recorder then logged "being written by another process … not recording it", `set-root` could fail with "is being written by another process", and the service could report "already running for this user" or take a stopped service for a running one. The cause is that a `flock` belongs to the open file description, and a forked child holds a copy of every open fd until its `exec`. A lock that looks held is now retried for up to 200 ms (1 ms to 10 ms backoff) before it is reported held; the worst wait measured on a macOS CI runner was 23 ms. A lock that really is held is reported after the 200 ms. Windows is not affected and is unchanged.
 - After `set-root`, lines that the old root already stored are no longer stored again by a later whole-buffer read ([#56](https://github.com/s1crab/android-log-mcp/issues/56)). The move now carries the hashes of the newest stored lines of the current boot (up to 500,000, in a new `resume_dedup.bin` next to `meta.json`, not inside it), and every resume in the new root uses them until the device reboots or that many new lines are stored. Before, only the first resume used a small set taken near the newest line's device time, so a device clock jump or set-back after the move could store old lines twice.
 

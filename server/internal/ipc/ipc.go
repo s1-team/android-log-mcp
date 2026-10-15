@@ -244,6 +244,27 @@ type Server struct {
 // reply has not been written yet.
 func (s *Server) InFlight() int64 { return s.busy.Load() }
 
+// Relisten replaces the listener by a new one on path (the socket file was
+// removed under a running server): connections already accepted stay.
+func (s *Server) Relisten(path string) error {
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return net.ErrClosed
+	}
+	old := s.l
+	s.mu.Unlock()
+	if old != nil {
+		old.Close() // before Listen: closing unlinks the path it listened on
+	}
+	l, err := Listen(path)
+	if err != nil {
+		return err
+	}
+	go s.Serve(l)
+	return nil
+}
+
 // Serve accepts on l until Close.
 func (s *Server) Serve(l net.Listener) error {
 	s.mu.Lock()
