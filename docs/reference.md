@@ -312,6 +312,8 @@ Values are replaced by `[REDACTED:<type>#n]`. The same original value gets the s
 | `device_id` | IMEI, IMSI, ICCID, MEID, serial, Android ID, advertising ID (`key=value`) |
 | `ipv4` / `ipv6` | IP addresses (not 127.0.0.1, ::1, 0.0.0.0); `--keep-private-ip` keeps private ones |
 | `mac` | MAC addresses (not all-zero / broadcast) |
+| `username` | The user name in a home path: `/home/<user>`, `/Users/<user>`, `C:\Users\<user>` (either slash type, JSON-escaped backslashes, any case for the Windows form); the rest of the path stays |
+| `home_dir` | The home directory of the user who runs the report, wherever it is (also in the command line and warnings of `manifest.json`) |
 | `domain` | Host names, see below; `--keep-domain` keeps listed domains |
 
 `domain`:

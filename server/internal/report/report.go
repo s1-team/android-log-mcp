@@ -87,6 +87,9 @@ type Options struct {
 type Extra struct {
 	Name string // file name under diagnostics/
 	Text string
+	// Prepare, when set, runs before the generic redaction (for example to
+	// mask the serials in `adb devices -l`).
+	Prepare func(r *redact.Redactor, text string) string
 }
 
 // Manifest is manifest.json.
@@ -226,7 +229,11 @@ func Build(ctx context.Context, o Options) (*Manifest, error) {
 	if o.Out == "" {
 		o.Out = "android-log-mcp-report-" + o.Now().Format("20060102-150405") + ".zip"
 	}
-	red, err := redact.New(o.Redact)
+	ro := o.Redact
+	if ro.Home == "" {
+		ro.Home, _ = os.UserHomeDir() // user-aware: the user's own home is always redacted
+	}
+	red, err := redact.New(ro)
 	if err != nil {
 		return nil, err
 	}
@@ -324,13 +331,29 @@ func Build(ctx context.Context, o Options) (*Manifest, error) {
 		zf.add("note.txt", []byte(red.Text(strings.TrimRight(o.Note, "\n")+"\n")))
 	}
 	for _, x := range o.Extras {
-		zf.add("diagnostics/"+x.Name, []byte(red.Text(x.Text)))
+		text := x.Text
+		if x.Prepare != nil {
+			text = x.Prepare(red, text)
+		}
+		zf.add("diagnostics/"+x.Name, []byte(red.Text(text)))
 	}
 	zf.add("README.txt", []byte(readme))
 
+	// the manifest carries paths too (command line, warnings, errors)
+	for i, a := range man.Args {
+		man.Args[i] = red.Text(a)
+	}
+	for i, w := range man.Warnings {
+		man.Warnings[i] = red.Text(w)
+	}
+	for _, d := range man.Devices {
+		for k, v := range d.DropboxErrors {
+			d.DropboxErrors[k] = red.Text(v)
+		}
+	}
 	man.Redaction = Redaction{Enabled: red.Enabled(), Placeholder: "[REDACTED:<type>#<n>] — the same value maps to the same n within this report; the mapping key is random and discarded, so values cannot be recovered",
 		Hits: red.Stats(), Unique: red.Unique(), Rules: redact.Types(),
-		Scope: "log messages, crash/ANR/tombstone texts, DropBox bodies, am start output and the note. Not redacted: timestamps, pid/tid/uid, level, tag, package and process names, device properties."}
+		Scope: "log messages, crash/ANR/tombstone texts, DropBox bodies, am start output, the note, diagnostics/ (service log, service.json, diagnose.txt, adb-devices.txt), user names in home paths (/home/<user>, /Users/<user>, C:\\Users\\<user>) and the user's home directory in the command line and warnings. Not redacted: timestamps, pid/tid/uid, level, tag, package and process names, device properties."}
 	if len(o.Redact.Extra) > 0 {
 		man.Redaction.Rules = append(man.Redaction.Rules, "custom")
 	}

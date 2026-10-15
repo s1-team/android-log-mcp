@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/s1crab/android-log-mcp/server/internal/device"
+	"github.com/s1crab/android-log-mcp/server/internal/redact"
 	"github.com/s1crab/android-log-mcp/server/internal/report"
 )
 
@@ -64,7 +65,7 @@ func diagnostics(ctx context.Context, root string, ctrl Control, adb *device.ADB
 	}
 	if adb != nil {
 		if txt, err := adb.Output(ctx, 5*time.Second, "devices", "-l"); err == nil {
-			add("adb-devices.txt", txt)
+			out = append(out, report.Extra{Name: "adb-devices.txt", Text: txt, Prepare: maskDeviceSerials})
 		} else {
 			logf("adb devices -l failed (%v): not in the report", err)
 		}
@@ -95,4 +96,21 @@ func diagnoseText(ctx context.Context, ctrl Control) string {
 		fmt.Fprintf(&b, "hello probe: %s\n", map[probeState]string{probeAnswers: "answers", probeAbsent: "no listener", probeSilent: "connects, never answers"}[st])
 	}
 	return b.String()
+}
+
+// maskDeviceSerials replaces the serial (first column) of every device line
+// of `adb devices -l` the way the report redacts a `serial=…` value: type
+// device_id, the same serial always getting the same number.
+func maskDeviceSerials(r *redact.Redactor, text string) string {
+	lines := strings.Split(text, "\n")
+	for i, ln := range lines {
+		t := strings.TrimRight(ln, "\r")
+		f := strings.Fields(t)
+		if len(f) < 2 || strings.HasPrefix(t, "* ") || strings.HasPrefix(t, "List of devices") {
+			continue
+		}
+		k := strings.Index(t, f[0])
+		lines[i] = t[:k] + r.Mask("device_id", f[0]) + t[k+len(f[0]):]
+	}
+	return strings.Join(lines, "\n")
 }
