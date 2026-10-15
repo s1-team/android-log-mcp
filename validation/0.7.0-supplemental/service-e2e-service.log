@@ -1,0 +1,44 @@
+android-log-mcp: 2026/10/15 22:25:20 service started: pid 3201589, version 0.7.0, protocol 2, root /workspace/scratch/c1/android-log-mcp, socket /workspace/scratch/c1/android-log-mcp/run/service.sock
+2026/10/15 22:25:20 started the android-log-mcp service (pid 3201589, /workspace/scratch/c1/android-log-mcp/bin/0.7.0-dd4cc78a1fc6/android-log-mcp)
+2026/10/15 22:25:20 using the android-log-mcp service pid 3201589 (version 0.7.0, protocol 2, root /workspace/scratch/c1/android-log-mcp, recording: idle (starts on the first log tool call))
+2026/10/15 22:25:20 using the android-log-mcp service pid 3201589 (version 0.7.0, protocol 2, root /workspace/scratch/c1/android-log-mcp, recording: idle (starts on the first log tool call))
+android-log-mcp: 2026/10/15 22:25:23 avd-api29: recording starts
+android-log-mcp: 2026/10/15 22:25:47 avd-api29: repair reads on (logd of Android 11 and older can skip lines of the live stream): the device buffer holds lines dated after device now (clock set back)
+2026/10/15 22:25:49 connection to the service lost; reconnecting
+android-log-mcp: 2026/10/15 22:25:49 service started: pid 3201899, version 0.7.0, protocol 2, root /workspace/scratch/c1/android-log-mcp, socket /workspace/scratch/c1/android-log-mcp/run/service.sock
+2026/10/15 22:25:49 started the android-log-mcp service (pid 3201899, /workspace/scratch/c1/android-log-mcp/bin/0.7.0-dd4cc78a1fc6/android-log-mcp)
+2026/10/15 22:25:49 using the android-log-mcp service pid 3201899 (version 0.7.0, protocol 2, root /workspace/scratch/c1/android-log-mcp, recording: idle (starts on the first log tool call))
+android-log-mcp: 2026/10/15 22:25:51 avd-api29: recording starts
+android-log-mcp: 2026/10/15 22:25:52 avd-api29: device clock jump among the stored lines that may still be in the device buffer: read the whole buffer without -T and dropped lines already stored
+2026/10/15 22:26:00 connection to the service lost; reconnecting
+2026/10/15 22:26:00 using the android-log-mcp service pid 3201899 (version 0.7.0, protocol 2, root /workspace/scratch/c1/android-log-mcp, recording: 1 device(s): avd-api29)
+android-log-mcp: 2026/10/15 22:26:18 set-root requested by pid 3202284: /tmp/alm-newroot (--keep-old)
+android-log-mcp: 2026/10/15 22:26:18 data root switched: /workspace/scratch/c1/android-log-mcp -> /tmp/alm-newroot (1 devices continue there)
+android-log-mcp: 2026/10/15 22:26:46 avd-api29: recording starts
+android-log-mcp: 2026/10/15 22:26:46 recording in /workspace/scratch/c1/android-log-mcp
+android-log-mcp: 2026/10/15 22:26:49 avd-api29: device clock jump among the stored lines that may still be in the device buffer: read the whole buffer without -T and dropped lines already stored
+android-log-mcp: 2026/10/15 22:27:11 avd-api29: repair reads on (logd of Android 11 and older can skip lines of the live stream): the device buffer holds lines dated after device now (clock set back)
+android-log-mcp: 2026/10/15 22:27:37 avd-api29: recovered 6 lines that logd skipped for the live stream while the device clock was set back
+android-log-mcp: 2026/10/15 22:27:47 service stopping: stop requested (pid 3204982)
+android-log-mcp: 2026/10/15 22:27:47 service stopped
+android-log-mcp: 2026/10/15 22:27:47 service started: pid 3205003, version 0.7.0, protocol 2, root /workspace/scratch/c1/android-log-mcp, socket /workspace/scratch/c1/android-log-mcp/run/service.sock
+2026/10/15 22:27:47 started the android-log-mcp service (pid 3205003, /workspace/scratch/c1/android-log-mcp/bin/0.7.0-dd4cc78a1fc6/android-log-mcp)
+2026/10/15 22:27:47 using the android-log-mcp service pid 3205003 (version 0.7.0, protocol 2, root /workspace/scratch/c1/android-log-mcp, recording: idle (starts on the first log tool call))
+android-log-mcp: 2026/10/15 22:27:51 avd-api29: recording starts
+android-log-mcp: 2026/10/15 22:27:52 avd-api29: device clock jump among the stored lines that may still be in the device buffer: read the whole buffer without -T and dropped lines already stored
+android-log-mcp: 2026/10/15 22:28:04 avd-api29: recording stopped (idle: no log tool call within its linger time and no pin)
+android-log-mcp: 2026/10/15 22:28:04 no device is recorded: adb device tracking stopped (idle)
+android-log-mcp: 2026/10/15 22:28:38 service stopping: no client, no pin and no recorded device for 30s
+android-log-mcp: 2026/10/15 22:28:38 service stopped
+android-log-mcp: 2026/10/15 22:28:38 service started: pid 3206376, version 0.7.0, protocol 2, root /workspace/scratch/c1/android-log-mcp, socket /workspace/scratch/c1/android-log-mcp/run/service.sock
+2026/10/15 22:28:39 started the android-log-mcp service (pid 3206376, /workspace/scratch/c1/android-log-mcp/bin/0.7.0-dd4cc78a1fc6/android-log-mcp)
+2026/10/15 22:28:39 using the android-log-mcp service pid 3206376 (version 0.7.0, protocol 2, root /workspace/scratch/c1/android-log-mcp, recording: idle (starts on the first log tool call))
+android-log-mcp: 2026/10/15 22:28:41 avd-api29: recording starts
+android-log-mcp: 2026/10/15 22:28:42 avd-api29: device clock jump among the stored lines that may still be in the device buffer: read the whole buffer without -T and dropped lines already stored
+android-log-mcp: 2026/10/15 22:28:50 service stopping: stop requested (pid 3206733)
+android-log-mcp: 2026/10/15 22:28:50 service stopped
+android-log-mcp: 2026/10/15 22:28:50 service started: pid 3206755, version 0.7.0, protocol 2, root /workspace/scratch/c1/android-log-mcp, socket /workspace/scratch/c1/android-log-mcp/run/service.sock
+2026/10/15 22:28:50 started the android-log-mcp service (pid 3206755, /workspace/scratch/c1/android-log-mcp/bin/0.7.0-dd4cc78a1fc6/android-log-mcp)
+2026/10/15 22:28:50 using the android-log-mcp service pid 3206755 (version 0.7.0, protocol 2, root /workspace/scratch/c1/android-log-mcp, recording: idle (starts on the first log tool call))
+android-log-mcp: 2026/10/15 22:28:53 avd-api29: recording starts
+android-log-mcp: 2026/10/15 22:28:54 avd-api29: device clock jump among the stored lines that may still be in the device buffer: read the whole buffer without -T and dropped lines already stored

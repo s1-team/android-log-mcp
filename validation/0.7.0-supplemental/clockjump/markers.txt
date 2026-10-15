@@ -1,0 +1,24 @@
+device avd-api29 · device time Asia/Kuching (+08:00), date 2026-10-15 · device now 2026-10-15 23:01:14 (observed) · host now 2026-10-15 23:01:14 +08 · clock offset -0.81s
+filter parsed as: tag == "ALMJUMP3" AND device time in [2026-10-12 23:01:14, device now + 2 s)
+clock: 31 device clock jumps in the scanned range; 3 split the matches:
+clock: device clock jumped forward 23h59m58s at seq 25,205 (device time 2026-10-14 22:58:39 → 2026-10-15 22:58:40; host time 2026-10-15 22:58:44 +08); lines stay in arrival order, so device times jump there; matches: 6 before the jump, 2 after (only after it: after="c1.YXZkLWFwaTI5.ed8ba7b3.25204")
+clock_jump: seq=25205 delta=23h59m58.655694366s device_before=2026-10-14T22:58:39.212+08:00 device_after=2026-10-15T22:58:40.115+08:00 host=2026-10-15T22:58:44+08:00 source=live
+clock: device clock set back 1m54s at seq 24,015 (device time 2026-10-14 22:55:34 → 2026-10-14 22:55:36; host time 2026-10-15 22:57:30 +08); lines stay in arrival order, so device times jump there; matches: 3 before the jump, 5 after (only after it: after="c1.YXZkLWFwaTI5.ed8ba7b3.24014")
+clock_jump: seq=24015 delta=-1m54.354206624s device_before=2026-10-14T22:55:34.707+08:00 device_after=2026-10-14T22:55:36.945+08:00 host=2026-10-15T22:57:30+08:00 source=live
+clock: device clock set back 23h59m58s at seq 23,986 (device time 2026-10-15 22:55:20 → 2026-10-14 22:55:21; host time 2026-10-15 22:55:33 +08); lines stay in arrival order, so device times jump there; matches: 2 before the jump, 6 after (only after it: after="c1.YXZkLWFwaTI5.ed8ba7b3.23985")
+clock_jump: seq=23986 delta=-23h59m58.035962758s device_before=2026-10-15T22:55:20.257+08:00 device_after=2026-10-14T22:55:21.037+08:00 host=2026-10-15T22:55:33+08:00 source=lines
+matched 8 lines; showing newest 8 (22:54:21.387–22:59:38.509)
+count: total=8 count_exact=true
+format: time level pid/tid process tag: message
+22:54:21.387 I 10262/10262 ?(uid shell) ALMJUMP3: J0-before
+22:55:09.403 I 10345/10345 ?(uid shell) ALMJUMP3: J0b
+--- 2026-10-14 ---
+22:55:29.428 I 10456/10456 ?(uid root) ALMJUMP3: J1-after-back
+22:56:10.576 I 10551/10551 ?(uid root) ALMJUMP3: J1b
+22:56:57.146 I 10639/10639 ?(uid root) ALMJUMP3: J1c
+22:58:34.098 I 10784/10784 ?(uid root) ALMJUMP3: J1d-after-anr
+--- 2026-10-15 ---
+22:58:49.658 I 10808/10808 ?(uid root) ALMJUMP3: J2-forward
+22:59:38.509 I 10898/10898 ?(uid root) ALMJUMP3: J2b
+more: before="c1.YXZkLWFwaTI5.ed8ba7b3.23661"  ·  newer/wait: after="c1.YXZkLWFwaTI5.ed8ba7b3.25812"
+

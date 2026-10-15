@@ -1,0 +1,27 @@
+device avd-api29 · device time Asia/Kuching (+08:00) · 2026-10-14 19:32:51–2026-10-15 23:01:12 · device now 2026-10-15 23:01:14 (observed) · host now 2026-10-15 23:01:15 +08 · clock offset -0.81s
+filter parsed as: device time in [2026-10-12 23:01:14, device now + 2 s)
+clock: 31 device clock jumps in the scanned range; 20 split the matches; the newest 3:
+clock: device clock jumped forward 23h59m58s at seq 25,205 (device time 2026-10-14 22:58:39 → 2026-10-15 22:58:40; host time 2026-10-15 22:58:44 +08); lines stay in arrival order, so device times jump there; matches: 7,151 before the jump, 608 after (only after it: after="c1.YXZkLWFwaTI5.ed8ba7b3.25204")
+clock_jump: seq=25205 delta=23h59m58.655694366s device_before=2026-10-14T22:58:39.212+08:00 device_after=2026-10-15T22:58:40.115+08:00 host=2026-10-15T22:58:44+08:00 source=live
+clock: device clock set back 1m54s at seq 24,015 (device time 2026-10-14 22:55:34 → 2026-10-14 22:55:36; host time 2026-10-15 22:57:30 +08); lines stay in arrival order, so device times jump there; matches: 5,961 before the jump, 1,798 after (only after it: after="c1.YXZkLWFwaTI5.ed8ba7b3.24014")
+clock_jump: seq=24015 delta=-1m54.354206624s device_before=2026-10-14T22:55:34.707+08:00 device_after=2026-10-14T22:55:36.945+08:00 host=2026-10-15T22:57:30+08:00 source=live
+clock: device clock set back 23h59m58s at seq 23,986 (device time 2026-10-15 22:55:20 → 2026-10-14 22:55:21; host time 2026-10-15 22:55:33 +08); lines stay in arrival order, so device times jump there; matches: 5,932 before the jump, 1,827 after (only after it: after="c1.YXZkLWFwaTI5.ed8ba7b3.23985")
+clock_jump: seq=23986 delta=-23h59m58.035962758s device_before=2026-10-15T22:55:20.257+08:00 device_after=2026-10-14T22:55:21.037+08:00 host=2026-10-15T22:55:33+08:00 source=lines
+total 7,759 lines · by level: V 114 D 1,188 I 3,672 W 1,905 E 863 F 17
+top tags: dvm_lock_sample 686 · Looper 351 · system_server 332 · sysui_multi_action 311 · ActivityManager 291 · audio_hw_generic 269 · android.os.Debug 236 · memtrack 236 · KeyguardClockSwitch 219 · gralloc_ranchu 211 · …(171 more)
+top processes: ?(uid system) 2,330 · system_server 1,817 · com.android.systemui 856 · ?(uid root) 594 · com.example.logtest 425 · …(34 more)
+top repeated messages (digits normalized to #):
+  236× android.os.Debug: failed to get memory consumption info: -#
+  236× memtrack: Couldn't load memtrack module
+  219× KeyguardClockSwitch: Updating clock: ##
+  211× gralloc_ranchu: gralloc_alloc: Creating ashmem region of size #
+  202× netmgr: Failed to open QEMU pipe 'qemud:network': Invalid argument
+crashes in range: 10 (cr22 22:59:19 java.lang.RuntimeException; cr21 22:56:40 SIGSEGV (SEGV_MAPERR) fault addr 0x0 in liblogtest.so [#00 pc 7fc]; cr20 22:56:37 SIGSEGV (SEGV_MAPERR) fault addr 0x0; …7 more) · ANRs: 2 (anr7 22:58:23 Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }; anr6 22:57:50 Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) })
+latest errors (5):
+  22:59:52.311 E 1737 netd ResolverController: No valid NAT64 prefix (100, <unspecified>/0)
+  23:00:22.027 E 1995 system_server memtrack: Couldn't load memtrack module
+  23:00:48.608 E 1800 netmgr netmgr: Failed to open QEMU pipe 'qemud:network': Invalid argument
+  23:00:49.428 E 1814 wifi_forwarder wifi_forwarder: RemoteConnection failed to initialize: RemoteConnection failed to open pipe
+  23:00:58.108 E 1737 netd ResolverController: No valid NAT64 prefix (100, <unspecified>/0)
+next: logcat_search with filter/tags/package narrowed (view="lines"), or logcat_crashes id="cr22"
+

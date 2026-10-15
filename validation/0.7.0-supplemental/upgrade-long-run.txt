@@ -1,0 +1,22 @@
+cache dir length 75; primary socket would be 108 bytes (limit 100)
+== 0.6.0 service
+android-log-mcp: 2026/10/15 22:38:30 started the android-log-mcp service (pid 3232859, /workspace/scratch/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/cache/android-log-mcp/bin/0.6.0-6af1e32c3a4
+android-log-mcp: 2026/10/15 22:38:30 using the android-log-mcp service pid 3232859 (version 0.6.0, protocol 2, root /workspace/scratch/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/cache/android-
+service: background service pid 3232859, version 0.6.0, protocol 2, up 10s, clients 1
+u_str LISTEN 0      0                         /tmp/alm-1000/4b40a8146e3faa99.sock 11465725            * 0   
+== 0.7.0 client
+service: background service pid 3233241, version 0.7.0, protocol 2, up 10s, clients 1
+root: /workspace/scratch/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/cache/android-log-mcp
+recording: 1 device(s): avd-api29
+  avd-api29: recording; backfill in progress (1,490 lines so far; earliest 2026-09-15 19:45:08.746); no idle stop
+u_str LISTEN 0      0                         /tmp/alm-1000/4b40a8146e3faa99.sock 11474093            * 0   
+total 44
+drwx------ 2 box  box   4096 Oct 15 22:38 .
+drwxrwxrwt 1 root root 32768 Oct 15 22:38 ..
+srw------- 1 box  box      0 Oct 15 22:38 4b40a8146e3faa99.sock
+config.lock
+record.lock
+service.json
+service.lock
+spawn.lock
+service: stopped (pid 3233241)

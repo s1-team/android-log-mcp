@@ -1,0 +1,100 @@
+anr7 ANR · 2026-10-14 22:58:23.050 · pid 10673 com.example.logtest · sources: logcat:system, dropbox:data_app_anr
+package: com.example.logtest
+reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+cpu (first lines):
+  CPU usage from 0ms to 32191ms later (2026-10-14 22:57:49.688 to 2026-10-14 22:58:21.879):
+    88% 1995/system_server: 33% user + 54% kernel / faults: 2173 minor 13 major
+    87% 10367/adbd: 8.8% user + 78% kernel / faults: 552 minor
+    27% 1746/android.system.suspend@1.0-service: 9.5% user + 18% kernel
+    25% 10728/logcat: 8.2% user + 17% kernel
+    23% 1771/android.hardware.sensors@1.0-service: 4.9% user + 19% kernel
+    23% 10747/logcat: 7.3% user + 16% kernel
+    15% 1611/logd: 2.8% user + 13% kernel / faults: 12 minor
+    14% 2178/com.android.systemui: 6.3% user + 8.4% kernel / faults: 127 minor
+    9.5% 1891/llkd: 2.4% user + 7% kernel
+main thread [traces: data_app_anr]:
+  "main" prio=5 tid=1 Sleeping
+    | group="main" sCount=1 dsCount=0 flags=1 obj=0x717613e0 self=0x781f47097000
+    | sysTid=10673 nice=-10 cgrp=default sched=0/0 handle=0x781f47620ed8
+    | state=S schedstat=( 7384884092 4420126433 983 ) utm=604 stm=133 core=2 HZ=100
+    | stack=0x7ffe28b33000-0x7ffe28b35000 stackSize=8192KB
+    | held mutexes=
+    at java.lang.Thread.sleep(Native method)
+    - sleeping on <0x0f385ed3> (a java.lang.Object)
+    at java.lang.Thread.sleep(Thread.java:440)
+    - locked <0x0f385ed3> (a java.lang.Object)
+    at java.lang.Thread.sleep(Thread.java:356)
+    at android.os.SystemClock.sleep(SystemClock.java:131)
+    at com.example.logtest.TriggerReceiver.onReceive(TriggerReceiver.java:15)
+    at android.app.ActivityThread.handleReceiver(ActivityThread.java:3788)
+    at android.app.ActivityThread.access$1400(ActivityThread.java:219)
+    at android.app.ActivityThread$H.handleMessage(ActivityThread.java:1870)
+    at android.os.Handler.dispatchMessage(Handler.java:107)
+    at android.os.Looper.loop(Looper.java:214)
+    at android.app.ActivityThread.main(ActivityThread.java:7356)
+    at java.lang.reflect.Method.invoke(Native method)
+    at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+    at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+before crash (pid 10673, last 40 lines):
+  22:57:22.863 I 10673/10673 com.example.logtest MyRepo: feed loaded items=20
+  22:57:22.864 D 10673/10673 com.example.logtest OkHttp: --> GET https://api.example.com/v1/feed
+  22:57:22.864 D 10673/10673 com.example.logtest OkHttp: <-- 200 https://api.example.com/v1/feed (312ms)
+  22:57:22.934 W 10673/10673 com.example.logtest MyRepo: token refresh failed
+    java.io.IOException: token endpoint failed
+    	at com.example.logtest.MainActivity.onCreate(MainActivity.java:20)
+    	at android.app.Activity.performCreate(Activity.java:7802)
+    	at android.app.Activity.performCreate(Activity.java:7791)
+    	at android.app.Instrumentation.callActivityOnCreate(Instrumentation.java:1299)
+    	at android.app.ActivityThread.performLaunchActivity(ActivityThread.java:3245)
+    	at android.app.ActivityThread.handleLaunchActivity(ActivityThread.java:3409)
+    	at android.app.servertransaction.LaunchActivityItem.execute(LaunchActivityItem.java:83)
+    	at android.app.servertransaction.TransactionExecutor.executeCallbacks(TransactionExecutor.java:135)
+    	at android.app.servertransaction.TransactionExecutor.execute(TransactionExecutor.java:95)
+    	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2016)
+    	at android.os.Handler.dispatchMessage(Handler.java:107)
+    	at android.os.Looper.loop(Looper.java:214)
+    	at android.app.ActivityThread.main(ActivityThread.java:7356)
+    	at java.lang.reflect.Method.invoke(Native Method)
+    	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+    	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+    Caused by: java.lang.IllegalStateException: Unable to resolve host "push.example.com"
+    	... 16 more
+  22:57:22.780 I 10673/10673 com.example.logtest auditd: type=1400 audit(0.0:40): avc: denied { write } for comm="RenderThread" name="property_service" dev="tmpfs" ino=706 scontext=u:r:untrusted_app:s0:c146,c256,c512,c768 tcontext=u:object_r:property_socket:s0 tclass=sock_file permissive=0 app=com.example.logtest
+  22:57:22.935 E 10673/10673 com.example.logtest LogTest: multi-line message
+    line two
+    	line three (tab)
+  22:57:22.780 W 10673/10673 com.example.logtest RenderThread: type=1400 audit(0.0:40): avc: denied { write } for name="property_service" dev="tmpfs" ino=706 scontext=u:r:untrusted_app:s0:c146,c256,c512,c768 tcontext=u:object_r:property_socket:s0 tclass=sock_file permissive=0 app=com.example.logtest
+  22:57:23.436 D 10673/10703 com.example.logtest libEGL: loaded /vendor/lib64/egl/libEGL_emulation.so
+  22:57:23.721 D 10673/10703 com.example.logtest libEGL: loaded /vendor/lib64/egl/libGLESv1_CM_emulation.so
+  22:57:23.981 D 10673/10703 com.example.logtest libEGL: loaded /vendor/lib64/egl/libGLESv2_emulation.so
+  22:57:25.045 W 10673/10687 com.example.logtest example.logtes: Suspending all threads took: 6.165ms
+  22:57:26.119 I 10673/10673 com.example.logtest am_on_create_called: [0,com.example.logtest.MainActivity,performCreate]
+  22:57:26.198 D 10673/10673 com.example.logtest LogTest: onStart
+  22:57:26.201 I 10673/10673 com.example.logtest am_on_start_called: [0,com.example.logtest.MainActivity,handleStartActivity]
+  22:57:26.397 I 10673/10673 com.example.logtest LogTest: onResume
+  22:57:26.399 I 10673/10673 com.example.logtest am_on_resume_called: [0,com.example.logtest.MainActivity,RESUME_ACTIVITY]
+  22:57:27.057 I 10673/10673 com.example.logtest am_on_top_resumed_gained_called: [0,com.example.logtest.MainActivity,topStateChangedWhenResumed]
+  22:57:28.152 I 10673/10700 com.example.logtest example.logtes: Waiting for a blocking GC ProfileSaver
+  22:57:28.170 I 10673/10687 com.example.logtest example.logtes: CollectorTransition concurrent copying GC freed 1849(226KB) AllocSpace objects, 3(60KB) LOS objects, 55% free, 1217KB/2753KB, paused 1.090ms total 1.507s
+  22:57:28.185 I 10673/10700 com.example.logtest example.logtes: WaitForGcToComplete blocked ProfileSaver on HeapTrim for 37.967ms
+  22:57:28.488 D 10673/10701 com.example.logtest HostConnection: HostConnection::get() New Host Connection established 0x781eb769f180, tid 10701
+  22:57:28.575 D 10673/10701 com.example.logtest HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_hwc_color_transform GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+  22:57:28.749 D 10673/10701 com.example.logtest EGL_emulation: eglCreateContext: 0x781eb769f360: maj 3 min 0 rcv 3
+  22:57:28.767 D 10673/10701 com.example.logtest EGL_emulation: eglMakeCurrent: 0x781eb769f360: ver 3 0 (tinfo 0x781eb7618da0)
+  22:57:29.006 W 10673/10701 com.example.logtest Gralloc3: mapper 3.x is not supported
+  22:57:29.107 D 10673/10701 com.example.logtest HostConnection: createUnique: call
+  22:57:29.113 D 10673/10701 com.example.logtest HostConnection: HostConnection::get() New Host Connection established 0x781eb769f4a0, tid 10701
+  22:57:29.122 D 10673/10701 com.example.logtest HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_hwc_color_transform GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+  22:57:29.136 D 10673/10701 com.example.logtest eglCodecCommon: allocate: Ask for block of size 0x1000
+  22:57:29.137 D 10673/10701 com.example.logtest eglCodecCommon: allocate: ioctl allocate returned offset 0x3ffff4000 size 0x2000
+  22:57:29.791 D 10673/10701 com.example.logtest EGL_emulation: eglMakeCurrent: 0x781eb769f360: ver 3 0 (tinfo 0x781eb7618da0)
+  22:57:31.676 I 10673/10701 com.example.logtest OpenGLRenderer: Davey! duration=4965ms; Flags=1, IntendedVsync=15477518071950, Vsync=15477934738600, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=15477953810058, AnimationStart=15477957298612, PerformTraversalsStart=15477957520756, DrawStart=15480045112085, SyncQueued=15480623466134, SyncStart=15480656327290, IssueDrawCommandsStart=15480658196154, SwapBuffers=15481540389371, FrameCompleted=15482516111951, DequeueBufferDuration=2730000, QueueBufferDuration=21933000, 
+  22:57:32.084 I 10673/10673 com.example.logtest Choreographer: Skipped 288 frames!  The application may be doing too much work on its main thread.
+  22:57:32.482 I 10673/10701 com.example.logtest OpenGLRenderer: Davey! duration=5187ms; Flags=0, IntendedVsync=15478134658414, Vsync=15482934658222, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=15482942909461, AnimationStart=15482951202653, PerformTraversalsStart=15482995177602, DrawStart=15483087893080, SyncQueued=15483142050774, SyncStart=15483157091841, IssueDrawCommandsStart=15483157752589, SwapBuffers=15483186823586, FrameCompleted=15483337177324, DequeueBufferDuration=2357000, QueueBufferDuration=6976000, 
+  22:57:32.953 I 10673/10687 com.example.logtest example.logtes: NativeAlloc concurrent copying GC freed 772(53KB) AllocSpace objects, 0(0B) LOS objects, 55% free, 1247KB/2783KB, paused 14.611ms total 3.538s
+  22:57:39.766 I 10673/10673 com.example.logtest LogTest: TriggerReceiver what=anr_broadcast
+  22:58:00.611 I 10673/10685 com.example.logtest example.logtes: Thread[7,tid=10685,WaitingInMainSignalCatcherLoop,Thread*=0x781eb7211000,peer=0x12c40a90,"Signal Catcher"]: reacting to signal 3
+  22:58:00.650 I 10673/10685 com.example.logtest example.logtes: 
+  22:58:03.031 I 10673/10685 com.example.logtest example.logtes: Wrote stack traces to tombstoned
+  22:58:09.776 W 10673/10673 com.example.logtest LogTest: receiver unblocked
+

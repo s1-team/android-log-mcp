@@ -1,0 +1,70 @@
+cr22 Java crash · 2026-10-15 22:59:19.937 · pid 10845 com.example.logtest (thread main) · sources: logcat:crash, events:am_crash, dropbox:data_app_crash
+package: com.example.logtest
+stack:
+  java.lang.RuntimeException: LogTest wrapped crash
+  	at com.example.logtest.Triggers.run(Triggers.java:22)
+  	at com.example.logtest.MainActivity.lambda$onResume$1$com-example-logtest-MainActivity(MainActivity.java:42)
+  	at com.example.logtest.MainActivity$$ExternalSyntheticLambda0.run(D8$$SyntheticClass:0)
+  	at android.os.Handler.handleCallback(Handler.java:883)
+  	at android.os.Handler.dispatchMessage(Handler.java:100)
+  	at android.os.Looper.loop(Looper.java:214)
+  	at android.app.ActivityThread.main(ActivityThread.java:7356)
+  	at java.lang.reflect.Method.invoke(Native Method)
+  	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+  	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+  Caused by: java.lang.IllegalStateException: repo not ready
+  	at com.example.logtest.Triggers$Repo.load(Triggers.java:53)
+  	at com.example.logtest.Triggers.run(Triggers.java:21)
+  	... 9 more
+same signature: cr19 (2026-10-14 22:55:55), cr18 (2026-10-15 22:54:49), cr17 (2026-10-14 22:43:13), cr16 (2026-10-15 22:42:23)
+before crash (pid 10845, last 28 lines):
+  22:59:07.988 I 10845/10845 com.example.logtest example.logtes: Late-enabling -Xcheck:jni
+  22:59:08.741 E 10845/10845 com.example.logtest example.logtes: Unknown bits set in runtime_flags: 0x8000
+  22:59:09.613 W 10845/10845 com.example.logtest example.logtes: Unexpected CPU variant for X86 using defaults: x86_64
+  22:59:12.142 W 10845/10845 com.example.logtest example.logtes: Verification of void com.android.org.conscrypt.TrustedCertificateStore$PreloadHolder.<clinit>() took 133.495ms
+  22:59:12.566 I 10845/10845 com.example.logtest service_manager_slow: [83,activity]
+  22:59:12.685 I 10845/10861 com.example.logtest example.logtes: Background young concurrent copying GC freed 12150(4629KB) AllocSpace objects, 0(0B) LOS objects, 86% free, 990KB/7134KB, paused 211.761ms total 1.933s
+  22:59:16.076 D 10845/10871 com.example.logtest libEGL: Emulator has host GPU support, qemu.gles is set to 1.
+  22:59:16.098 W 10845/10871 com.example.logtest libc: Unable to set property "qemu.gles" to "1": connection failed; errno=13 (Permission denied)
+  22:59:16.070 I 10845/10845 com.example.logtest auditd: type=1400 audit(0.0:41): avc: denied { write } for comm="RenderThread" name="property_service" dev="tmpfs" ino=706 scontext=u:r:untrusted_app:s0:c146,c256,c512,c768 tcontext=u:object_r:property_socket:s0 tclass=sock_file permissive=0 app=com.example.logtest
+  22:59:16.070 W 10845/10845 com.example.logtest RenderThread: type=1400 audit(0.0:41): avc: denied { write } for name="property_service" dev="tmpfs" ino=706 scontext=u:r:untrusted_app:s0:c146,c256,c512,c768 tcontext=u:object_r:property_socket:s0 tclass=sock_file permissive=0 app=com.example.logtest
+  22:59:16.377 V 10845/10845 com.example.logtest LogTest: onCreate verbose
+  22:59:16.385 D 10845/10845 com.example.logtest LogTest: onCreate debug pid=10845 uid=10146
+  22:59:16.387 I 10845/10845 com.example.logtest MyRepo: feed loaded items=20
+  22:59:16.388 D 10845/10845 com.example.logtest OkHttp: --> GET https://api.example.com/v1/feed
+  22:59:16.388 D 10845/10845 com.example.logtest OkHttp: <-- 200 https://api.example.com/v1/feed (312ms)
+  22:59:16.439 W 10845/10845 com.example.logtest MyRepo: token refresh failed
+    java.io.IOException: token endpoint failed
+    	at com.example.logtest.MainActivity.onCreate(MainActivity.java:20)
+    	at android.app.Activity.performCreate(Activity.java:7802)
+    	at android.app.Activity.performCreate(Activity.java:7791)
+    	at android.app.Instrumentation.callActivityOnCreate(Instrumentation.java:1299)
+    	at android.app.ActivityThread.performLaunchActivity(ActivityThread.java:3245)
+    	at android.app.ActivityThread.handleLaunchActivity(ActivityThread.java:3409)
+    	at android.app.servertransaction.LaunchActivityItem.execute(LaunchActivityItem.java:83)
+    	at android.app.servertransaction.TransactionExecutor.executeCallbacks(TransactionExecutor.java:135)
+    	at android.app.servertransaction.TransactionExecutor.execute(TransactionExecutor.java:95)
+    	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2016)
+    	at android.os.Handler.dispatchMessage(Handler.java:107)
+    	at android.os.Looper.loop(Looper.java:214)
+    	at android.app.ActivityThread.main(ActivityThread.java:7356)
+    	at java.lang.reflect.Method.invoke(Native Method)
+    	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+    	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+    Caused by: java.lang.IllegalStateException: Unable to resolve host "push.example.com"
+    	... 16 more
+  22:59:16.440 E 10845/10845 com.example.logtest LogTest: multi-line message
+    line two
+    	line three (tab)
+  22:59:16.654 D 10845/10871 com.example.logtest libEGL: loaded /vendor/lib64/egl/libEGL_emulation.so
+  22:59:16.823 D 10845/10871 com.example.logtest libEGL: loaded /vendor/lib64/egl/libGLESv1_CM_emulation.so
+  22:59:17.162 D 10845/10871 com.example.logtest libEGL: loaded /vendor/lib64/egl/libGLESv2_emulation.so
+  22:59:18.978 I 10845/10845 com.example.logtest am_on_create_called: [0,com.example.logtest.MainActivity,performCreate]
+  22:59:19.031 D 10845/10845 com.example.logtest LogTest: onStart
+  22:59:19.033 I 10845/10845 com.example.logtest am_on_start_called: [0,com.example.logtest.MainActivity,handleStartActivity]
+  22:59:19.164 I 10845/10845 com.example.logtest LogTest: onResume
+  22:59:19.175 I 10845/10845 com.example.logtest am_on_resume_called: [0,com.example.logtest.MainActivity,RESUME_ACTIVITY]
+  22:59:19.850 I 10845/10845 com.example.logtest am_on_top_resumed_gained_called: [0,com.example.logtest.MainActivity,topStateChangedWhenResumed]
+  22:59:19.882 I 10845/10845 com.example.logtest LogTest: trigger what=crash_caused pid=10845
+  22:59:19.894 D 10845/10845 com.example.logtest AndroidRuntime: Shutting down VM
+

@@ -1,0 +1,24 @@
+23:03:49 caught up (old root)
+23:03:51 marker S1a
+23:03:54 marker S1b
+23:03:56 marker S1c
+recording continues there for: [avd-api29] (history before the switch stays in the old root)
+old root kept: /workspace/scratch/c7/android-log-mcp
+23:04:03 marker S2a
+23:04:06 marker S2b
+service: stopped (pid 3423847)
+23:04:22 service restarted; waiting for catch-up (whole-buffer re-read)
+23:05:12 caught up (new root)
+23:05:15 marker S3a
+android-log-mcp: 2026/10/15 23:04:01 set-root requested by pid 3428379: /workspace/scratch/c7-newroot (--keep-old)
+android-log-mcp: 2026/10/15 23:04:01 data root switched: /workspace/scratch/c7/android-log-mcp -> /workspace/scratch/c7-newroot (1 devices continue there)
+service: stopped (pid 3429497)
+old root lines 25862 distinct 25862 | new root lines 20 distinct 20
+duplicate keys inside old: 0 inside new: 0
+keys in BOTH roots (re-read duplicates): 0
+S1a old 1 new 0
+S1b old 1 new 0
+S1c old 1 new 0
+S2a old 0 new 1
+S2b old 0 new 1
+S3a old 0 new 1

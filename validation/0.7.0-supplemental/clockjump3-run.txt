@@ -1,0 +1,21 @@
+22:54:19 start auto_time=1 device-host offset=-1s uid=2000
+22:54:21 caught up
+22:54:24 marker J0-before (device 2026-10-15_22:54:22)
+22:54:53 trigger crash_caused
+22:55:12 marker J0b (device 2026-10-15_22:55:11)
+Wed Oct 14 22:55:21 +08 2026
+22:55:25 clock set back 1 day: device 2026-10-14_22:55:23
+22:55:33 marker J1-after-back (device 2026-10-14_22:55:30)
+22:55:56 trigger crash_caused
+22:56:14 marker J1b (device 2026-10-14_22:56:11)
+22:56:37 trigger native
+22:57:02 marker J1c (device 2026-10-14_22:56:59)
+22:57:52 trigger anr_broadcast
+22:58:41 marker J1d-after-anr (device 2026-10-14_22:58:38)
+Thu Oct 15 22:58:40 +08 2026
+22:58:46 clock restored forward: device 2026-10-15_22:58:42
+22:58:55 marker J2-forward (device 2026-10-15_22:58:51)
+22:59:25 trigger crash_caused
+22:59:44 marker J2b (device 2026-10-15_22:59:40)
+23:00:05 RESTORED auto_time=1 uid=2000 device-host offset=0s
+23:01:15 done

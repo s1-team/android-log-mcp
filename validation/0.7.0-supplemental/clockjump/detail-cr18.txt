@@ -1,0 +1,71 @@
+cr18 Java crash · 2026-10-15 22:54:49.965 · pid 10291 com.example.logtest (thread main) · sources: logcat:crash, events:am_crash, dropbox:data_app_crash
+package: com.example.logtest
+stack:
+  java.lang.RuntimeException: LogTest wrapped crash
+  	at com.example.logtest.Triggers.run(Triggers.java:22)
+  	at com.example.logtest.MainActivity.lambda$onResume$1$com-example-logtest-MainActivity(MainActivity.java:42)
+  	at com.example.logtest.MainActivity$$ExternalSyntheticLambda0.run(D8$$SyntheticClass:0)
+  	at android.os.Handler.handleCallback(Handler.java:883)
+  	at android.os.Handler.dispatchMessage(Handler.java:100)
+  	at android.os.Looper.loop(Looper.java:214)
+  	at android.app.ActivityThread.main(ActivityThread.java:7356)
+  	at java.lang.reflect.Method.invoke(Native Method)
+  	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+  	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+  Caused by: java.lang.IllegalStateException: repo not ready
+  	at com.example.logtest.Triggers$Repo.load(Triggers.java:53)
+  	at com.example.logtest.Triggers.run(Triggers.java:21)
+  	... 9 more
+same signature: cr22 (2026-10-15 22:59:19), cr19 (2026-10-14 22:55:55), cr17 (2026-10-14 22:43:13), cr16 (2026-10-15 22:42:23)
+before crash (pid 10291, last 29 lines):
+  22:54:37.428 I 10291/10291 com.example.logtest example.logtes: Late-enabling -Xcheck:jni
+  22:54:38.163 E 10291/10291 com.example.logtest example.logtes: Unknown bits set in runtime_flags: 0x8000
+  22:54:38.309 W 10291/10291 com.example.logtest example.logtes: Unexpected CPU variant for X86 using defaults: x86_64
+  22:54:39.509 I 10291/10291 com.example.logtest service_manager_slow: [94,activity]
+  22:54:41.765 I 10291/10304 com.example.logtest example.logtes: Background young concurrent copying GC freed 11555(4387KB) AllocSpace objects, 0(0B) LOS objects, 86% free, 961KB/7105KB, paused 8.669ms total 1.531s
+  22:54:42.716 W 10291/10309 com.example.logtest example.logtes: Long monitor contention with owner main (10291) at java.lang.String sun.util.locale.BaseLocale.getLanguage()(BaseLocale.java:92) waiters=0 in void android.app.ActivityThread.updatePendingConfiguration(android.content.res.Configuration) for 399ms
+  22:54:42.793 I 10291/10309 com.example.logtest dvm_lock_sample: [com.example.logtest,0,Binder:10291_2,399,ActivityThread.java,3024,void android.app.ActivityThread.updatePendingConfiguration(android.content.res.Configuration),BaseLocale.java,92,java.lang.String sun.util.locale.BaseLocale.getLanguage(),79]
+  22:54:44.283 D 10291/10316 com.example.logtest libEGL: Emulator has host GPU support, qemu.gles is set to 1.
+  22:54:44.280 I 10291/10291 com.example.logtest auditd: type=1400 audit(0.0:37): avc: denied { write } for comm="RenderThread" name="property_service" dev="tmpfs" ino=706 scontext=u:r:untrusted_app:s0:c146,c256,c512,c768 tcontext=u:object_r:property_socket:s0 tclass=sock_file permissive=0 app=com.example.logtest
+  22:54:44.293 W 10291/10316 com.example.logtest libc: Unable to set property "qemu.gles" to "1": connection failed; errno=13 (Permission denied)
+  22:54:44.280 W 10291/10291 com.example.logtest RenderThread: type=1400 audit(0.0:37): avc: denied { write } for name="property_service" dev="tmpfs" ino=706 scontext=u:r:untrusted_app:s0:c146,c256,c512,c768 tcontext=u:object_r:property_socket:s0 tclass=sock_file permissive=0 app=com.example.logtest
+  22:54:44.887 V 10291/10291 com.example.logtest LogTest: onCreate verbose
+  22:54:44.888 D 10291/10291 com.example.logtest LogTest: onCreate debug pid=10291 uid=10146
+  22:54:44.888 I 10291/10291 com.example.logtest MyRepo: feed loaded items=20
+  22:54:44.888 D 10291/10291 com.example.logtest OkHttp: --> GET https://api.example.com/v1/feed
+  22:54:44.920 D 10291/10291 com.example.logtest OkHttp: <-- 200 https://api.example.com/v1/feed (312ms)
+  22:54:44.999 W 10291/10291 com.example.logtest MyRepo: token refresh failed
+    java.io.IOException: token endpoint failed
+    	at com.example.logtest.MainActivity.onCreate(MainActivity.java:20)
+    	at android.app.Activity.performCreate(Activity.java:7802)
+    	at android.app.Activity.performCreate(Activity.java:7791)
+    	at android.app.Instrumentation.callActivityOnCreate(Instrumentation.java:1299)
+    	at android.app.ActivityThread.performLaunchActivity(ActivityThread.java:3245)
+    	at android.app.ActivityThread.handleLaunchActivity(ActivityThread.java:3409)
+    	at android.app.servertransaction.LaunchActivityItem.execute(LaunchActivityItem.java:83)
+    	at android.app.servertransaction.TransactionExecutor.executeCallbacks(TransactionExecutor.java:135)
+    	at android.app.servertransaction.TransactionExecutor.execute(TransactionExecutor.java:95)
+    	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2016)
+    	at android.os.Handler.dispatchMessage(Handler.java:107)
+    	at android.os.Looper.loop(Looper.java:214)
+    	at android.app.ActivityThread.main(ActivityThread.java:7356)
+    	at java.lang.reflect.Method.invoke(Native Method)
+    	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+    	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+    Caused by: java.lang.IllegalStateException: Unable to resolve host "push.example.com"
+    	... 16 more
+  22:54:45.000 E 10291/10291 com.example.logtest LogTest: multi-line message
+    line two
+    	line three (tab)
+  22:54:45.035 D 10291/10316 com.example.logtest libEGL: loaded /vendor/lib64/egl/libEGL_emulation.so
+  22:54:45.369 D 10291/10316 com.example.logtest libEGL: loaded /vendor/lib64/egl/libGLESv1_CM_emulation.so
+  22:54:45.474 D 10291/10316 com.example.logtest libEGL: loaded /vendor/lib64/egl/libGLESv2_emulation.so
+  22:54:48.882 I 10291/10291 com.example.logtest am_on_create_called: [0,com.example.logtest.MainActivity,performCreate]
+  22:54:48.984 D 10291/10291 com.example.logtest LogTest: onStart
+  22:54:48.991 I 10291/10291 com.example.logtest am_on_start_called: [0,com.example.logtest.MainActivity,handleStartActivity]
+  22:54:49.205 I 10291/10291 com.example.logtest LogTest: onResume
+  22:54:49.226 I 10291/10291 com.example.logtest am_on_resume_called: [0,com.example.logtest.MainActivity,RESUME_ACTIVITY]
+  22:54:49.862 I 10291/10291 com.example.logtest am_on_top_resumed_gained_called: [0,com.example.logtest.MainActivity,topStateChangedWhenResumed]
+  22:54:49.887 I 10291/10291 com.example.logtest LogTest: trigger what=crash_caused pid=10291
+  22:54:49.901 D 10291/10291 com.example.logtest AndroidRuntime: Shutting down VM
+

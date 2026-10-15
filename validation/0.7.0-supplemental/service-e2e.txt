@@ -1,0 +1,67 @@
+22:25:20 default root /workspace/scratch/c1/android-log-mcp control /workspace/scratch/c1/android-log-mcp
+22:25:20 PASS starts at the default root
+22:25:42 service pid seen by A/B: 3201589 3201589 clients A/B: 3201574 3201598
+22:25:42 PASS two MCP clients share one background service
+22:25:42 service: background service pid 3201589, version 0.7.0, protocol 2, up 10s, clients 2
+root: /workspace/scratch/c1/android-log-mcp
+recording: 1 device(s): avd-api29
+  avd-api29: recording; backfill in progress (6,339 of ~22,000 lines; earliest 2026-10-12 00:11:27.066); no idle stop
+linger: per device, after its last log tool call: max(10m0s, 2 × the device's log buffer span), at most 1h0m0s (default; each recording device shows its own)
+lifetime: exits 30s after there are no clients, no active pin and no recorded device; staying: 2 client(s) connected
+service log: /workspace/scratch/c1/android-log-mcp/log/service.log
+22:25:42 PASS service status reports 3 connections (2 MCP clients + this status call)
+22:25:44 PASS recording
+22:25:46 logged marker alm-1b526e-1
+22:25:48 PASS marker 1 recorded
+22:25:48 PASS service 3201589 killed (SIGKILL)
+22:25:49 logged marker alm-1b526e-2
+22:26:11 new service pid seen by A/B: 3201899 3201899
+22:26:11 PASS both clients recovered with one new service
+22:26:12 PASS line logged while the service was down recorded, nothing twice: {'alm-1b526e-1': 1, 'alm-1b526e-2': 1}
+22:26:15 logged marker alm-1b526e-3
+22:26:16 PASS marker 3 recorded before the switch
+22:26:17 logged marker alm-1b526e-3b
+22:26:18 PASS set-root /tmp/alm-newroot --keep-old (exit 0) 
+22:26:18 set-root: {"old_root": "/workspace/scratch/c1/android-log-mcp", "new_root": "/tmp/alm-newroot", "old": "keep", "devices": ["avd-api29"], "service_pid": 3201899, "took": "58ms"}
+22:26:18 PASS switched by the running service (same pid)
+22:26:29 PASS service records in the new root (status)
+22:26:30 logged marker alm-1b526e-4
+22:26:44 logged marker alm-1b526e-5
+22:26:46 default (old) root: {'alm-1b526e-1': 1, 'alm-1b526e-2': 1, 'alm-1b526e-3': 1, 'alm-1b526e-3b': 0, 'alm-1b526e-4': 0, 'alm-1b526e-5': 0}
+22:26:46 new root:           {'alm-1b526e-1': 0, 'alm-1b526e-2': 0, 'alm-1b526e-3': 0, 'alm-1b526e-3b': 1, 'alm-1b526e-4': 1, 'alm-1b526e-5': 1}
+22:26:46 PASS boundary line repeated by logcat -T is not stored again in the new root
+22:26:46 PASS line logged right before the switch recorded exactly once: old 0, new 1
+22:26:46 PASS after the switch, lines go to the new root
+22:26:46 PASS set-root back /workspace/scratch/c1/android-log-mcp --delete-old (exit 0) 
+22:26:46 set-root back: {"old_root": "/tmp/alm-newroot", "new_root": "/workspace/scratch/c1/android-log-mcp", "old": "delete", "devices": ["avd-api29"], "service_pid": 3201899, "removed": ["/tmp/alm-newroot/log", "/tmp/alm-newroot/tmp", "/tmp/alm-newroot/v1"], "old_root_removed": true, "took": "72ms"}
+22:26:46 PASS old root deleted
+22:27:46 FAIL service records in the default root again
+22:27:46 logged marker alm-1b526e-6
+22:27:47 default root after switching back: {'alm-1b526e-1': 1, 'alm-1b526e-2': 1, 'alm-1b526e-3': 1, 'alm-1b526e-3b': 1, 'alm-1b526e-4': 1, 'alm-1b526e-5': 1, 'alm-1b526e-6': 1}
+22:27:47 FAIL boundary line of the new root not stored again after switching back
+22:27:47 FAIL default root keeps its history; new-root history is not in it (as documented)
+22:27:47 service stop: service: stopped (pid 3201899)
+22:27:58 linger line: ['linger: per device, after its last log tool call: 5s (ANDROID_LOG_MCP_LINGER)']
+22:27:58 PASS logcat_status started recording
+22:28:04 PASS device stopped 6.0s after the last call (linger 5s) with the client connected
+22:28:07 PASS service 3205003 stays while the client is connected
+22:28:38 PASS service 3205003 exited 31.0s after the last client (ExitGrace 30s)
+22:28:50 default linger line: ["linger: per device, after its last log tool call: max(10m0s, 2 × the device's log buffer span), at most 1h0m0s (default; each recording device shows its own)"]
+22:28:50 PASS default linger reported
+22:28:50 service stop: service: stopped (pid 3206376)
+22:28:54 record --for 20s: service: pid 3206755, version 0.7.0
+pinned until 2026-10-15 22:29:13 (in 19s)
+avd-api29: recording (backfill in progress (0 lines so far); kept by its pin)
+  pinned until 2026-10-15 22:29:13 (in 19s; set by android-log-mcp record (pid 3206746) at 22:28:53)
+backfill in progress; check with: android-log-mcp record 
+22:28:54 PASS record --for started service 3206755 detached
+22:28:55 logged marker alm-1b526e-7
+22:29:05 PASS recording without clients or calls while pinned
+22:29:45 PASS service 3206755 exited after the pin ended
+22:29:45 FAIL marker logged during the pin was recorded
+
+RESULT: FAILED: service records in the default root again; boundary line of the new root not stored again after switching back; default root keeps its history; new-root history is not in it (as documented); marker logged during the pin was recorded
+
+real	4m24.694s
+user	0m1.261s
+sys	0m0.750s

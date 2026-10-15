@@ -1,0 +1,62 @@
+== start 0.6.0 service
+android-log-mcp: 2026/10/15 22:35:43 started the android-log-mcp service (pid 3223743, /workspace/scratch/c4/android-log-mcp/bin/0.6.0-6af1e32c3a40/android-log-mcp)
+android-log-mcp: 2026/10/15 22:35:43 using the android-log-mcp service pid 3223743 (version 0.6.0, protocol 2, root /workspace/scratch/c4/android-log-mcp, recording: idle (starts on the first log tool
+service: background service pid 3223743, version 0.6.0, protocol 2, up 11s, clients 1
+root: /workspace/scratch/c4/android-log-mcp
+recording: 1 device(s): avd-api29
+0.6.0 pid 3223743
+control dir / sockets before:
+/workspace/scratch/c4/android-log-mcp/run/service.sock
+/workspace/scratch/c4/android-log-mcp/run/service.lock
+/workspace/scratch/c4/android-log-mcp/run/service.json
+total 12
+drwx------ 2 box box 4096 Oct 15 22:35 .
+drwx------ 7 box box 4096 Oct 15 22:35 ..
+-rw-r--r-- 1 box box    0 Oct 15 22:35 config.lock
+-rw-r--r-- 1 box box    0 Oct 15 22:35 record.lock
+-rw------- 1 box box  314 Oct 15 22:35 service.json
+-rw-r--r-- 1 box box    0 Oct 15 22:35 service.lock
+srw------- 1 box box    0 Oct 15 22:35 service.sock
+-rw-r--r-- 1 box box    0 Oct 15 22:35 spawn.lock
+u_str LISTEN 0      0           /home/box/.cache/android-log-mcp/run/service.sock 4886626             * 0   
+u_str LISTEN 0      0      /workspace/scratch/c3/android-log-mcp/run/service.sock 11431687            * 0   
+u_str LISTEN 0      0      /workspace/scratch/c4/android-log-mcp/run/service.sock 11449454            * 0   
+22:35:55 logged U1792074943a-before
+== 0.7.0 client call (handoff expected)
+service: background service pid 3224472, version 0.7.0, protocol 2, up 10s, clients 1
+root: /workspace/scratch/c4/android-log-mcp
+recording: idle (starts on the first log tool call)
+linger: per device, after its last log tool call: max(10m0s, 2 × the device's log buffer span), at most 1h0m0s (default; each recording device shows its own)
+lifetime: exits 30s after there are no clients, no active pin and no recorded device; staying: 1 client(s) connected
+service log: /workspace/scratch/c4/android-log-mcp/log/service.log
+took 10.1s
+22:36:09 logged U1792074943b-after
+service: background service pid 3224472, version 0.7.0, protocol 2, up 12s, clients 1
+root: /workspace/scratch/c4/android-log-mcp
+recording: idle (starts on the first log tool call)
+old 0.6.0 pid alive: no
+control dir / sockets after:
+total 12
+drwx------ 2 box box 4096 Oct 15 22:35 .
+drwx------ 7 box box 4096 Oct 15 22:35 ..
+-rw-r--r-- 1 box box    0 Oct 15 22:35 config.lock
+-rw-r--r-- 1 box box    0 Oct 15 22:35 record.lock
+-rw------- 1 box box  340 Oct 15 22:35 service.json
+-rw-r--r-- 1 box box    0 Oct 15 22:35 service.lock
+srw------- 1 box box    0 Oct 15 22:35 service.sock
+-rw-r--r-- 1 box box    0 Oct 15 22:35 spawn.lock
+u_str LISTEN 0      0           /home/box/.cache/android-log-mcp/run/service.sock 4886626             * 0   
+u_str LISTEN 0      0      /workspace/scratch/c3/android-log-mcp/run/service.sock 11431687            * 0   
+u_str LISTEN 0      0      /workspace/scratch/c4/android-log-mcp/run/service.sock 11449731            * 0   
+android-log-mcp: 2026/10/15 22:35:43 service started: pid 3223743, version 0.6.0, protocol 2, root /workspace/scratch/c4/android-log-mcp, socket /workspace/scratch/c4/android-log-mcp/run/service.sock
+android-log-mcp: 2026/10/15 22:35:57 service stopping: replaced by a newer client (pid 3224460, version 0.7.0)
+android-log-mcp: 2026/10/15 22:35:57 service stopped
+android-log-mcp: 2026/10/15 22:35:57 service started: pid 3224472, version 0.7.0, protocol 2, root /workspace/scratch/c4/android-log-mcp, socket /workspace/scratch/c4/android-log-mcp/run/service.sock
+2026/10/15 22:35:58 started the android-log-mcp service (pid 3224472, /workspace/scratch/c4/android-log-mcp/bin/0.7.0-dd4cc78a1fc6/android-log-mcp)
+== second 0.7.0 client reuses (no new handoff)
+service: background service pid 3224472, version 0.7.0, protocol 2, up 12s, clients 1
+== old 0.6.0 client against 0.7.0 service (protocol compat)
+android-log-mcp: 2026/10/15 22:36:54 using the android-log-mcp service pid 3224472 (version 0.7.0, protocol 2, root /workspace/scratch/c4/android-log-mcp, recording: idle (starts on the first log tool call))
+client: version 0.6.0, protocol 2 (older than the service; compatible)
+service: background service pid 3224472, version 0.7.0, protocol 2, up 1m3s, clients 1
+root: /workspace/scratch/c4/android-log-mcp

@@ -1,0 +1,32 @@
+== A: SIGSTOP + automatic replacement (run H1792074766)
+22:32:46 service pid 3214443
+22:32:47 logged H1792074766a
+22:32:50 SIGSTOP 3214443 (Tsl)
+22:32:50 logged H1792074766b-during-stop
+2026/10/15 22:33:22 warning: the service (pid 3214443) did not answer for more than 10s and was replaced; lines from its last moments may be missing (logcat_status shows gaps)
+recording: idle (starts on the first log tool call)
+linger: per device, after its last log tool call: max(10m0s, 2 × the device's log buffer span), at most 1h0m0s (default; each recording device shows its own)
+    not recording (device not connected)
+22:33:32 client call took 41.9s
+22:33:32 new service pid 3216953; old pid alive: no
+2026/10/15 22:33:12 replacing the service (pid 3214443): it holds the lock but has not answered for 10s
+2026/10/15 22:33:22 warning: the service (pid 3214443) did not stop gracefully and is being killed; log lines it had not flushed yet may be missing
+2026/10/15 22:33:22 warning: the service (pid 3214443) did not answer for more than 10s and was replaced; lines from its last moments may be missing (logcat_status shows gaps)
+22:33:33 logged H1792074766c-after
+orphan adb children of old pid:
+== counts (expect each 1):
+      2 HUNG 
+== B: SIGSTOP + service stop --force
+22:34:23 SIGSTOP 3216953
+22:34:24 logged H1792074766d-during-stop2
+service: lock held by pid 3216953, this tool's service (version 0.7.0) but does not answer on /workspace/scratch/c3/android-log-mcp/run/service.sock; use `android-log-mcp service stop --force`
+android-log-mcp service stop: pid 3216953 did not stop gracefully; killing it (lines it had not flushed yet may be lost)
+service: killed (pid 3216953)
+stop --force took 13.4s; pid alive: no
+lock holder / adb children left:
+22:34:43 logged H1792074766e-after-stop
+recording: 1 device(s): avd-api29
+  avd-api29: recording; backfill in progress (0 lines so far); no idle stop
+new pid 3219640
+== final counts (expect each 1):
+      6 HUNG 

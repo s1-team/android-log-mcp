@@ -1,0 +1,84 @@
+cr21 native crash · 2026-10-14 22:56:40.167 · pid 10567 com.example.logtest (thread example.logtest) · sources: logcat:tombstone, events:am_crash, dropbox:data_app_native_crash
+package: com.example.logtest
+signal: SIGSEGV (SEGV_MAPERR) fault addr 0x0 in liblogtest.so [#00 pc 7fc]
+crash location: liblogtest.so [#00 pc 7fc]  (first app frame; libc frames such as abort/syscall come before it)
+tombstone (as logged by crash_dump/DEBUG):
+  *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+  Build fingerprint: 'google/sdk_gphone_x86_64/generic_x86_64:10/QSR1.211112.011/13135432:userdebug/dev-keys'
+  Revision: '0'
+  ABI: 'x86_64'
+  Timestamp: 2026-10-14 22:56:40+0800
+  pid: 10567, tid: 10567, name: example.logtest  >>> com.example.logtest <<<
+  uid: 10146
+  signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0
+  Cause: null pointer dereference
+      rax 0000000000000000  rbx 0000781f47097000  rcx 3526a3cd6c7f4e2b  rdx 0000000000000004
+      r8  0000000000000000  r9  0000000000000000  r10 0000781f46a66610  r11 0000000000000206
+      r12 00007ffe2932c600  r13 0000781e6cb0980b  r14 0000000000000000  r15 00007ffe2932c7e8
+      rdi 0000000000000000  rsi 00007ffe2932bc60
+      rbp 00007ffe2932c320  rsp 00007ffe2932c320  rip 0000781e6c04c7fc
+  
+  backtrace:
+        #00 pc 00000000000007fc  /data/app/com.example.logtest-EXHrd52nNpS4jel8iYKCOQ==/lib/x86_64/liblogtest.so
+before crash (pid 10567, last 39 lines):
+  22:56:22.704 I 10567/10567 com.example.logtest example.logtes: Late-enabling -Xcheck:jni
+  22:56:23.478 E 10567/10567 com.example.logtest example.logtes: Unknown bits set in runtime_flags: 0x8000
+  22:56:23.675 W 10567/10567 com.example.logtest example.logtes: Unexpected CPU variant for X86 using defaults: x86_64
+  22:56:27.919 D 10567/10589 com.example.logtest libEGL: Emulator has host GPU support, qemu.gles is set to 1.
+  22:56:27.941 W 10567/10589 com.example.logtest libc: Unable to set property "qemu.gles" to "1": connection failed; errno=13 (Permission denied)
+  22:56:27.920 I 10567/10567 com.example.logtest auditd: type=1400 audit(0.0:39): avc: denied { write } for comm="RenderThread" name="property_service" dev="tmpfs" ino=706 scontext=u:r:untrusted_app:s0:c146,c256,c512,c768 tcontext=u:object_r:property_socket:s0 tclass=sock_file permissive=0 app=com.example.logtest
+  22:56:27.920 W 10567/10567 com.example.logtest RenderThread: type=1400 audit(0.0:39): avc: denied { write } for name="property_service" dev="tmpfs" ino=706 scontext=u:r:untrusted_app:s0:c146,c256,c512,c768 tcontext=u:object_r:property_socket:s0 tclass=sock_file permissive=0 app=com.example.logtest
+  22:56:28.328 V 10567/10567 com.example.logtest LogTest: onCreate verbose
+  22:56:28.346 D 10567/10567 com.example.logtest LogTest: onCreate debug pid=10567 uid=10146
+  22:56:28.347 I 10567/10567 com.example.logtest MyRepo: feed loaded items=20
+  22:56:28.348 D 10567/10567 com.example.logtest OkHttp: --> GET https://api.example.com/v1/feed
+  22:56:28.348 D 10567/10567 com.example.logtest OkHttp: <-- 200 https://api.example.com/v1/feed (312ms)
+  22:56:28.454 W 10567/10567 com.example.logtest MyRepo: token refresh failed
+    java.io.IOException: token endpoint failed
+    	at com.example.logtest.MainActivity.onCreate(MainActivity.java:20)
+    	at android.app.Activity.performCreate(Activity.java:7802)
+    	at android.app.Activity.performCreate(Activity.java:7791)
+    	at android.app.Instrumentation.callActivityOnCreate(Instrumentation.java:1299)
+    	at android.app.ActivityThread.performLaunchActivity(ActivityThread.java:3245)
+    	at android.app.ActivityThread.handleLaunchActivity(ActivityThread.java:3409)
+    	at android.app.servertransaction.LaunchActivityItem.execute(LaunchActivityItem.java:83)
+    	at android.app.servertransaction.TransactionExecutor.executeCallbacks(TransactionExecutor.java:135)
+    	at android.app.servertransaction.TransactionExecutor.execute(TransactionExecutor.java:95)
+    	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2016)
+    	at android.os.Handler.dispatchMessage(Handler.java:107)
+    	at android.os.Looper.loop(Looper.java:214)
+    	at android.app.ActivityThread.main(ActivityThread.java:7356)
+    	at java.lang.reflect.Method.invoke(Native Method)
+    	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+    	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+    Caused by: java.lang.IllegalStateException: Unable to resolve host "push.example.com"
+    	... 16 more
+  22:56:28.456 E 10567/10567 com.example.logtest LogTest: multi-line message
+    line two
+    	line three (tab)
+  22:56:28.466 D 10567/10589 com.example.logtest libEGL: loaded /vendor/lib64/egl/libEGL_emulation.so
+  22:56:28.649 D 10567/10589 com.example.logtest libEGL: loaded /vendor/lib64/egl/libGLESv1_CM_emulation.so
+  22:56:28.726 D 10567/10589 com.example.logtest libEGL: loaded /vendor/lib64/egl/libGLESv2_emulation.so
+  22:56:32.973 I 10567/10567 com.example.logtest am_on_create_called: [0,com.example.logtest.MainActivity,performCreate]
+  22:56:33.048 D 10567/10567 com.example.logtest LogTest: onStart
+  22:56:33.050 I 10567/10567 com.example.logtest am_on_start_called: [0,com.example.logtest.MainActivity,handleStartActivity]
+  22:56:33.199 I 10567/10567 com.example.logtest LogTest: onResume
+  22:56:33.211 I 10567/10567 com.example.logtest am_on_resume_called: [0,com.example.logtest.MainActivity,RESUME_ACTIVITY]
+  22:56:33.749 I 10567/10567 com.example.logtest am_on_top_resumed_gained_called: [0,com.example.logtest.MainActivity,topStateChangedWhenResumed]
+  22:56:35.464 D 10567/10588 com.example.logtest HostConnection: HostConnection::get() New Host Connection established 0x781eb7247d40, tid 10588
+  22:56:35.612 D 10567/10588 com.example.logtest HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_hwc_color_transform GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+  22:56:35.821 D 10567/10588 com.example.logtest EGL_emulation: eglCreateContext: 0x781eb7247f20: maj 3 min 0 rcv 3
+  22:56:35.829 D 10567/10588 com.example.logtest EGL_emulation: eglMakeCurrent: 0x781eb7247f20: ver 3 0 (tinfo 0x781f471378a0)
+  22:56:36.103 W 10567/10588 com.example.logtest Gralloc3: mapper 3.x is not supported
+  22:56:36.164 D 10567/10588 com.example.logtest HostConnection: createUnique: call
+  22:56:36.172 D 10567/10588 com.example.logtest HostConnection: HostConnection::get() New Host Connection established 0x781eb7248060, tid 10588
+  22:56:36.174 D 10567/10588 com.example.logtest HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_hwc_color_transform GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+  22:56:36.177 D 10567/10588 com.example.logtest eglCodecCommon: allocate: Ask for block of size 0x1000
+  22:56:36.178 D 10567/10588 com.example.logtest eglCodecCommon: allocate: ioctl allocate returned offset 0x3ffff4000 size 0x2000
+  22:56:36.736 D 10567/10588 com.example.logtest EGL_emulation: eglMakeCurrent: 0x781eb7247f20: ver 3 0 (tinfo 0x781f471378a0)
+  22:56:37.655 I 10567/10580 com.example.logtest example.logtes: NativeAlloc concurrent copying GC freed 845(51KB) AllocSpace objects, 1(20KB) LOS objects, 56% free, 1202KB/2738KB, paused 7.713ms total 1.357s
+  22:56:37.845 I 10567/10588 com.example.logtest OpenGLRenderer: Davey! duration=4329ms; Flags=1, IntendedVsync=15424351037581, Vsync=15424617704237, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=15424631463379, AnimationStart=15424632931862, PerformTraversalsStart=15424633083197, DrawStart=15427068433005, SyncQueued=15427584402927, SyncStart=15427601045432, IssueDrawCommandsStart=15427603416651, SwapBuffers=15428613824785, FrameCompleted=15428696818255, DequeueBufferDuration=2361000, QueueBufferDuration=11202000, 
+  22:56:37.900 I 10567/10567 com.example.logtest LogTest: trigger what=native pid=10567
+  22:56:37.971 E 10567/10567 com.example.logtest LogTestNative: about to SIGSEGV
+  22:56:37.995 F 10567/10567 com.example.logtest libc: Fatal signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0 in tid 10567 (example.logtest), pid 10567 (example.logtest)
+
