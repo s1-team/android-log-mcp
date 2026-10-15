@@ -10,4 +10,6 @@ Raw evidence: /workspace/ev/*, copied to worktree /workspace/alm-wt/ev-070/valid
 | 3 | 0.6.0 svc + 0.7.0 client | PASS handoff; socket move FAIL -> #108 | handoff ok, 0.6 client vs 0.7 service compatible; long path still /tmp/alm-1000/<hash>.sock; first status after handoff not recording #109 |
 | 4 | clock back-jump + crash/ANR | PASS w/ bug #111 | 3 runs (clockjump, 2, 3); ANR split in two (33s dump > 30s window); see ev/clockjump3 |
 | 5 | set-root then re-read | PASS | old root 25862 lines distinct, new 20; 0 dups, 0 keys in both roots |
-| 6 | go test -race -count=20 | RUNNING (ev/race-progress.txt) | packages store ipc service analysis device mcpserver |
+| 6 | go test -race -count=20 | PARTIAL, running in background (ev/race-progress.txt, script ev/race.sh, GORACE=atexit_sleep_ms=0) | store PASS 714s; ipc PASS 8s; service/analysis/device/mcpserver pending. Without the GORACE workaround store.TestTryLockWaitsForInheritedDescriptor fails 20/20 -> #119 (test bug, race runtime 1s exit sleep) |
+
+Issues: #108 (socket move), #109 (first status after handoff), #111 (ANR split), #115 (service-e2e fails on clock-jump buffer), #119 (race test). Evidence PR #118 (draft). Stray 0.7.0 service (scratch/c3) stopped by 2nd worker; 0.5.2 service pid 1445595 is the host's own MCP, left alone.
