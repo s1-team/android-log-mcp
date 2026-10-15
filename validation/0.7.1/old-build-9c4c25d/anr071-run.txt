@@ -1,0 +1,29 @@
+adb lists emulator-5556 but reading its identity has not finished yet (slow device); call again in a few seconds
+03:26:44 run 1: trigger ANR
+03:27:29 waiting 75s for ANR dialog + dump
+03:28:44 run 2: trigger ANR
+03:29:43 waiting 75s for ANR dialog + dump
+10-12 00:17:46.183  1995  2029 I am_anr  : [0,3309,com.google.android.ims,680017477,Broadcast of Intent { act=android.telephony.action.CARRIER_CONFIG_CHANGED flg=0x15000010 cmp=com.google.android.ims/
+10-14 22:57:50.376  1995  2029 I am_anr  : [0,10673,com.example.logtest,816365126,Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }]
+10-16 03:27:29.372  1995  2029 I am_anr  : [0,12761,com.example.logtest,816365126,Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }]
+10-16 03:29:42.740  1995  2029 I am_anr  : [0,12974,com.example.logtest,816365126,Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }]
+10-16 03:29:58.326 12974 12990 I example.logtes: Wrote stack traces to tombstoned
+10-16 03:30:08.534  1995  2029 W ActivityManager: Dumping Java threads failed, initiating native stack dump.
+10-16 03:30:12.064  2763  2778 I or.multidispla: Wrote stack traces to tombstoned
+10-16 03:30:15.231  1995  2009 I system_server: Wrote stack traces to tombstoned
+10-16 03:30:15.485  1995  2029 W ActivityManager: Dumping Java threads failed, initiating native stack dump.
+10-16 03:30:18.848  1995  2029 E ActivityManager: ANR in com.example.logtest
+10-16 03:30:22.499  2725  2751 I .ims.rcsservic: Wrote stack traces to tombstoned
+10-16 03:30:30.657  2178  2194 I ndroid.systemu: Wrote stack traces to tombstoned
+device avd-api29 · device time Asia/Kuching (+08:00) · device now 2026-10-16 03:34:01 (observed) · host now 2026-10-16 03:34:02 +08 · clock offset -0.92s · all apps · 3 crash groups (3 events) in recorded history
+history: logcat from 2026-10-12 00:11:27; DropBox adds older entries when available (status: data_app_crash ok, data_app_native_crash ok, data_app_anr ok)
+anr8 2026-10-16 03:29:42  anr    pid 12974 com.example.logtest  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+     main thread: "main" prio=5 tid=1 Sleeping — at java.lang.Thread.sleep(Native method)   [traces: data_app_anr]
+anr7 2026-10-16 03:27:29  anr    pid 12761 com.example.logtest  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+     main thread: traces not available yet (see detail)
+anr6 2026-10-16 03:28:34  anr    pid 12761 com.example.logtest  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+     main thread: "main" prio=5 tid=1 Sleeping — at java.lang.Thread.sleep(Native method)   [traces: data_app_anr]
+more: logcat_crashes id="anr8" for full detail
+
+ANR entries listed: 3
+service: stopped (pid 3710760)

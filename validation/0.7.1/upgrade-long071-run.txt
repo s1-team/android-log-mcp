@@ -1,0 +1,18 @@
+cache dir length 84; primary socket would be 117 bytes (limit 100)
+== 0.6.0 service
+android-log-mcp: 2026/10/16 03:50:52 using the android-log-mcp service pid 3785764 (version 0.6.0, protocol 2, root /workspace/scratch/x72xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/cache
+adb lists emulator-5556 but reading its identity has not finished yet (slow device); call again in a few seconds
+u_str LISTEN 0      0                           /tmp/alm-1000/dc9c9c389b4006b0.sock 13026498            * 0   
+== 0.7.0 client
+adb lists emulator-5556 but reading its identity has not finished yet (slow device); call again in a few seconds
+u_str LISTEN 0      0                           /tmp/alm-1000/dc9c9c389b4006b0.sock 13031657            * 0   
+total 48
+drwx------ 2 box  box   4096 Oct 16 03:51 .
+drwxrwxrwt 1 root root 36864 Oct 16 03:51 ..
+srw------- 1 box  box      0 Oct 16 03:51 dc9c9c389b4006b0.sock
+config.lock
+record.lock
+service.json
+service.lock
+spawn.lock
+service: stopped (pid 3786873)

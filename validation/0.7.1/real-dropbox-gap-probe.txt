@@ -1,0 +1,23 @@
+# build origin/0.7.x (5c87346, AdoptDropbox 60 s)
+=== RUN   TestTmpRealGap
+    zz_real_tmp_test.go:22: real entry data_app_anr pid=15050 body=196623 bytes
+    zz_real_tmp_test.go:33: real DropBox dump (04:19:23 entry, time shifted to am_anr+24s): AdoptDropbox adopted=true (one entry), MatchDropbox newEntry=false
+    zz_real_tmp_test.go:33: real DropBox dump (04:19:23 entry, time shifted to am_anr+59s): AdoptDropbox adopted=true (one entry), MatchDropbox newEntry=false
+    zz_real_tmp_test.go:33: real DropBox dump (04:19:23 entry, time shifted to am_anr+65s): AdoptDropbox adopted=false (one entry), MatchDropbox newEntry=false
+    zz_real_tmp_test.go:33: real DropBox dump (04:19:23 entry, time shifted to am_anr+100s): AdoptDropbox adopted=false (one entry), MatchDropbox newEntry=false
+    zz_real_tmp_test.go:33: real DropBox dump (04:19:23 entry, time shifted to am_anr+130s): AdoptDropbox adopted=false (one entry), MatchDropbox newEntry=true
+--- PASS: TestTmpRealGap (0.00s)
+PASS
+ok  	github.com/s1crab/android-log-mcp/server/internal/analysis	0.006s
+
+# build origin/0.7.x + feat-129-dropbox-window (81bc095, local merge, not pushed anywhere)
+=== RUN   TestTmpRealGap
+    zz_real_tmp_test.go:22: real entry data_app_anr pid=15050 body=196623 bytes
+    zz_real_tmp_test.go:33: real DropBox dump (04:19:23 entry, time shifted to am_anr+24s): AdoptDropbox adopted=true (one entry), MatchDropbox newEntry=false
+    zz_real_tmp_test.go:33: real DropBox dump (04:19:23 entry, time shifted to am_anr+59s): AdoptDropbox adopted=true (one entry), MatchDropbox newEntry=false
+    zz_real_tmp_test.go:33: real DropBox dump (04:19:23 entry, time shifted to am_anr+65s): AdoptDropbox adopted=true (one entry), MatchDropbox newEntry=false
+    zz_real_tmp_test.go:33: real DropBox dump (04:19:23 entry, time shifted to am_anr+100s): AdoptDropbox adopted=true (one entry), MatchDropbox newEntry=false
+    zz_real_tmp_test.go:33: real DropBox dump (04:19:23 entry, time shifted to am_anr+130s): AdoptDropbox adopted=false (one entry), MatchDropbox newEntry=true
+--- PASS: TestTmpRealGap (0.00s)
+PASS
+ok  	github.com/s1crab/android-log-mcp/server/internal/analysis	0.006s

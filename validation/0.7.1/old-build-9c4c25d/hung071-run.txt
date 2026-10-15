@@ -1,0 +1,35 @@
+== A: SIGSTOP + automatic replacement (run H1792091191)
+03:06:42 service pid 3653992
+03:06:43 logged H1792091191a
+service: background service pid 3653992, version 0.7.0, protocol 2, up 42s, clients 1
+root: /workspace/scratch/c71a/android-log-mcp
+03:07:14 SIGSTOP 3653992 (TNsl)
+03:07:16 logged H1792091191b-during-stop
+2026/10/16 03:07:48 warning: the service (pid 3653992) did not stop gracefully and is being killed; log lines it had not flushed yet may be missing
+2026/10/16 03:07:48 warning: the service (pid 3653992) did not answer for more than 10s and was replaced; lines from its last moments may be missing (logcat_status shows gaps)
+service: background service pid 3658656, version 0.7.0, protocol 2, up 10s, clients 1
+root: /workspace/scratch/c71a/android-log-mcp
+recording: 1 device(s): avd-api29
+03:07:59 client call took 43.1s
+03:07:59 new service pid 3658656; old pid alive: no
+2026/10/16 03:07:37 replacing the service (pid 3653992): it holds the lock but has not answered for 10s
+2026/10/16 03:07:48 warning: the service (pid 3653992) did not stop gracefully and is being killed; log lines it had not flushed yet may be missing
+2026/10/16 03:07:48 warning: the service (pid 3653992) did not answer for more than 10s and was replaced; lines from its last moments may be missing (logcat_status shows gaps)
+03:08:01 logged H1792091191c-after
+orphan adb children of old pid:
+== counts (expect each 1):
+      4 HUNG 
+== B: SIGSTOP + service stop --force
+03:08:51 SIGSTOP 3658656
+03:08:52 logged H1792091191d-during-stop2
+service: lock held by pid 3658656, this tool's service (version 0.7.0) but does not answer on /workspace/scratch/c71a/android-log-mcp/run/service.sock; use `android-log-mcp service stop --force`
+android-log-mcp service stop: pid 3658656 did not stop gracefully; killing it (lines it had not flushed yet may be lost)
+service: killed (pid 3658656)
+stop --force took 13.4s; pid alive: no
+lock holder / adb children left:
+03:09:11 logged H1792091191e-after-stop
+recording: 1 device(s): avd-api29
+  avd-api29: recording; backfill in progress (0 lines so far); no idle stop
+new pid 3664832
+== final counts (expect each 1):
+      6 HUNG 

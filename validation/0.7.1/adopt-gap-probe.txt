@@ -1,0 +1,8 @@
+=== RUN   TestTmpAdoptGap
+    zz_adopt_tmp_test.go:9: DropBox 30s after am_anr: adopted=true
+    zz_adopt_tmp_test.go:9: DropBox 59s after am_anr: adopted=true
+    zz_adopt_tmp_test.go:9: DropBox 65s after am_anr: adopted=false
+    zz_adopt_tmp_test.go:9: DropBox 100s after am_anr: adopted=false
+--- PASS: TestTmpAdoptGap (0.00s)
+PASS
+ok  	github.com/s1crab/android-log-mcp/server/internal/analysis	0.002s

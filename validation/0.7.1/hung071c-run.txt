@@ -1,0 +1,44 @@
+== A: SIGSTOP + automatic replacement (run H1792093114)
+== seed stored data (retry until identity read)
+03:38:44 seed try 1: 0 slow
+recording: 1 device(s): avd-api29
+  avd-api29: recording; caught up; no idle stop
+  avd-api29 (adb emulator-5556)  device  Android_SDK_built_for_x86_64  android 10 (sdk 29)  tz Asia/Kuching (+08:00)
+03:39:05 service pid 3766595
+03:39:07 logged H1792093114a
+service: background service pid 3766595, version 0.7.0, protocol 2, up 1m3s, clients 1
+root: /workspace/scratch/c72h/android-log-mcp
+03:39:38 SIGSTOP 3766595 (TNsl)
+03:39:38 logged H1792093114b-during-stop
+2026/10/16 03:40:10 warning: the service (pid 3766595) did not stop gracefully and is being killed; log lines it had not flushed yet may be missing
+2026/10/16 03:40:10 warning: the service (pid 3766595) did not answer for more than 10s and was replaced; lines from its last moments may be missing (logcat_status shows gaps)
+service: background service pid 3770967, version 0.7.0, protocol 2, up 10s, clients 1
+root: /workspace/scratch/c72h/android-log-mcp
+recording: 1 device(s): avd-api29
+  avd-api29: recording; backfill in progress (0 lines so far); no idle stop
+linger: per device, after its last log tool call: max(10m0s, 2 × the device's log buffer span), at most 1h0m0s (default; each recording device shows its own)
+lifetime: exits 30s after there are no clients, no active pin and no recorded device; staying: 1 client(s) connected
+service log: /workspace/scratch/c72h/android-log-mcp/log/service.log
+03:40:21 client call took 43.0s
+03:40:21 new service pid 3770967; old pid alive: no
+2026/10/16 03:40:00 replacing the service (pid 3766595): it holds the lock but has not answered for 10s
+2026/10/16 03:40:10 warning: the service (pid 3766595) did not stop gracefully and is being killed; log lines it had not flushed yet may be missing
+2026/10/16 03:40:10 warning: the service (pid 3766595) did not answer for more than 10s and was replaced; lines from its last moments may be missing (logcat_status shows gaps)
+03:40:23 logged H1792093114c-after
+orphan adb children of old pid:
+== counts (expect each 1):
+     14 HUNG 
+== B: SIGSTOP + service stop --force
+03:41:13 SIGSTOP 3770967
+03:41:13 logged H1792093114d-during-stop2
+service: lock held by pid 3770967, this tool's service (version 0.7.0) but does not answer on /workspace/scratch/c72h/android-log-mcp/run/service.sock; use `android-log-mcp service stop --force`
+android-log-mcp service stop: pid 3770967 did not stop gracefully; killing it (lines it had not flushed yet may be lost)
+service: killed (pid 3770967)
+stop --force took 13.4s; pid alive: no
+lock holder / adb children left:
+03:41:32 logged H1792093114e-after-stop
+recording: 1 device(s): avd-api29
+  avd-api29: recording; backfill in progress (0 lines so far); no idle stop
+new pid 3774969
+== final counts (expect each 1):
+     16 HUNG 

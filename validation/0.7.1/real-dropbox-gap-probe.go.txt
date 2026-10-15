@@ -1,0 +1,35 @@
+package analysis
+
+import (
+	"os"
+	"testing"
+	"time"
+)
+
+func TestTmpRealGap(t *testing.T) {
+	b, _ := os.ReadFile("/tmp/real-anr-all.txt")
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	var real *DropboxEntry
+	es := ParseDropbox(string(b), loc)
+	for i := range es {
+		if es[i].TimeNs == time.Date(2026, 10, 16, 4, 19, 23, 0, loc).UnixNano() {
+			real = &es[i]
+		}
+	}
+	if real == nil {
+		t.Fatal("entry not found")
+	}
+	t.Logf("real entry %s pid=%s body=%d bytes", real.Tag, headerField(real.Body, "PID"), len(real.Body))
+	am := time.Date(2026, 10, 16, 4, 18, 59, 0, loc).UnixNano()
+	for _, gap := range []int64{24, 59, 65, 100, 130} {
+		e := *real
+		e.TimeNs = am + gap*1e9
+		db, _ := MatchDropbox(nil, e) // dropbox-only entry as the service creates it first
+		fresh := &Crash{Kind: "anr", TimeNs: am, PID: 15050, Process: "com.example.logtest", Sources: []string{"events:am_anr"}}
+		got := AdoptDropbox([]*Crash{db}, fresh)
+		db.ID = "x"
+		m, isNew := MatchDropbox([]*Crash{fresh}, e)
+		_ = m
+		t.Logf("real DropBox dump (04:19:23 entry, time shifted to am_anr+%ds): AdoptDropbox adopted=%v (one entry), MatchDropbox newEntry=%v", gap, got, isNew)
+	}
+}

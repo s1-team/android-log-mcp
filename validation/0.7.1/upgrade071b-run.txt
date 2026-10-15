@@ -1,0 +1,35 @@
+== 0.6.0 service, log tool call (starts recording, retry until identity read)
+03:37:28 try 1: android-log-mcp: 2026/10/16 03:37:18 using the android-log-mcp service pid 3762100 (version 0.6.0, protocol 2, root /workspace/scratch/c72u/android-log-mcp, recording: idle (starts on the first log to
+android-log-mcp: 2026/10/16 03:37:58 using the android-log-mcp service pid 3762100 (version 0.6.0, protocol 2, root /workspace/scratch/c72u/android-log-mcp, recording: 1 device(s): avd-api29)
+service: background service pid 3762100, version 0.6.0, protocol 2, up 40s, clients 1
+root: /workspace/scratch/c72u/android-log-mcp
+recording: 1 device(s): avd-api29
+  avd-api29: recording; caught up; no idle stop
+linger: per device, after its last log tool call: max(10m0s, 2 × the device's log buffer span), at most 1h0m0s (default; each recording device shows its own)
+== 0.7.1 client: FIRST logcat_status after handoff
+service: background service pid 3764316, version 0.7.0, protocol 2, up 10s, clients 1
+root: /workspace/scratch/c72u/android-log-mcp
+recording: 1 device(s): avd-api29
+  avd-api29: recording; backfill in progress (0 lines so far); no idle stop
+linger: per device, after its last log tool call: max(10m0s, 2 × the device's log buffer span), at most 1h0m0s (default; each recording device shows its own)
+lifetime: exits 30s after there are no clients, no active pin and no recorded device; staying: 1 client(s) connected
+service log: /workspace/scratch/c72u/android-log-mcp/log/service.log
+adb: ok (/home/box/android-sdk/platform-tools/adb, version 1.0.41)
+store: /workspace/scratch/c72u/android-log-mcp (data in v1/<device-id>)
+03:38:10 first status took 11.1s
+-- +3s status:
+recording: 1 device(s): avd-api29
+  avd-api29: recording; backfill in progress (0 lines so far); no idle stop
+  avd-api29 (adb emulator-5556)  device  Android_SDK_built_for_x86_64  android 10 (sdk 29)  tz Asia/Kuching (+08:00)
+-- +10s status:
+recording: 1 device(s): avd-api29
+  avd-api29: recording; caught up; no idle stop
+  avd-api29 (adb emulator-5556)  device  Android_SDK_built_for_x86_64  android 10 (sdk 29)  tz Asia/Kuching (+08:00)
+android-log-mcp: 2026/10/16 03:37:18 service started: pid 3762100, version 0.6.0, protocol 2, root /workspace/scratch/c72u/android-log-mcp, socket /workspace/scratch/c72u/android-log-mcp/run/service.sock
+android-log-mcp: 2026/10/16 03:37:58 service stopping: replaced by a newer client (pid 3764305, version 0.7.0)
+android-log-mcp: 2026/10/16 03:37:59 service started: pid 3764316, version 0.7.0, protocol 2, root /workspace/scratch/c72u/android-log-mcp, socket /workspace/scratch/c72u/android-log-mcp/run/service.sock
+2026/10/16 03:37:59 started the android-log-mcp service (pid 3764316, /workspace/scratch/c72u/android-log-mcp/bin/0.7.0-18da2b1fc4bc/android-log-mcp)
+android-log-mcp: 2026/10/16 03:38:03 avd-api29: device clock jump among the stored lines that may still be in the device buffer: read the whole buffer without -T and dropped lines already stored
+2026/10/16 03:38:13 using the android-log-mcp service pid 3764316 (version 0.7.0, protocol 2, root /workspace/scratch/c72u/android-log-mcp, recording: 1 device(s): avd-api29)
+2026/10/16 03:38:34 using the android-log-mcp service pid 3764316 (version 0.7.0, protocol 2, root /workspace/scratch/c72u/android-log-mcp, recording: 1 device(s): avd-api29)
+service: stopped (pid 3764316)

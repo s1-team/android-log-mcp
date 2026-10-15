@@ -1,0 +1,5 @@
+== A: SIGSTOP + automatic replacement (run H1792092967)
+== seed stored data (retry until identity read)
+03:36:17 seed try 1: 1 slow
+03:36:32 seed try 2: 1 slow
+03:36:47 seed try 3: 0 slow

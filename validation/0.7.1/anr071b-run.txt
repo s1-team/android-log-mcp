@@ -1,0 +1,32 @@
+03:42:54 seed try 1
+03:43:05 caught up
+03:43:05 run 1: trigger ANR
+03:43:51 waiting 75s for ANR dialog + dump
+03:45:06 run 2: trigger ANR
+03:45:55 waiting 75s for ANR dialog + dump
+10-16 03:27:29.372  1995  2029 I am_anr  : [0,12761,com.example.logtest,816365126,Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }]
+10-16 03:29:42.740  1995  2029 I am_anr  : [0,12974,com.example.logtest,816365126,Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }]
+10-16 03:43:52.086  1995  2029 I am_anr  : [0,13790,com.example.logtest,816365126,Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }]
+10-16 03:45:54.667  1995  2029 I am_anr  : [0,13916,com.example.logtest,816365126,Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }]
+10-16 03:46:01.703  1995  2009 I system_server: Wrote stack traces to tombstoned
+10-16 03:46:02.392  2763  2778 I or.multidispla: Wrote stack traces to tombstoned
+10-16 03:46:03.402  2725  2751 I .ims.rcsservic: Wrote stack traces to tombstoned
+10-16 03:46:03.996  2705  2722 I com.android.se: Wrote stack traces to tombstoned
+10-16 03:46:04.251  2310  2324 I id.networkstac: Wrote stack traces to tombstoned
+10-16 03:46:04.679  2350  2366 I m.android.phon: Wrote stack traces to tombstoned
+10-16 03:46:05.279  2178  2194 I ndroid.systemu: Wrote stack traces to tombstoned
+10-16 03:46:23.197  1995  2029 E ActivityManager: ANR in com.example.logtest
+device avd-api29 · device time Asia/Kuching (+08:00) · device now 2026-10-16 03:48:54 (observed) · host now 2026-10-16 03:48:55 +08 · clock offset -0.85s · all apps · 4 crash groups (4 events) in recorded history
+history: logcat from 2026-10-12 00:11:27; DropBox adds older entries when available (status: data_app_crash ok, data_app_native_crash ok, data_app_anr ok)
+anr9 2026-10-16 03:45:54  anr    pid 13916 com.example.logtest  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+     main thread: "main" prio=5 tid=1 Sleeping — at java.lang.Thread.sleep(Native method)   [traces: data_app_anr]
+anr8 2026-10-16 03:43:52  anr    pid 13790 com.example.logtest  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+     main thread: "main" prio=5 tid=1 Sleeping — at java.lang.Thread.sleep(Native method)   [traces: data_app_anr]
+anr7 2026-10-16 03:29:42  anr    pid 12974 com.example.logtest  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+     main thread: "main" prio=5 tid=1 Sleeping — at java.lang.Thread.sleep(Native method)   [traces: data_app_anr]
+anr6 2026-10-16 03:27:29  anr    pid 12761 com.example.logtest  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+     main thread: "main" prio=5 tid=1 Sleeping — at java.lang.Thread.sleep(Native method)   [traces: data_app_anr]
+more: logcat_crashes id="anr9" for full detail
+
+ANR entries listed: 4
+service: stopped (pid 3776803)
