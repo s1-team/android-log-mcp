@@ -49,6 +49,9 @@ type Pipeline struct {
 	jump         jumpState
 
 	accepted uint64
+	// seqMiss counts records whose predicted seq (stamped in Accept) was not
+	// the one the store assigned; they are attributed by device time.
+	seqMiss uint64
 
 	queue   []pending
 	crashMu sync.Mutex
@@ -170,6 +173,11 @@ func NewPipeline(st *store.Store, boot string, loc *time.Location) *Pipeline {
 		}
 	}
 	p.Procs.Restore(ps)
+	for _, j := range st.Meta().ClockJumps {
+		if j.Source != "possible" {
+			p.Procs.ClockJump(j.Seq)
+		}
+	}
 	if m := st.Meta(); len(m.Sessions) > 0 && m.Sessions[len(m.Sessions)-1].Boot == boot {
 		if n := st.Stats().NewestNs; n != 0 {
 			p.jump.prev, p.jump.max = n, n // continue the session's timeline
@@ -201,6 +209,7 @@ func (p *Pipeline) Accept(r *model.Record, arrived time.Time) {
 		return
 	}
 	r.Boot = p.Boot
+	p.stampSeq(r)
 	p.Procs.Observe(r)
 	p.queue = append(p.queue, pending{r, arrived, p.Live, false})
 	p.accepted++
@@ -215,10 +224,23 @@ func (p *Pipeline) AcceptLate(r *model.Record, arrived time.Time) {
 		return
 	}
 	r.Boot = p.Boot
+	p.stampSeq(r)
 	p.Procs.Observe(r)
 	p.queue = append(p.queue, pending{r, arrived, false, true})
 	p.accepted++
 }
+
+// stampSeq sets the seq the store will give r: it appends the queue in
+// order, so the next free seq plus the records ahead of r. Process tracking
+// orders lifetimes by seq, and it sees a record before the store does
+// (issue #55). Drain checks the prediction against the store.
+func (p *Pipeline) stampSeq(r *model.Record) {
+	r.Seq = p.Store.LastSeq() + uint64(len(p.queue)) + 1
+}
+
+// SeqMismatches counts records whose predicted seq was wrong (they fell
+// back to attribution by device time).
+func (p *Pipeline) SeqMismatches() uint64 { return p.seqMiss }
 
 // Accepted / Appended count the records accepted and appended to the
 // store so far (catch-up: the line at T_end is stored once Appended
@@ -245,22 +267,45 @@ func (p *Pipeline) Drain(all bool, now time.Time) error {
 	late := make([]bool, n)
 	unknown := false
 	var unknownNs int64
+	first := p.Store.LastSeq() + 1
+	miss := make([]bool, n)
 	for i := 0; i < n; i++ {
 		r := p.queue[i].r
-		if !p.Procs.Annotate(r) && r.PID > 0 {
-			unknown = true
-			unknownNs = max(unknownNs, r.TimeNs)
+		// the store assigns first+i; a record stamped differently is
+		// attributed by device time (seq 0), and still gets its real seq
+		if want := first + uint64(i); r.Seq != want {
+			p.seqMiss++
+			r.Seq, miss[i] = want, true
 		}
 		batch[i], arrived[i], live[i], late[i] = r, p.queue[i].arrived, p.queue[i].live, p.queue[i].late
 	}
 	p.queue = append(p.queue[:0], p.queue[n:]...)
+	// jumps first: attribution compares device times only inside one clock
+	// epoch (issue #55)
+	jumps := p.detectJumps(batch, arrived, live, late)
+	for _, j := range jumps {
+		if j.Source != "possible" {
+			p.Procs.ClockJump(j.Seq)
+		}
+	}
+	for i, r := range batch {
+		seq := r.Seq
+		if miss[i] {
+			r.Seq = 0
+		}
+		known := p.Procs.Annotate(r)
+		r.Seq = seq
+		if !known && r.PID > 0 {
+			unknown = true
+			unknownNs = max(unknownNs, r.TimeNs)
+		}
+	}
 	if p.BeforeAppend != nil {
 		p.BeforeAppend(batch[0])
 	}
 	if err := p.Store.Append(batch); err != nil {
 		return err
 	}
-	jumps := p.detectJumps(batch, arrived, live, late)
 	for _, r := range batch {
 		// the detector sees each clock set before the first line that
 		// carries the new clock (issue #55); a "possible" jump is a quiet

@@ -32,6 +32,14 @@ type Proc struct {
 	Crashed   bool   `json:"crashed,omitempty"`
 	Source    string `json:"source"`            // am_proc_start | Start proc | ps
 	SeenNs    int64  `json:"seen_ns,omitempty"` // ps snapshot time for ps-seeded entries
+	// StartSeq / EndSeq are the store sequence numbers of the records that
+	// started / ended the lifetime (0: unknown, e.g. a ps seed or a file
+	// written before issue #55). They order lifetimes by arrival, which a
+	// device clock jump cannot change.
+	StartSeq uint64 `json:"start_seq,omitempty"`
+	EndSeq   uint64 `json:"end_seq,omitempty"`
+
+	n uint64 // creation order in this tracker (arrival order of the entry)
 }
 
 // PreInitialized is the transient name of a freshly forked app process.
@@ -49,7 +57,9 @@ const startSlackNs = int64(2e9)
 type Tracker struct {
 	mu       sync.RWMutex
 	boot     string
-	byPID    map[int][]*Proc // sorted by StartNs
+	byPID    map[int][]*Proc // per pid in creation (arrival) order
+	created  uint64          // creation counter (Proc.n)
+	jumps    []uint64        // seqs of the lines that carry a new device clock, ascending
 	uidPkgs  map[int][]string
 	packages map[string]bool
 	// OnChange is called (without the lock) for every start/end so the caller can persist it.
@@ -107,17 +117,18 @@ func (t *Tracker) upsertLocked(p *Proc) {
 	l := t.byPID[p.PID]
 	for _, q := range l {
 		if (p.ID != "" && q.ID == p.ID) || (p.ID == "" && q.StartNs == p.StartNs && q.Name == p.Name) {
+			p.n = q.n
 			*q = *p
-			t.sortLocked(p.PID)
 			return
 		}
 	}
+	t.created++
+	p.n = t.created
 	if p.ID == "" {
 		t.nextID++
 		p.ID = fmt.Sprintf("%s/%d/%d.%d", p.Boot, p.PID, max(p.StartNs, p.SeenNs), t.nextID)
 	}
 	t.byPID[p.PID] = append(l, p)
-	t.sortLocked(p.PID)
 }
 
 // order key: real start time, or the ps snapshot time for seeded entries
@@ -129,9 +140,37 @@ func order(p *Proc) int64 {
 	return p.SeenNs - 1
 }
 
-func (t *Tracker) sortLocked(pid int) {
-	l := t.byPID[pid]
-	sort.SliceStable(l, func(i, j int) bool { return order(l[i]) < order(l[j]) })
+// ClockJump records that the line with this seq is the first one after a
+// device clock jump. Lifetimes and lines on different sides of a jump are
+// not compared by device time (issue #55). Jump seqs may be given in any
+// order and more than once.
+func (t *Tracker) ClockJump(seq uint64) {
+	if seq == 0 {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	i := sort.Search(len(t.jumps), func(i int) bool { return t.jumps[i] >= seq })
+	if i < len(t.jumps) && t.jumps[i] == seq {
+		return
+	}
+	t.jumps = append(t.jumps, 0)
+	copy(t.jumps[i+1:], t.jumps[i:])
+	t.jumps[i] = seq
+}
+
+// sameEpochLocked reports whether no known clock jump lies between seq a
+// and seq b (device times of the two are comparable). Unknown seq (0): true,
+// the caller then has only the time to go by.
+func (t *Tracker) sameEpochLocked(a, b uint64) bool {
+	if a == 0 || b == 0 {
+		return true
+	}
+	if a > b {
+		a, b = b, a
+	}
+	i := sort.Search(len(t.jumps), func(i int) bool { return t.jumps[i] > a })
+	return i >= len(t.jumps) || t.jumps[i] > b
 }
 
 // SetPackages installs the uid map from `pm list packages -U` and
@@ -482,15 +521,68 @@ func (t *Tracker) emit(ps []Proc) {
 	}
 }
 
-// Lookup finds the process that owned pid at time ns.
+// Lookup finds the process that owned pid at time ns (device time only;
+// use LookupSeq when the record's seq is known).
 func (t *Tracker) Lookup(pid int, ns int64) *Proc {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	return t.lookupLocked(pid, ns)
+	return t.LookupSeq(pid, ns, 0)
 }
 
-func (t *Tracker) lookupLocked(pid int, ns int64) *Proc {
+// LookupSeq finds the process that owned pid for the record with this seq
+// and device time ns. With a seq, arrival order decides: the owner is the
+// newest lifetime of pid that started at or before seq, and it is gone after
+// its EndSeq. Device time only gives the slack for the fork race (a line up
+// to 2 s before its process's start line) and the 5 s grace after an end,
+// and only when no clock jump lies between the two records (issue #55).
+// Lifetimes without a seq (ps seeds, older files) and seq 0 use the time.
+func (t *Tracker) LookupSeq(pid int, ns int64, seq uint64) *Proc {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.lookupLocked(pid, ns, seq)
+}
+
+func (t *Tracker) lookupLocked(pid int, ns int64, seq uint64) *Proc {
 	l := t.byPID[pid]
+	if seq == 0 {
+		return lookupByTime(l, ns)
+	}
+	idx := -1
+	for i := len(l) - 1; i >= 0; i-- {
+		q := l[i]
+		if q.StartSeq == 0 {
+			if q.StartNs <= ns+startSlackNs {
+				idx = i
+				break
+			}
+			continue
+		}
+		if q.StartSeq <= seq {
+			idx = i
+			break
+		}
+	}
+	// fork race: the line precedes the start line of the next lifetime
+	if nx := idx + 1; nx < len(l) {
+		if q := l[nx]; q.StartSeq > seq && q.StartNs != 0 && q.StartNs <= ns+startSlackNs && t.sameEpochLocked(seq, q.StartSeq) {
+			return q
+		}
+	}
+	if idx < 0 {
+		return nil
+	}
+	q := l[idx]
+	if q.EndNs > 0 {
+		if q.EndSeq == 0 {
+			if ns > q.EndNs+5e9 {
+				return nil
+			}
+		} else if seq > q.EndSeq && !(t.sameEpochLocked(q.EndSeq, seq) && ns <= q.EndNs+5e9) {
+			return nil
+		}
+	}
+	return q
+}
+
+func lookupByTime(l []*Proc, ns int64) *Proc {
 	for i := len(l) - 1; i >= 0; i-- {
 		if l[i].StartNs <= ns+startSlackNs {
 			if l[i].EndNs > 0 && ns > l[i].EndNs+5e9 {
@@ -511,7 +603,7 @@ func (t *Tracker) Annotate(r *model.Record) bool {
 		r.Process = "kernel"
 		return true
 	}
-	if p := t.lookupLocked(r.PID, r.TimeNs); p != nil && !placeholderName(p.Name) {
+	if p := t.lookupLocked(r.PID, r.TimeNs, r.Seq); p != nil && !placeholderName(p.Name) {
 		r.Process = p.Name
 		r.Package = p.Package
 		if r.Package == "" && r.UID >= 0 {
@@ -585,7 +677,7 @@ func (t *Tracker) Observe(r *model.Record) {
 			pid, e1 := strconv.Atoi(f[1])
 			uid, e2 := strconv.Atoi(f[2])
 			if e1 == nil && e2 == nil {
-				started = &Proc{PID: pid, UID: uid, Name: f[3], StartNs: r.TimeNs, Source: "am_proc_start"}
+				started = &Proc{PID: pid, UID: uid, Name: f[3], StartNs: r.TimeNs, StartSeq: r.Seq, Source: "am_proc_start"}
 			}
 		}
 	case r.Tag == "am_proc_died" || r.Tag == "am_kill":
@@ -597,7 +689,7 @@ func (t *Tracker) Observe(r *model.Record) {
 				if r.Tag == "am_kill" && len(f) >= 5 {
 					reason = "killed: " + f[4]
 				}
-				ended = &Proc{PID: pid, Name: f[2], EndNs: r.TimeNs, EndReason: reason}
+				ended = &Proc{PID: pid, Name: f[2], EndNs: r.TimeNs, EndSeq: r.Seq, EndReason: reason}
 			}
 		}
 	case r.Tag == "am_crash":
@@ -611,22 +703,22 @@ func (t *Tracker) Observe(r *model.Record) {
 			if m[2] != "" {
 				reason = "exited (signal " + m[2] + ")"
 			}
-			ended = &Proc{PID: pid, EndNs: r.TimeNs, EndReason: reason}
+			ended = &Proc{PID: pid, EndNs: r.TimeNs, EndSeq: r.Seq, EndReason: reason}
 		}
 	case r.Tag == "ActivityManager":
 		if m := reStartProc.FindStringSubmatch(r.Msg); m != nil {
 			pid, _ := strconv.Atoi(m[1])
-			started = &Proc{PID: pid, UID: ParseUserUID(m[3]), Name: m[2], StartNs: r.TimeNs, Source: "Start proc"}
+			started = &Proc{PID: pid, UID: ParseUserUID(m[3]), Name: m[2], StartNs: r.TimeNs, StartSeq: r.Seq, Source: "Start proc"}
 		} else if m := reStartProcOld.FindStringSubmatch(r.Msg); m != nil {
 			pid, _ := strconv.Atoi(m[2])
 			uid, _ := strconv.Atoi(m[3])
-			started = &Proc{PID: pid, UID: uid, Name: m[1], StartNs: r.TimeNs, Source: "Start proc"}
+			started = &Proc{PID: pid, UID: uid, Name: m[1], StartNs: r.TimeNs, StartSeq: r.Seq, Source: "Start proc"}
 		} else if m := reHasDied.FindStringSubmatch(r.Msg); m != nil {
 			pid, _ := strconv.Atoi(m[2])
-			ended = &Proc{PID: pid, Name: m[1], EndNs: r.TimeNs, EndReason: "died"}
+			ended = &Proc{PID: pid, Name: m[1], EndNs: r.TimeNs, EndSeq: r.Seq, EndReason: "died"}
 		} else if m := reKilling.FindStringSubmatch(r.Msg); m != nil {
 			pid, _ := strconv.Atoi(m[1])
-			ended = &Proc{PID: pid, Name: m[2], EndNs: r.TimeNs, EndReason: "killed: " + m[3]}
+			ended = &Proc{PID: pid, Name: m[2], EndNs: r.TimeNs, EndSeq: r.Seq, EndReason: "killed: " + m[3]}
 		} else if m := reForceStop.FindStringSubmatch(r.Msg); m != nil {
 			forceStop = m[1]
 		}
@@ -645,7 +737,7 @@ func (t *Tracker) Observe(r *model.Record) {
 		l := t.byPID[started.PID]
 		dup := false
 		for _, q := range l {
-			if q.Name == started.Name && q.StartNs != 0 && abs64(q.StartNs-started.StartNs) < 5e9 {
+			if q.Name == started.Name && q.StartNs != 0 && abs64(q.StartNs-started.StartNs) < 5e9 && t.sameEpochLocked(q.StartSeq, started.StartSeq) {
 				dup = true // same start seen via both events and system buffer
 				if q.UID < 0 {
 					q.UID = started.UID
@@ -659,11 +751,13 @@ func (t *Tracker) Observe(r *model.Record) {
 				if q.Alive() && q.StartNs == 0 && (q.Name == started.Name || placeholderName(q.Name)) &&
 					q.SeenNs >= started.StartNs-startSlackNs {
 					q.StartNs, q.Name, q.Source = started.StartNs, started.Name, started.Source
+					if r.Seq != 0 {
+						q.StartSeq = r.Seq
+					}
 					if started.UID >= 0 {
 						q.UID = started.UID
 					}
 					q.Package = t.packageForLocked(q.Name, q.UID)
-					t.sortLocked(q.PID)
 					changed = append(changed, *q)
 					dup = true
 				}
@@ -672,7 +766,8 @@ func (t *Tracker) Observe(r *model.Record) {
 		if !dup {
 			for _, q := range l {
 				if q.Alive() {
-					q.EndNs = started.StartNs
+					// a back jump can put the new start before the old one
+					q.EndNs, q.EndSeq = max(started.StartNs, q.StartNs), started.StartSeq
 					q.EndReason = "pid reused"
 					changed = append(changed, *q)
 				}
@@ -683,8 +778,8 @@ func (t *Tracker) Observe(r *model.Record) {
 		}
 	}
 	if ended != nil {
-		if p := t.lookupLocked(ended.PID, ended.EndNs); p != nil && (p.Alive() || p.EndReason == GoneNotInPS && ended.EndNs < p.EndNs) {
-			p.EndNs = ended.EndNs
+		if p := t.lookupLocked(ended.PID, ended.EndNs, r.Seq); p != nil && (p.Alive() || p.EndReason == GoneNotInPS && ended.EndNs < p.EndNs) {
+			p.EndNs, p.EndSeq = ended.EndNs, r.Seq
 			p.EndReason = ended.EndReason
 			changed = append(changed, *p)
 		}
@@ -692,21 +787,30 @@ func (t *Tracker) Observe(r *model.Record) {
 	if forceStop != "" {
 		for _, l := range t.byPID {
 			for _, q := range l {
-				if q.Alive() && q.Package == forceStop && order(q) < r.TimeNs {
-					q.EndNs, q.EndReason = r.TimeNs, "force-stopped"
+				if q.Alive() && q.Package == forceStop && startedBefore(t, q, r) {
+					q.EndNs, q.EndSeq, q.EndReason = r.TimeNs, r.Seq, "force-stopped"
 					changed = append(changed, *q)
 				}
 			}
 		}
 	}
 	if crashedPID != 0 {
-		if p := t.lookupLocked(crashedPID, r.TimeNs); p != nil && !p.Crashed {
+		if p := t.lookupLocked(crashedPID, r.TimeNs, r.Seq); p != nil && !p.Crashed {
 			p.Crashed = true
 			changed = append(changed, *p)
 		}
 	}
 	t.mu.Unlock()
 	t.emit(changed)
+}
+
+// startedBefore: q's lifetime began before the record r (arrival order when
+// both have a seq, else device time).
+func startedBefore(t *Tracker, q *Proc, r *model.Record) bool {
+	if q.StartSeq != 0 && r.Seq != 0 {
+		return q.StartSeq < r.Seq
+	}
+	return order(q) < r.TimeNs
 }
 
 func abs64(x int64) int64 {
@@ -717,7 +821,8 @@ func abs64(x int64) int64 {
 }
 
 // ForPackage returns lifetimes of processes belonging to pkg (exact appId,
-// i.e. "com.foo" and "com.foo:remote"), newest first.
+// i.e. "com.foo" and "com.foo:remote"), newest first: live ones, then the others, each by arrival
+// of the lifetime (a device clock jump does not reorder them).
 func (t *Tracker) ForPackage(pkg string) []Proc {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
@@ -733,7 +838,7 @@ func (t *Tracker) ForPackage(pkg string) []Proc {
 		if out[i].Alive() != out[j].Alive() {
 			return out[i].Alive()
 		}
-		return out[i].StartNs > out[j].StartNs
+		return out[i].n > out[j].n // arrival order, not device time (issue #55)
 	})
 	return out
 }
