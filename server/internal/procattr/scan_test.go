@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/s1crab/android-log-mcp/server/internal/testhome"
 )
 
 var (
@@ -71,7 +73,7 @@ func TestEveryChildIsHidden(t *testing.T) {
 func TestLauncherSpawnsDirectly(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join("..", "..", "..", "npm", "android-log-mcp", "bin", "android-log-mcp.js"))
 	if err != nil {
-		t.Skip("npm launcher not found:", err)
+		testhome.SkipOrFail(t, "npm launcher not found: %v", err)
 	}
 	src := string(b)
 	spawn := regexp.MustCompile(`spawn\(bin, [^\n]*\{([^}]*)\}\)`).FindStringSubmatch(src)

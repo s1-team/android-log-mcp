@@ -6,13 +6,15 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/s1crab/android-log-mcp/server/internal/testhome"
 )
 
 // Every line of the real API 29 captures parses (or is a buffer separator).
 func TestFixturesParse(t *testing.T) {
 	files, _ := filepath.Glob(filepath.Join("..", "testdata", "api29", "*.log*"))
 	if len(files) == 0 {
-		t.Skip("no fixtures")
+		testhome.SkipOrFail(t, "no fixtures under ../testdata/api29")
 	}
 	loc := time.FixedZone("UTC+0800", 8*3600)
 	for _, f := range files {

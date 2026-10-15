@@ -44,3 +44,14 @@ func Run(m *testing.M) int {
 	}
 	return m.Run()
 }
+
+// SkipOrFail skips the test locally but fails it when the CI environment
+// variable is set (GitHub Actions sets CI=true): a missing fixture or
+// prerequisite must never turn a CI test into a silent no-op.
+func SkipOrFail(t testing.TB, format string, args ...any) {
+	t.Helper()
+	if os.Getenv("CI") != "" {
+		t.Fatalf("CI: required test input missing: "+format, args...)
+	}
+	t.Skipf(format, args...)
+}
