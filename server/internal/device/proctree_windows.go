@@ -3,6 +3,8 @@
 package device
 
 import (
+	"log"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -51,11 +53,25 @@ func created(pid int) (int64, bool) {
 	return c.Nanoseconds(), true
 }
 
+// killWait bounds how long killPid waits for a terminated process to be
+// gone (within the 5 s release budget of bgStopWait, issue #73).
+const killWait = 500 * time.Millisecond
+
+// killPid terminates pid and waits (at most killWait) until it has really
+// exited: TerminateProcess is asynchronous, and a process that is still
+// exiting keeps its working directory and open files locked on Windows (the
+// class of problem of issue #24). A process that outlasts the wait is
+// logged, not waited for further.
 func killPid(pid int) {
-	h, err := windows.OpenProcess(windows.PROCESS_TERMINATE, false, uint32(pid))
+	h, err := windows.OpenProcess(windows.PROCESS_TERMINATE|windows.SYNCHRONIZE, false, uint32(pid))
 	if err != nil {
 		return
 	}
-	windows.TerminateProcess(h, 1)
-	windows.CloseHandle(h)
+	defer windows.CloseHandle(h)
+	if windows.TerminateProcess(h, 1) != nil {
+		return
+	}
+	if ev, _ := windows.WaitForSingleObject(h, uint32(killWait/time.Millisecond)); ev != windows.WAIT_OBJECT_0 {
+		log.Printf("pid %d still exiting %v after TerminateProcess; continuing", pid, killWait)
+	}
 }

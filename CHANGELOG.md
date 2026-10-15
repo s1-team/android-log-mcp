@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+### Fixed
+
+- Windows: stopping a device (or the service) now waits up to 500 ms for each killed adb grandchild process to really exit, so a process that is still exiting no longer keeps the data or temp directory locked ([#73](https://github.com/s1crab/android-log-mcp/issues/73)).
+
 ## [0.7.0] - 2026-10-15
 
 ### Upgrade notes
