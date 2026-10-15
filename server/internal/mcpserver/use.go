@@ -103,6 +103,9 @@ func (t *Tools) target(name string) (id string, d *device.Device, err error) {
 			return "", sd, nil // stored data of a device that is not connected
 		}
 		if len(identifying) > 0 {
+			// the name may be the adb serial of a device whose identity is
+			// still being read: start it as soon as that is known (issue #109)
+			t.M.WantAddr(name)
 			return "", nil, slow()
 		}
 		d, err := t.resolveDevice(name)
