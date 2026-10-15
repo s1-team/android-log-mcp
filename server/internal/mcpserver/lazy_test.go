@@ -125,7 +125,7 @@ func TestStatusSeveralDevicesStartsNone(t *testing.T) {
 	t.Parallel()
 	l := newLazy(t, 2, "FAKEA", "FAKEB")
 	out, isErr := l.call(t, "logcat_status", `{}`)
-	if isErr || strings.Contains(out, "cursor (newest line") || !strings.Contains(out, "code=several_devices count=2 devices=FAKEA,FAKEB") || !strings.Contains(out, "No device was started") {
+	if isErr || !strings.Contains(out, " cursor=none") || !strings.Contains(out, "hint code=several_devices devices=FAKEA,FAKEB started=0 next: device=\"FAKEA\" | device=\"FAKEB\"") {
 		t.Fatalf("status:\n%s", out)
 	}
 	if l.m.Wanted("FAKEA") || l.m.Wanted("FAKEB") || len(l.e.CallsMatching("logcat -b")) != 0 {
@@ -135,7 +135,7 @@ func TestStatusSeveralDevicesStartsNone(t *testing.T) {
 		t.Fatal("search without device= succeeded with two devices")
 	}
 	out, isErr = l.call(t, "logcat_status", `{"device":"FAKEB"}`)
-	if isErr || !strings.Contains(out, "cursor (newest line, FAKEB)") {
+	if isErr || cursorOf(out) == "" {
 		t.Fatalf("status FAKEB:\n%s", out)
 	}
 	if l.m.Wanted("FAKEA") || !l.m.Wanted("FAKEB") {
@@ -151,11 +151,11 @@ func TestStatusNoCursorDuringBackfill(t *testing.T) {
 	l.m.CatchUpWait = 500 * time.Millisecond
 	l.e.SetDelay("FAKEA", 100*time.Millisecond) // ~4 s dump
 	out, _ := l.call(t, "logcat_status", `{}`)
-	if strings.Contains(out, "cursor (newest line") || !strings.Contains(out, "backfill in progress (") || !strings.Contains(out, "call logcat_status again") {
+	if cursorOf(out) != "" || !strings.Contains(out, " caught_up=0 ") || !strings.Contains(out, "note code=backfill backfill=") {
 		t.Fatalf("status during backfill:\n%s", out)
 	}
 	out, _ = l.call(t, "logcat_search", `{}`)
-	if !strings.Contains(out, "\nnote code=backfill msg=\"backfill in progress (") || !strings.Contains(out, "results may be incomplete, call again") || !(strings.HasPrefix(out, "ok ") || strings.HasPrefix(out, "empty ")) {
+	if !strings.Contains(out, "\nnote code=backfill backfill=running lines=") || !strings.Contains(out, " results=incomplete next: logcat_status") || !(strings.HasPrefix(out, "ok ") || strings.HasPrefix(out, "empty ")) {
 		t.Fatalf("search during backfill:\n%s", out)
 	}
 	if strings.HasPrefix(out, "empty ") && (!strings.Contains(out, " matched=0 scanned=") || !strings.Contains(out, "next:")) {
@@ -164,14 +164,14 @@ func TestStatusNoCursorDuringBackfill(t *testing.T) {
 	deadline := time.Now().Add(20 * time.Second)
 	for {
 		out, _ = l.call(t, "logcat_status", `{}`)
-		if strings.Contains(out, "cursor (newest line, FAKEA)") {
+		if cursorOf(out) != "" {
 			break
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("no cursor after the backfill:\n%s", out)
 		}
 	}
-	if !strings.Contains(out, "caught up") {
+	if !strings.Contains(out, " caught_up=1 ") {
 		t.Fatalf("status:\n%s", out)
 	}
 	if out, _ = l.call(t, "logcat_search", `{}`); !strings.HasPrefix(out, "ok ") {
@@ -187,7 +187,7 @@ func TestRecordFor(t *testing.T) {
 		if !isErr {
 			t.Errorf("record_for %q accepted:\n%s", bad, out)
 		}
-		if bad == "25h" && !strings.Contains(out, "limit of 24h") {
+		if bad == "25h" && !strings.Contains(out, "valid=\"30m|2h|1h30m|0 (max 24h)\"") {
 			t.Errorf("25h: %s", out)
 		}
 	}
@@ -195,11 +195,11 @@ func TestRecordFor(t *testing.T) {
 		t.Fatal("an invalid record_for started recording")
 	}
 	out, isErr := l.call(t, "logcat_status", `{"record_for":"1h30m"}`)
-	if isErr || !strings.Contains(out, "pinned: FAKEA records until") || !l.pins.Until("FAKEA").After(time.Now().Add(89*time.Minute)) {
+	if isErr || !strings.Contains(out, "pinned device=FAKEA until=") || !l.pins.Until("FAKEA").After(time.Now().Add(89*time.Minute)) {
 		t.Fatalf("pin:\n%s", out)
 	}
 	out, isErr = l.call(t, "logcat_status", `{"record_for":"0"}`)
-	if isErr || !strings.Contains(out, "stopped: FAKEA") || !l.pins.Until("FAKEA").IsZero() {
+	if isErr || !strings.Contains(out, "stopped device=FAKEA pin=removed") || !l.pins.Until("FAKEA").IsZero() {
 		t.Fatalf("stop:\n%s", out)
 	}
 	if l.m.Wanted("FAKEA") {
@@ -256,14 +256,14 @@ func TestSlowIdentity(t *testing.T) {
 	}
 	l.m.CatchUpWait = 300 * time.Millisecond
 	out, isErr := l.call(t, "logcat_status", `{}`)
-	if isErr || !strings.Contains(out, "code=device_identifying devices=FAKEA") || strings.Contains(out, "cursor (newest line") {
+	if isErr || !strings.Contains(out, "code=device_identifying devices=FAKEA") || cursorOf(out) != "" {
 		t.Fatalf("status:\n%s", out)
 	}
-	if out, isErr := l.call(t, "logcat_search", `{}`); !isErr || !strings.Contains(out, "error code=device_identifying") || !strings.Contains(out, "next: retry_after_s=3") {
+	if out, isErr := l.call(t, "logcat_search", `{}`); !isErr || !strings.Contains(out, "error code=device_identifying") || !strings.Contains(out, "retry_after_s=3 next: logcat_status") {
 		t.Fatalf("search (error %v):\n%s", isErr, out)
 	}
 	l.m.CatchUpWait = device.DefaultCatchUpWait
-	if out, _ := l.call(t, "logcat_status", `{}`); !strings.Contains(out, "cursor (newest line, FAKEA)") {
+	if out, _ := l.call(t, "logcat_status", `{}`); cursorOf(out) == "" {
 		t.Fatalf("status after identification:\n%s", out)
 	}
 }
@@ -290,7 +290,7 @@ func TestStatusShowsLateHandover(t *testing.T) {
 	var out string
 	for {
 		out, _ = l.call(t, "logcat_status", `{}`)
-		if strings.Contains(out, "note: recording session 2 started at") {
+		if strings.Contains(out, "note code=handoff") {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -299,7 +299,7 @@ func TestStatusShowsLateHandover(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Logf("logcat_status:\n%s", out)
-	if !strings.Contains(out, "before session 1 had stopped: the recorder of session 1 did not stop within 200ms") {
+	if !strings.Contains(out, "recording session 2 started at") {
 		t.Fatalf("logcat_status:\n%s", out)
 	}
 }

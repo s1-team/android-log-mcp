@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,17 +24,41 @@ func crashPkgMatch(c *analysis.Crash, pkg string, own func(string) string, su *s
 	return pkg == "" || crashPackage(c.Package, c.Process) == pkg || own(c.Process) == pkg || su.process(c.Process)
 }
 
+// beforeLinesDefault / beforeLinesMax: how many lines of the crashed process
+// before the crash a detail shows (param before_lines; was a fixed 40).
+const (
+	beforeLinesDefault = 20
+	beforeLinesMax     = 100
+)
+
+// crashHead is the first line of a logcat_crashes response.
+func crashHead(d *device.Device, ci device.ClockInfo, verbose bool, word, view string, kv ...any) string {
+	all := append([]any{"view", view, "device", d.Serial}, kv...)
+	if verbose {
+		all = append(all, "tz", d.TZName())
+	}
+	all = append(all, clockKV(ci, verbose)...)
+	all = append(all, "fmt", fmtVersion)
+	return hdr(word, all...) + "\n"
+}
+
 func (t *Tools) crashes(ctx context.Context, a crashArgs) (out string, err error) {
 	if a.Limit == 0 {
 		a.Limit = 10
 	}
 	if a.Limit < 1 || a.Limit > 50 {
-		return "", errf("limit must be 1..50 (got %d)", a.Limit)
+		return "", errc("bad_param", []string{"limit=50"}, "param", "limit", "value", a.Limit, "valid", "1..50")
+	}
+	if a.BeforeLines == 0 {
+		a.BeforeLines = beforeLinesDefault
+	}
+	if a.BeforeLines < 1 || a.BeforeLines > beforeLinesMax {
+		return "", errc("bad_param", []string{param("before_lines", beforeLinesMax)}, "param", "before_lines", "value", a.BeforeLines, "valid", "1.."+strconv.Itoa(beforeLinesMax))
 	}
 	kinds := map[string]bool{}
 	for _, k := range a.Kinds {
 		if k != "java" && k != "native" && k != "anr" {
-			return "", errf("kinds: %q is not one of java, native, anr", k)
+			return "", errc("bad_param", []string{`kinds=["java","native","anr"]`}, "param", "kinds", "value", k, "valid", "java,native,anr")
 		}
 		kinds[k] = true
 	}
@@ -43,8 +68,9 @@ func (t *Tools) crashes(ctx context.Context, a crashArgs) (out string, err error
 		return "", err
 	}
 	defer func() {
-		if note != "" && err == nil {
-			out = "note: " + note + "\n" + out
+		if note != "" && err == nil { // after the header line: it stays the first line
+			head, rest, _ := strings.Cut(out, "\n")
+			out = head + "\n" + note + "\n" + rest
 		}
 	}()
 	d.Store.Refresh()
@@ -53,7 +79,6 @@ func (t *Tools) crashes(ctx context.Context, a crashArgs) (out string, err error
 	if err != nil {
 		return "", err
 	}
-	now := ci.Now
 	all := d.Crashes()
 	if a.ID != "" {
 		for _, c := range all {
@@ -61,7 +86,7 @@ func (t *Tools) crashes(ctx context.Context, a crashArgs) (out string, err error
 				if full := d.CrashFull(c.ID)[0]; full != nil {
 					c = full
 				}
-				return t.crashDetail(d, c, all), nil
+				return t.crashDetail(d, ci, c, all, a), nil
 			}
 		}
 		var ids []string
@@ -72,9 +97,9 @@ func (t *Tools) crashes(ctx context.Context, a crashArgs) (out string, err error
 			ids = append(ids, c.ID)
 		}
 		if len(ids) == 0 {
-			return "", errf("no crash with id %q: no crashes recorded on %s yet", a.ID, d.Serial)
+			return "", errc("unknown_crash", []string{`logcat_search filter="is:crash"`}, "value", a.ID, "recent", "")
 		}
-		return "", errf("no crash with id %q on %s. Recent ids: %s (call logcat_crashes without id to list)", a.ID, d.Serial, strings.Join(ids, ", "))
+		return "", errc("unknown_crash", []string{param("id", ids[0]), "logcat_crashes"}, "value", a.ID, "recent", strings.Join(ids, ","))
 	}
 	pk := d.Packages()
 	own := procs.NameOwner(pk)
@@ -93,21 +118,17 @@ func (t *Tools) crashes(ctx context.Context, a crashArgs) (out string, err error
 		sel = append(sel, c)
 	}
 	var b strings.Builder
-	scope := "all apps"
-	if a.Package != "" {
-		scope = "package " + a.Package
-	}
-	if len(sel) == 1 {
-		fmt.Fprintf(&b, "device %s · device time %s · %s · %s · 1 match → full detail\n", d.Serial, tzLabel(loc, d.TZName(), now), clockLine(ci), scope)
-		if su != nil {
-			b.WriteString("note: " + su.note() + "\n")
-		}
+	if len(sel) == 1 { // one match: its detail, with the matching note
 		c := sel[0]
 		if full := d.CrashFull(c.ID)[0]; full != nil {
 			c = full
 		}
-		b.WriteString(t.crashDetail(d, c, all))
-		return b.String(), nil
+		det := t.crashDetail(d, ci, c, all, a)
+		if su != nil {
+			head, rest, _ := strings.Cut(det, "\n")
+			det = head + "\n" + su.noteLine(a.Verbose) + "\n" + rest
+		}
+		return det, nil
 	}
 	// group by signature
 	type group struct {
@@ -133,19 +154,35 @@ func (t *Tools) crashes(ctx context.Context, a crashArgs) (out string, err error
 		}
 		g.items = append(g.items, c)
 	}
-	fmt.Fprintf(&b, "device %s · device time %s · %s · %s · %d crash groups (%d events) in recorded history\n", d.Serial, tzLabel(loc, d.TZName(), now), clockLine(ci), scope, len(groups), len(sel))
-	if su != nil {
-		b.WriteString("note: " + su.note() + "\n")
+	shown := min(len(groups), a.Limit)
+	word := "ok"
+	if len(sel) == 0 {
+		word = "empty"
 	}
+	kv := []any{"groups", len(groups), "events", len(sel), "shown", shown}
+	if a.Package != "" {
+		kv = append(kv, "package", a.Package)
+	}
+	kv = append(kv, "order", "newest_first")
 	if st := d.Store.Stats(); st.OldestNs != 0 {
-		fmt.Fprintf(&b, "history: logcat from %s; DropBox adds older entries when available (status: %s)\n", dateTime(st.OldestNs, loc), dropboxSummary(d))
+		kv = append(kv, "history_from", isoNs(st.OldestNs, loc))
+	}
+	// DropBox sources: only the ones that are not ok matter to the next call
+	if bad := dropboxIssues(d); bad != "" {
+		kv = append(kv, "dropbox", bad)
+	}
+	b.WriteString(crashHead(d, ci, a.Verbose, word, "list", kv...))
+	if su != nil {
+		b.WriteString(su.noteLine(a.Verbose) + "\n")
 	}
 	if len(sel) == 0 {
-		b.WriteString("no crashes or ANRs match")
+		alt := []string{`kinds=["java","native","anr"]`, `from="24h"`}
+		code := "no_match"
 		if a.Package != "" {
-			b.WriteString(" (package is an exact application id)")
+			code = "no_crash_for_package"
+			alt = []string{`logcat_search filter="is:crash"`, `package=""`}
 		}
-		b.WriteString(".\n")
+		b.WriteString(hdr("hint", "code", code) + nextClause(alt...) + "\n")
 		return b.String(), nil
 	}
 	// the list shows stacks / ANR traces of the shown groups only: decode
@@ -158,38 +195,57 @@ func (t *Tools) crashes(ctx context.Context, a crashArgs) (out string, err error
 		heads = append(heads, g.items[0].ID)
 	}
 	fulls := d.CrashFull(heads...)
-	shown := 0
+	n := 0
 	for _, g := range groups {
-		if shown >= a.Limit {
+		if n >= a.Limit {
 			break
 		}
 		c := g.items[0]
-		if f := fulls[shown]; f != nil {
+		if f := fulls[n]; f != nil {
 			c = f
 		}
-		shown++
+		n++
 		b.WriteString(crashListEntry(c, loc))
 		if len(g.items) > 1 {
-			var also []string
-			for i, o := range g.items[1:] {
-				if i >= 5 {
-					also = append(also, fmt.Sprintf("…%d more", len(g.items)-6))
-					break
-				}
-				at := clock(o.TimeNs, loc)[:8]
-				if dateOf(o.TimeNs, loc) != dateOf(c.TimeNs, loc) {
-					at = dateTime(o.TimeNs, loc) // another day (or a device clock jump)
-				}
-				also = append(also, fmt.Sprintf("%s (%s)", at, o.ID))
+			rest := g.items[1:]
+			var ids []string
+			for _, o := range rest[:min(len(rest), 5)] {
+				ids = append(ids, o.ID)
 			}
-			fmt.Fprintf(&b, "     same signature also at %s\n", strings.Join(also, ", "))
+			kv := []any{"same_sig", len(rest), "ids", strings.Join(ids, ",")}
+			if len(rest) > 5 {
+				kv = append(kv, "ids_more", len(rest)-5)
+			}
+			kv = append(kv, "first", isoNs(rest[len(rest)-1].TimeNs, loc))
+			b.WriteString("  " + hdr("same_signature", kv...) + nextClause(param("id", rest[0].ID)) + "\n")
 		}
 	}
 	if len(groups) > shown {
-		fmt.Fprintf(&b, "[%d older groups not shown; raise limit or narrow from/to]\n", len(groups)-shown)
+		older := len(groups) - shown
+		next := []string{param("to", isoNs(groups[shown-1].items[0].TimeNs, loc))}
+		if a.Limit < 50 {
+			next = []string{param("limit", min(50, a.Limit+older)), next[0]}
+		}
+		b.WriteString(truncLine("older_groups", older, true, nil, next...))
 	}
-	fmt.Fprintf(&b, "more: logcat_crashes id=%q for full detail\n", groups[0].items[0].ID)
+	b.WriteString("next: " + param("id", groups[0].items[0].ID) + "\n")
 	return b.String(), nil
+}
+
+// dropboxIssues lists the DropBox sources whose last fetch was not ok:
+// "tag:status,..." ("" when all are ok).
+func dropboxIssues(d *device.Device) string {
+	var parts []string
+	for _, tag := range []string{"data_app_crash", "data_app_native_crash", "data_app_anr"} {
+		s := d.DropboxStatus(tag)
+		if i := strings.IndexByte(s, ' '); i > 0 && strings.HasPrefix(s, "20") {
+			s = s[i+1:]
+		}
+		if s = strings.TrimSpace(s); s != "ok" {
+			parts = append(parts, tag+":"+noSpace(strings.ReplaceAll(s, ",", ";")))
+		}
+	}
+	return strings.Join(parts, ",")
 }
 
 func dropboxSummary(d *device.Device) string {
@@ -204,34 +260,35 @@ func dropboxSummary(d *device.Device) string {
 	return strings.Join(parts, ", ")
 }
 
+// crashListEntry is one group of the list: a key=value first line (id first)
+// and the headline, first frames and, for an ANR, the main thread's state.
 func crashListEntry(c *analysis.Crash, loc *time.Location) string {
 	var b strings.Builder
-	who := fmt.Sprintf("pid %d %s", c.PID, orQ(c.Process))
+	kv := []any{"id", c.ID, "time", isoNs(c.TimeNs, loc), "kind", c.Kind, "pid", c.PID, "process", orQ(c.Process)}
 	if c.Thread != "" {
-		who += " (thread " + c.Thread + ")"
+		kv = append(kv, "thread", c.Thread)
 	}
-	fmt.Fprintf(&b, "%-4s %s  %-6s %s", c.ID, dateTime(c.TimeNs, loc), c.Kind, who)
+	b.WriteString(hdr("crash", kv...) + "\n")
 	switch c.Kind {
 	case "java":
-		b.WriteString("\n")
 		lines := strings.Split(strings.TrimSpace(firstNonEmpty(c.Body, c.Headline)), "\n")
-		fmt.Fprintf(&b, "     %s\n", lines[0])
+		fmt.Fprintf(&b, "  %s\n", lines[0])
 		frames := 0
 		total := 0
 		for _, ln := range lines[1:] {
 			if strings.HasPrefix(strings.TrimSpace(ln), "at ") {
 				total++
 				if frames < 3 {
-					fmt.Fprintf(&b, "       %s\n", strings.TrimSpace(ln))
+					fmt.Fprintf(&b, "    %s\n", strings.TrimSpace(ln))
 					frames++
 				}
 			}
 		}
 		if cause := rootCause(lines); cause != "" && cause != lines[0] {
-			fmt.Fprintf(&b, "       … root cause: %s\n", cause)
+			fmt.Fprintf(&b, "    ^ root_cause: %s\n", cause)
 		}
 		if total > frames {
-			fmt.Fprintf(&b, "       … %d more frames\n", total-frames)
+			fmt.Fprintf(&b, "    ^ frames_hidden=%d next: %s\n", total-frames, param("id", c.ID))
 		}
 	case "native":
 		fmt.Fprintf(&b, "  %s\n", c.Headline)
@@ -249,10 +306,10 @@ func crashListEntry(c *analysis.Crash, loc *time.Location) string {
 						break
 					}
 				}
-				fmt.Fprintf(&b, "     main thread: %s — %s   [traces: %s]\n", state, top, tracesSource(c))
+				fmt.Fprintf(&b, "  main_thread: %s | %s | traces=%s\n", state, top, tracesSource(c))
 			}
 		} else {
-			b.WriteString("     main thread: traces not available yet (see detail)\n")
+			fmt.Fprintf(&b, "  traces=unavailable next: %s\n", param("id", c.ID))
 		}
 	}
 	return b.String()
@@ -287,8 +344,9 @@ func rootCause(lines []string) string {
 }
 
 // trimStack keeps the first 40 and last 5 frames of each section when the
-// whole stack exceeds 20k chars.
-func trimStack(s string) string {
+// whole stack exceeds 20k chars; the marker names the call that shows the
+// whole stack (next).
+func trimStack(s, next string) string {
 	if len(s) <= 20000 {
 		return s
 	}
@@ -297,7 +355,7 @@ func trimStack(s string) string {
 	flush := func() {
 		if len(frames) > 45 {
 			out = append(out, frames[:40]...)
-			out = append(out, fmt.Sprintf("        … %d frames omitted …", len(frames)-45))
+			out = append(out, fmt.Sprintf("        ^ frames_omitted=%d next: %s", len(frames)-45, next))
 			out = append(out, frames[len(frames)-5:]...)
 		} else {
 			out = append(out, frames...)
@@ -317,86 +375,93 @@ func trimStack(s string) string {
 	return strings.Join(out, "\n")
 }
 
-func (t *Tools) crashDetail(d *device.Device, c *analysis.Crash, all []*analysis.Crash) string {
+func (t *Tools) crashDetail(d *device.Device, ci device.ClockInfo, c *analysis.Crash, all []*analysis.Crash, a crashArgs) string {
 	loc := d.Loc()
 	var b strings.Builder
-	kind := map[string]string{"java": "Java crash", "native": "native crash", "anr": "ANR"}[c.Kind]
-	who := fmt.Sprintf("pid %d %s", c.PID, orQ(c.Process))
+	kv := []any{"id", c.ID, "kind", c.Kind, "time", isoNs(c.TimeNs, loc), "pid", c.PID, "process", orQ(c.Process)}
 	if c.Thread != "" {
-		who += " (thread " + c.Thread + ")"
+		kv = append(kv, "thread", c.Thread)
 	}
-	fmt.Fprintf(&b, "%s %s · %s · %s · sources: %s\n", c.ID, kind, time.Unix(0, c.TimeNs).In(loc).Format("2006-01-02 15:04:05.000"), who, strings.Join(c.Sources, ", "))
 	// the package line names an application id: not a process name that
 	// owns no installed package (android.process.acore: issues #44, #70)
 	if p := crashPackage(c.Package, c.Process); p != "" && (p != c.Process || isInstalled(d.Packages(), p)) {
-		fmt.Fprintf(&b, "package: %s\n", p)
+		kv = append(kv, "package", p)
 	}
+	kv = append(kv, "sources", strings.Join(c.Sources, ","), "order", "arrival", "before_lines", a.BeforeLines)
+	b.WriteString(crashHead(d, ci, a.Verbose, "ok", "detail", kv...))
+	// the call that shows every frame of a stack that was cut
+	fullNext := "logcat_search " + param("filter", fmt.Sprintf("pid:%d", c.PID)) + ` stack="full"`
 	switch c.Kind {
 	case "java":
 		b.WriteString("stack:\n")
-		b.WriteString(indent(trimStack(firstNonEmpty(c.Body, c.Dropbox, c.Headline)), "  "))
+		b.WriteString(indent(trimStack(firstNonEmpty(c.Body, c.Dropbox, c.Headline), fullNext), "  "))
 		if c.Dropbox != "" && c.Body != "" && strings.Contains(c.Body, "stack unavailable") {
-			b.WriteString("dropbox entry:\n" + indent(trimStack(c.Dropbox), "  "))
+			b.WriteString("dropbox entry:\n" + indent(trimStack(c.Dropbox, fullNext), "  "))
 		}
 	case "native":
 		fmt.Fprintf(&b, "signal: %s\n", c.Headline)
 		if c.Location != "" {
-			fmt.Fprintf(&b, "crash location: %s  (first app frame; libc frames such as abort/syscall come before it)\n", c.Location)
+			fmt.Fprintf(&b, "crash_location: %s\n", c.Location)
 		}
 		body := c.Body
-		src := "as logged by crash_dump/DEBUG"
+		src := "logcat"
+		dbx := ""
 		if !strings.Contains(body, "backtrace:") {
 			switch {
 			case c.Tombstone != "":
-				body, src = c.Tombstone, "from DropBox SYSTEM_TOMBSTONE"
+				body, src, dbx = c.Tombstone, "dropbox_tombstone", "SYSTEM_TOMBSTONE"
 			case c.Dropbox != "":
-				body, src = c.Dropbox, "from DropBox data_app_native_crash"
+				body, src, dbx = c.Dropbox, "dropbox_native_crash", "data_app_native_crash"
 			}
 		}
-		fmt.Fprintf(&b, "tombstone (%s):\n", src)
-		b.WriteString(indent(trimStack(capStr(body, 12000)), "  "))
+		fmt.Fprintf(&b, "tombstone source=%s:\n", src)
+		b.WriteString(indent(trimStack(capStr(body, 12000, dropboxCmd(dbx)), fullNext), "  "))
 		if c.Tombstone != "" {
 			threads := strings.Count(c.Tombstone, "\n--- --- ---") + 1
-			fmt.Fprintf(&b, "full tombstone (all %d threads, memory near registers, maps) is in DropBox SYSTEM_TOMBSTONE; `adb shell dumpsys dropbox --print SYSTEM_TOMBSTONE`\n", threads)
+			fmt.Fprintf(&b, "tombstone_full threads=%d next: %s\n", threads, dropboxCmd("SYSTEM_TOMBSTONE"))
 		} else if !strings.Contains(body, "backtrace") {
-			b.WriteString("note: no tombstone backtrace was logged (DEBUG lines missing) and DropBox had none yet. Fallback: `adb bugreport` (/data/tombstones needs root).\n")
+			b.WriteString(hdr("hint", "code", "no_tombstone_backtrace") + nextClause("adb bugreport") + "\n")
 		}
 	case "anr":
 		fmt.Fprintf(&b, "reason: %s\n", orStr(c.Headline, "?"))
-		if c.CPU != "" {
-			b.WriteString("cpu (first lines):\n" + indent(c.CPU, "  "))
+		if c.CPU != "" && a.Verbose {
+			b.WriteString("cpu:\n" + indent(c.CPU, "  "))
 		}
 		if c.Traces != "" {
 			main, holder := analysis.MainThreadTrace(c.Traces)
 			if main != "" {
-				fmt.Fprintf(&b, "main thread [traces: %s]:\n", tracesSource(c))
-				b.WriteString(indent(capStr(main, 8000), "  "))
+				fmt.Fprintf(&b, "main_thread traces=%s:\n", tracesSource(c))
+				b.WriteString(indent(capStr(main, 8000, dropboxCmd("data_app_anr")), "  "))
 				if holder != "" {
-					b.WriteString("lock holder thread:\n" + indent(capStr(holder, 6000), "  "))
+					b.WriteString("lock_holder_thread:\n" + indent(capStr(holder, 6000, dropboxCmd("data_app_anr")), "  "))
 				}
 			} else {
-				b.WriteString("traces present but no \"main\" thread block found; first part:\n" + indent(capStr(c.Traces, 4000), "  "))
+				b.WriteString("traces_without_main_thread first_part:\n" + indent(capStr(c.Traces, 4000, dropboxCmd("data_app_anr")), "  "))
 			}
 		} else {
-			fmt.Fprintf(&b, "traces: unavailable — no matching dropbox data_app_anr entry (dropbox status: %s). It may be rate-limited, not written yet (retry in a few seconds), or dumpsys dropbox not permitted. /data/anr needs root. Fallback: run \"adb bugreport\" yourself.\n", d.DropboxStatus("data_app_anr"))
+			fmt.Fprintf(&b, "%s\n", hdr("traces", "state", "unavailable", "reason", "no_dropbox_entry", "dropbox", strings.TrimSpace(d.DropboxStatus("data_app_anr")), "retry_after_s", 5)+nextClause(param("id", c.ID), dropboxCmd("data_app_anr")))
 		}
 		if c.Body != "" && !strings.Contains(c.Body, "CPU usage") {
-			b.WriteString("ActivityManager block:\n" + indent(capStr(c.Body, 3000), "  "))
+			b.WriteString("activity_manager_block:\n" + indent(capStr(c.Body, 3000, dropboxCmd("data_app_anr")), "  "))
 		}
 	}
 	// same-signature history
 	var same []string
 	for _, o := range all {
 		if o.ID != c.ID && o.Kind == c.Kind && o.Signature != "" && o.Signature == c.Signature {
-			same = append(same, fmt.Sprintf("%s (%s)", o.ID, dateTime(o.TimeNs, loc)))
+			same = append(same, o.ID)
 		}
 	}
 	if len(same) > 0 {
-		fmt.Fprintf(&b, "same signature: %s\n", strings.Join(capList(same, 8), ", "))
+		kv := []any{"same_sig", len(same), "ids", strings.Join(same[:min(len(same), 8)], ",")}
+		if len(same) > 8 {
+			kv = append(kv, "ids_more", len(same)-8)
+		}
+		b.WriteString(hdr("same_signature", kv...) + nextClause(param("id", same[0])) + "\n")
 	}
-	// last 40 lines of the crashed process before the crash
+	// the last before_lines lines of the crashed process before the crash
 	if c.Seq == 0 || c.PID == 0 {
-		b.WriteString("before crash: not in recorded logs (known only from DropBox — happened before recording started or the log buffer rolled over)\n")
+		b.WriteString(hdr("before_crash", "lines", 0, "reason", "not_in_recorded_logs") + "\n")
 		return b.String()
 	}
 	var before []*model.Record
@@ -409,10 +474,10 @@ func (t *Tools) crashDetail(d *device.Device, c *analysis.Crash, all []*analysis
 		if r.PID == c.PID {
 			before = append(before, r)
 		}
-		return len(before) < 40 && scanned < 300000
+		return len(before) < a.BeforeLines && scanned < 300000
 	})
-	fmt.Fprintf(&b, "before crash (pid %d, last %d lines):\n", c.PID, len(before))
-	w := &lineWriter{loc: loc}
+	b.WriteString(hdr("before_crash", "pid", c.PID, "lines", len(before), "columns", "time level pid/tid tag: message") + "\n")
+	w := &lineWriter{loc: loc, noProc: true}
 	for i := len(before) - 1; i >= 0; i-- {
 		w.add(before[i], false)
 	}
@@ -420,11 +485,20 @@ func (t *Tools) crashDetail(d *device.Device, c *analysis.Crash, all []*analysis
 	for _, l := range w.lines {
 		b.WriteString("  " + l + "\n")
 	}
+	if len(before) == a.BeforeLines && a.BeforeLines < beforeLinesMax {
+		b.WriteString(truncLine("before_lines", len(before), false, nil, param("before_lines", min(beforeLinesMax, a.BeforeLines*2))))
+	}
 	out := b.String()
 	if len(out) > outputBudget {
-		out = out[:outputBudget] + "\n…[truncated at 30k chars]\n"
+		cut := cutAt(out, outputBudget)
+		out = out[:cut] + "\n" + truncLine("detail_chars", len(out)-cut, true, nil, param("before_lines", max(1, a.BeforeLines/2)), fullNext)
 	}
 	return out
+}
+
+// dropboxCmd is the adb command that prints a DropBox entry in full.
+func dropboxCmd(tag string) string {
+	return "adb shell dumpsys dropbox --print " + tag
 }
 
 func indent(s, p string) string {
@@ -432,11 +506,13 @@ func indent(s, p string) string {
 	return p + strings.ReplaceAll(s, "\n", "\n"+p) + "\n"
 }
 
-func capStr(s string, n int) string {
+// capStr cuts s to n chars with a marker that names the command showing it whole.
+func capStr(s string, n int, next string) string {
 	if len(s) <= n {
 		return s
 	}
-	return s[:n] + fmt.Sprintf("\n…[+%d chars]", len(s)-n)
+	cut := cutAt(s, n)
+	return s[:cut] + "\n" + lineCut(n, len(s)-cut, next)
 }
 
 var _ = sort.Strings

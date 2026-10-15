@@ -176,7 +176,7 @@ func TestReplayFromReport(t *testing.T) {
 	mgr.Start(context.Background())
 	t.Cleanup(mgr.Close)
 	tools := &Tools{M: mgr}
-	if st, _ := tools.Call(context.Background(), "logcat_status", json.RawMessage(`{}`)); !strings.Contains(st, "mode: offline") {
+	if st, _ := tools.Call(context.Background(), "logcat_status", json.RawMessage(`{}`)); !strings.Contains(st, "mode offline=1 read_only=1") {
 		t.Errorf("offline status:\n%s", st)
 	}
 	defer func() {
@@ -276,11 +276,11 @@ func TestReportSizeCapAndPackage(t *testing.T) {
 	t.Cleanup(mgr.Close)
 	tools := &Tools{M: mgr}
 	st, isErr := tools.Call(context.Background(), "logcat_status", json.RawMessage(`{}`))
-	if isErr || !strings.Contains(st, "report size cap") {
+	if isErr || !strings.Contains(st, "report_size_cap") {
 		t.Errorf("status of a capped report should show the cap gap:\n%s", st)
 	}
 	cr, isErr := tools.Call(context.Background(), "logcat_crashes", json.RawMessage(`{"package":"com.example.logtest"}`))
-	if isErr || !strings.Contains(cr, "crash groups") {
+	if isErr || !strings.Contains(cr, " groups=") {
 		t.Errorf("crashes from a capped report:\n%s", cr)
 	}
 }

@@ -463,7 +463,7 @@ func (t *Tools) search(ctx context.Context, a searchArgs) (out string, err error
 	defer func() {
 		if note != "" && err == nil { // after the header line: it stays the first line
 			head, rest, _ := strings.Cut(out, "\n")
-			out = head + "\n" + hdr("note", "code", "backfill", "msg", note) + nextClause("logcat_status") + "\n" + rest
+			out = head + "\n" + note + "\n" + rest
 		}
 	}()
 	d.Store.Refresh()

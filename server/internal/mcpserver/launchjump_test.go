@@ -165,8 +165,7 @@ func launchTimeline(t *testing.T) (*launchJumpFx, time.Time) {
 	return newLaunchJumpFx(t, n, segs, want), n
 }
 
-var reLaunchHead = regexp.MustCompile(`^#\d+ (\S+ \S+)  (\S+)  `)
-var reTTID = regexp.MustCompile(`^   TTID \(time to initial display, system-measured\): (\d+) ms`)
+var reLaunchHead = regexp.MustCompile(`^#\d+ launch time=(\S+) kind=\S+ .*?(?:ttid_ms=(\d+)|ttid=none)`)
 
 type gotLaunch struct {
 	req    string
@@ -180,18 +179,21 @@ func parseLaunches(out string) []gotLaunch {
 	var ls []gotLaunch
 	for _, ln := range strings.Split(out, "\n") {
 		if m := reLaunchHead.FindStringSubmatch(ln); m != nil {
-			ls = append(ls, gotLaunch{req: m[1]})
+			ts, err := time.Parse(time.RFC3339Nano, m[1])
+			if err != nil {
+				ts = time.Time{}
+			}
+			g := gotLaunch{req: fmtReq(ts)}
+			g.ttid, _ = strconv.Atoi(m[2])
+			ls = append(ls, g)
 			continue
 		}
-		if len(ls) == 0 || !strings.HasPrefix(ln, "   ") {
+		if len(ls) == 0 || !strings.HasPrefix(ln, "  ") {
 			continue
 		}
 		l := &ls[len(ls)-1]
 		l.text += ln + "\n"
-		if m := reTTID.FindStringSubmatch(ln); m != nil {
-			l.ttid, _ = strconv.Atoi(m[1])
-		}
-		if strings.Contains(ln, "duration: unreliable (device clock jumped)") {
+		if strings.Contains(ln, "unreliable=clock_jump") {
 			l.jumped = true
 		}
 	}
@@ -242,7 +244,7 @@ func TestLaunchesAcrossClockJumps(t *testing.T) {
 				t.Errorf("%s #%d: got %s TTID %d jumped %v; full scan %s %d %v\n%s", args, i+1, g.req, g.ttid, g.jumped,
 					fmtReq(time.Unix(0, l.RequestNs)), l.Displayed.TookMs, l.ClockJumped, out)
 			}
-			if g.jumped && regexp.MustCompile(`TTID.*logged at \+\d+ ms\]`).MatchString(g.text) {
+			if g.jumped && regexp.MustCompile(`unreliable=clock_jump[^\n]*logged_at_ms=|ttid ms=\d+[^\n]*logged_at_ms=`).MatchString(g.text) {
 				t.Errorf("%s #%d: a duration across the jump is shown:\n%s", args, i+1, g.text)
 			}
 			// no duration from subtracting device times across a jump

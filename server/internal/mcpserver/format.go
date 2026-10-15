@@ -131,7 +131,16 @@ func cutAt(s string, n int) int {
 }
 
 func formatLine(r *model.Record, loc *time.Location, indent, msg string) string {
+	return formatRow(r, loc, indent, msg, true)
+}
+
+// formatRow is a row; without proc the process column is left out (a block
+// whose header already names the process, e.g. the lines before a crash).
+func formatRow(r *model.Record, loc *time.Location, indent, msg string, proc bool) string {
 	msg = strings.ReplaceAll(msg, "\n", "\n"+indent+"| ")
+	if !proc {
+		return fmt.Sprintf("%s%s %s %d/%d %s: %s", indent, clock(r.TimeNs, loc), levelLetter(r.Level), r.PID, r.TID, r.Tag, msg)
+	}
 	return fmt.Sprintf("%s%s %s %d/%d %s %s: %s", indent, clock(r.TimeNs, loc), levelLetter(r.Level), r.PID, r.TID, procLabel(r), r.Tag, msg)
 }
 
@@ -141,6 +150,8 @@ func utf8Start(b byte) bool { return b&0xC0 != 0x80 }
 // inserting date separators.
 type lineWriter struct {
 	loc *time.Location
+	// noProc leaves the process column out of the rows
+	noProc bool
 	// short: stacks as in stack="short" (#23); seen (non-nil to enable)
 	// maps the frames of each stack printed so far to its time
 	short    bool
@@ -200,7 +211,7 @@ type shortRes struct {
 // reference to them.
 func (w *lineWriter) format(r *model.Record, indent string) string {
 	if !w.short || !looksLikeStack(r.Msg) {
-		return formatRecord(r, w.loc, indent)
+		return formatRow(r, w.loc, indent, capMsg(r.Msg), !w.noProc)
 	}
 	key := stackKey(r.Msg)
 	if at, ok := w.seen[key]; ok && key != "" {

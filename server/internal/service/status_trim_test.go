@@ -31,7 +31,7 @@ func TestStatusStaticLinesPerConnection(t *testing.T) {
 		}
 		return r.Text
 	}
-	static := []string{"\nroot: ", "\nlinger: ", "\nlifetime: ", "\nstore: "}
+	static := []string{"\nroot: ", "\nlinger: ", "\nlifetime: ", "\nstore path="}
 	full := func(what, out string) {
 		t.Helper()
 		for _, w := range static {
@@ -39,7 +39,7 @@ func TestStatusStaticLinesPerConnection(t *testing.T) {
 				t.Fatalf("%s: lacks %q:\n%s", what, w, out)
 			}
 		}
-		if strings.Contains(out, "unchanged since") {
+		if strings.Contains(out, "\nunchanged ") {
 			t.Fatalf("%s: has the unchanged line:\n%s", what, out)
 		}
 	}
@@ -52,9 +52,9 @@ func TestStatusStaticLinesPerConnection(t *testing.T) {
 		}
 		for _, w := range []string{
 			"service: background service pid", // always: pid, version, up, clients
-			"\nunchanged since shown earlier in this session: root, linger, lifetime, store (logcat_status(verbose=true) shows them)\n",
-			"\nadb: NOT FOUND", // a problem is never hidden
-			"\ndevices (",
+			"\nunchanged since=earlier_in_session lines=root,linger,lifetime,store next: verbose=true\n",
+			"\nhint code=adb_not_found", // a problem is never hidden
+			" devices=",
 		} {
 			if !strings.Contains(out, w) {
 				t.Fatalf("%s: lacks %q:\n%s", what, w, out)

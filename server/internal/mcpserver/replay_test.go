@@ -234,14 +234,13 @@ func TestReplayLaunchCold(t *testing.T) {
 	e := newReplay(t, fxBoot1)
 	e.file("coldstart.logcat.txt")
 	out := e.ok(launches, `{"package":"com.example.logtest","from":"2026-10-10 02:59:00","to":"2026-10-10 03:00:14"}`,
-		"1 launches", "COLD  com.example.logtest/.MainActivity  (pid 7182)",
-		"+3722 ms   process started", "+13469 ms  MainActivity.onCreate  returned",
-		"+13565 ms  onStart", "+13681 ms  onResume",
-		"TTID (time to initial display, system-measured): 18692 ms   [source: ActivityTaskManager Displayed, logged at +20463 ms]",
-		"am_on_*_called without callback durations", "how to read")
-	notContains(t, out, "not found", "not logged", "Displayed (TTID)")
-	if n := countOf(out, "18692"); n != 1 { // one clearly labelled number, not Displayed + launch_time side by side
-		t.Errorf("18692 shown %d times:\n%s", n, out)
+		"ok view=launches", " launches=1 ", "note=no_callback_durations", "kind=COLD component=com.example.logtest/.MainActivity pid=7182",
+		"step name=process_started at_ms=3722", "step name=MainActivity.onCreate at_ms=13469",
+		"step name=onStart at_ms=13565", "step name=onResume at_ms=13681",
+		`ttid ms=18692 source="ActivityTaskManager Displayed" logged_at_ms=20463`)
+	notContains(t, out, "not found", "not logged", "Displayed (TTID)", "how to read")
+	if n := countOf(out, "ttid_ms=18692"); n != 1 { // the number once in the launch line; the ttid step repeats it with its source
+		t.Errorf("ttid_ms=18692 shown %d times:\n%s", n, out)
 	}
 	dump(t, out)
 }
@@ -252,9 +251,9 @@ func TestReplayLaunchHot(t *testing.T) {
 	e := newReplay(t, fxBoot3)
 	e.file("hotstart.logcat.txt")
 	out := e.ok(launches, `{"package":"com.example.logtest","from":"2026-10-10 03:24:00"}`,
-		"HOT  com.example.logtest/.MainActivity  (pid 3418)", "onRestart", "+855 ms",
-		"+968 ms", "no Displayed line: expected for HOT starts")
-	notContains(t, out, "UNKNOWN", "COLD", "WARM", "process started")
+		"kind=HOT component=com.example.logtest/.MainActivity pid=3418", "step name=onRestart at_ms=855",
+		"step name=onResume at_ms=968", "note code=no_displayed_hot", "ttid=none")
+	notContains(t, out, "UNKNOWN", "COLD", "WARM", "process_started")
 	dump(t, out)
 }
 
@@ -264,14 +263,14 @@ func TestReplayLaunchLateDisplayed(t *testing.T) {
 	e := newReplay(t, fxBoot1)
 	e.file("session-raw.log")
 	out := e.ok(launches, `{"package":"com.example.logtest","from":"2026-10-10 02:56:00","to":"2026-10-10 02:56:40"}`,
-		"COLD  com.example.logtest/.MainActivity  (pid 6713)", "+18556 ms  MainActivity.onCreate",
-		"+18942 ms  onResume", "TTID (time to initial display, system-measured): 26274 ms", "logged at +40420 ms")
+		"kind=COLD component=com.example.logtest/.MainActivity pid=6713", "step name=MainActivity.onCreate at_ms=18556",
+		"step name=onResume at_ms=18942", "ttid_ms=26274", "logged_at_ms=40420")
 	dump(t, out)
 	// the capture that ended before Displayed was logged says so instead of guessing
 	e2 := newReplay(t, fxBoot1)
 	e2.file("coldstart1.logcat.txt")
 	e2.ok(launches, `{"package":"com.example.logtest","from":"2026-10-10 02:56:00"}`,
-		"COLD", "TTID: not logged", "Displayed not logged (yet)")
+		"kind=COLD", "ttid=none", "note code=displayed_pending")
 }
 
 func TestReplayLaunchAfterReboot(t *testing.T) {
@@ -279,8 +278,8 @@ func TestReplayLaunchAfterReboot(t *testing.T) {
 	e := newReplay(t, fxBoot3)
 	e.file("coldstart_after_reboot.logcat.txt")
 	e.ok(launches, `{"package":"com.example.logtest","from":"2026-10-10 03:22:00"}`,
-		"COLD  com.example.logtest/.MainActivity  (pid 3418)", "MainActivity.onCreate  returned",
-		"TTID (time to initial display, system-measured): 22707 ms", "logged at +34938 ms")
+		"kind=COLD component=com.example.logtest/.MainActivity pid=3418", "step name=MainActivity.onCreate at_ms=",
+		"ttid_ms=22707", "logged_at_ms=34938")
 }
 
 // The "warm start" that turned into onNewIntent: must not be called COLD/WARM/HOT.
@@ -289,8 +288,8 @@ func TestReplayLaunchNewIntent(t *testing.T) {
 	e := newReplay(t, fxBoot3)
 	e.file("warmstart_FAILED_was_onNewIntent.logcat.txt")
 	out := e.ok(launches, `{"package":"com.example.logtest","from":"2026-10-10 03:25:00"}`,
-		"#1 2026-10-10 03:25:21.808  UNKNOWN  com.example.logtest/.MainActivity  (pid 3418) — not a launch", "onNewIntent", "LaunchState UNKNOWN")
-	notContains(t, out, "COLD", "  WARM  ", "  HOT  ")
+		"#1 launch time=2026-10-10T03:25:21.808+08:00 kind=UNKNOWN component=com.example.logtest/.MainActivity pid=3418 why=\"not a launch", "onNewIntent", "note code=no_new_draw")
+	notContains(t, out, "kind=COLD", "kind=WARM", "kind=HOT")
 }
 
 func pkgCrashes(e *replayEnv) []string {
@@ -315,9 +314,9 @@ func TestReplayJavaCrash(t *testing.T) {
 		t.Fatalf("want one merged java crash for 7182, got %q", cs)
 	}
 	out := e.ok("logcat_crashes", `{"package":"com.example.logtest"}`,
-		"1 match → full detail", "Java crash", "pid 7182 com.example.logtest",
-		"sources: logcat:crash, events:am_crash, dropbox:data_app_crash", "Caused by: java.lang.IllegalStateException: repo not ready")
-	notContains(t, out, "pid 0", "only am_crash")
+		"ok view=detail", "id=cr1 kind=java", "pid=7182 process=com.example.logtest",
+		"sources=logcat:crash,events:am_crash,dropbox:data_app_crash", "Caused by: java.lang.IllegalStateException: repo not ready")
+	notContains(t, out, "pid=0", "only am_crash")
 }
 
 // §4.2: native crash = one native entry (am_crash "Native crash" carries system_server's
@@ -338,10 +337,10 @@ func TestReplayNativeCrash(t *testing.T) {
 			t.Errorf("sources lack %s: %s", s, cs[0])
 		}
 	}
-	det := e.ok("logcat_crashes", `{"package":"com.example.logtest"}`, "1 match → full detail",
-		"native crash", "pid 7736 com.example.logtest", "SIGSEGV",
-		"crash location: liblogtest.so [#00 pc 7fc]", "Cause: null pointer dereference", "SYSTEM_TOMBSTONE")
-	notContains(t, det, "Native crash", "Java crash", "pid 4944")
+	det := e.ok("logcat_crashes", `{"package":"com.example.logtest"}`, "ok view=detail",
+		"kind=native", "pid=7736 process=com.example.logtest", "SIGSEGV",
+		"crash_location: liblogtest.so [#00 pc 7fc]", "Cause: null pointer dereference", "SYSTEM_TOMBSTONE")
+	notContains(t, det, "Native crash", "Java crash", "pid=4944")
 	dump(t, det)
 	s := e.ok("logcat_search", `{"package":"com.example.logtest","filter":"tag:DEBUG"}`, "crash_dump", "backtrace:")
 	notContains(t, s, "7763/7763 com.example.logtest ")
@@ -356,9 +355,9 @@ func TestReplayNativeAbort(t *testing.T) {
 	if len(cs) != 1 || !strings.Contains(cs[0], "native pid=3418") || !strings.Contains(cs[0], "SIGABRT") {
 		t.Fatalf("want one SIGABRT crash for 3418, got %q", cs)
 	}
-	det := e.ok("logcat_crashes", `{"package":"com.example.logtest"}`, "1 match → full detail", "SIGABRT",
-		"crash location: liblogtest.so", "#02 pc")
-	notContains(t, det, "signal: SIGABRT (SI_QUEUE) fault addr", "--------  ", "crash location: libc", "Native crash")
+	det := e.ok("logcat_crashes", `{"package":"com.example.logtest"}`, "ok view=detail", "SIGABRT",
+		"crash_location: liblogtest.so", "#02 pc")
+	notContains(t, det, "signal: SIGABRT (SI_QUEUE) fault addr", "--------  ", "crash_location: libc", "Native crash")
 	if !strings.Contains(det, "#02 pc 000000000000086f") {
 		t.Errorf("tombstone excerpt lacks the backtrace:\n%s", det)
 	}
@@ -371,14 +370,14 @@ func TestReplayCrashGrouping(t *testing.T) {
 	e := newReplay(t, fxBoot1)
 	e.file("session-raw.log")
 	out := e.ok("logcat_crashes", `{"package":"com.example.logtest"}`,
-		"4 crash groups (5 events)", "pid 8076 com.example.logtest:remote", "same signature also at 03:07:39 (cr4)")
+		"groups=4 events=5", "pid=8076 process=com.example.logtest:remote", "same_signature same_sig=1 ids=cr4")
 	dump(t, out)
 	// the "repo not ready" entry (cr2) must have no "same signature" line
-	i := strings.Index(out, "cr2  ")
+	i := strings.Index(out, "crash id=cr2 ")
 	if i < 0 {
 		t.Fatalf("no cr2:\n%s", out)
 	}
-	if strings.Contains(out[i:], "same signature") {
+	if strings.Contains(out[i:], "same_signature") {
 		t.Errorf("repo-not-ready crash grouped with something:\n%s", out[i:])
 	}
 	for _, c := range crashes(e) {
@@ -394,8 +393,8 @@ func TestReplayANR(t *testing.T) {
 	e.file("anr_broadcast.logcat.txt")
 	e.pipe.ApplyDropbox(fixtureFile(t, "dropbox-data_app_anr.txt"))
 	e.ok("logcat_crashes", `{"package":"com.example.logtest","kinds":["anr"]}`,
-		"ANR · 2026-10-10 03:05:53.236 · pid 7815 com.example.logtest", "sources: events:am_anr, logcat:system, dropbox:data_app_anr",
-		"cmp=com.example.logtest/.TriggerReceiver", "main thread [traces: data_app_anr]", `"main" prio=5 tid=1 Sleeping`)
+		"kind=anr time=2026-10-10T03:05:53.236+08:00 pid=7815 process=com.example.logtest", "sources=events:am_anr,logcat:system,dropbox:data_app_anr",
+		"cmp=com.example.logtest/.TriggerReceiver", "main_thread traces=data_app_anr:", `"main" prio=5 tid=1 Sleeping`)
 }
 
 // psRows builds `ps -A -o PID,UID,NAME` output: real system processes of the
@@ -437,15 +436,16 @@ func TestReplayProcesses(t *testing.T) {
 	t.Parallel()
 	e := replayWithSnapshots(t)
 	out := e.ok("logcat_status", `{"package":"com.example.logtest"}`,
-		"running when the device was last seen: pid 8076 com.example.logtest:remote (since 2026-10-10 03:07:42), pid 7815 com.example.logtest (since 2026-10-10 03:03:44)",
-		"pid 6713 com.example.logtest (02:56:33–02:57:57, force-stopped)",
-		"pid 7182 com.example.logtest (02:59:15–03:01:33, died; crashed",
-		"pid 7815 com.example.logtest (since")
+		"running=2 device_connected=0 running_as_of=last_seen",
+		"proc pid=8076 name=com.example.logtest:remote state=running since=2026-10-10T03:07:42.339+08:00",
+		"proc pid=7815 name=com.example.logtest state=running since=2026-10-10T03:03:44.038+08:00",
+		"proc pid=6713 name=com.example.logtest state=ended start=2026-10-10T02:56:33.079+08:00 end=2026-10-10T02:57:57.754+08:00 reason=force-stopped scope=this_boot",
+		"proc pid=7182 name=com.example.logtest state=ended start=2026-10-10T02:59:15.577+08:00 end=2026-10-10T03:01:33.905+08:00 reason=died crash=cr2")
 	dump(t, out)
 	// 7765 = debuggerd's short-lived fork of the crashing 7736 (same name, no am_proc_start)
 	// pid N (not a bare number: the store path names a random temp dir)
-	notContains(t, out, "<pre-initialized>", "pid reused", "crash_dump64", "before recording", "pid 7765", "pid 7763")
-	if regexp.MustCompile(`running[^\n]*(7765|6713|7763)`).MatchString(out) {
+	notContains(t, out, "<pre-initialized>", "pid reused", "crash_dump64", "before recording", "pid=7765", "pid=7763")
+	if regexp.MustCompile(`pid=(7765|6713|7763) [^\n]*state=running`).MatchString(out) {
 		t.Errorf("dead/helper pid listed as running:\n%s", out)
 	}
 }
@@ -455,11 +455,11 @@ func TestReplayProcessesReboot(t *testing.T) {
 	e := replayWithSnapshots(t)
 	e.newSession(fxBoot2) // reboot (boot bf71fe22)
 	e.file("session2-raw.log")
-	out := e.ok("logcat_status", `{"package":"com.example.logtest"}`, "installed (uid 10146)",
-		"has no running process", "before the last reboot: pid 8076 com.example.logtest:remote (03:07:42–03:10:33, device rebooted",
-		"pid 7815 com.example.logtest (03:03:44–03:10:33, device rebooted; ANR: see logcat_crashes id=anr3)", "[boot 07a6d2d3]")
+	out := e.ok("logcat_status", `{"package":"com.example.logtest"}`, "installed=1 uid=10146",
+		"running=0", "proc pid=8076 name=com.example.logtest:remote state=ended start=2026-10-10T03:07:42.339+08:00 end=2026-10-10T03:10:33.487+08:00 reason=device_rebooted crash=cr5 scope=before_reboot boot=07a6d2d3",
+		"proc pid=7815 name=com.example.logtest state=ended start=2026-10-10T03:03:44.038+08:00 end=2026-10-10T03:10:33.487+08:00 reason=device_rebooted anr=anr3 scope=before_reboot")
 	dump(t, out)
-	notContains(t, out, "<pre-initialized>", "pid reused", "crash_dump64", "running when")
+	notContains(t, out, "<pre-initialized>", "pid reused", "crash_dump64", "state=running")
 }
 
 // Same capture, status before the reboot: the live processes are listed as running.
@@ -469,8 +469,8 @@ func TestReplayProcessesNoReboot(t *testing.T) {
 	e.file("session-raw.log")
 	e.pipe.SeedPS(psRows(" 7815 10146 com.example.logtest", " 8076 10146 com.example.logtest:remote"), sec(1791573033))
 	out := e.ok("logcat_status", `{"package":"com.example.logtest"}`,
-		"pid 8076 com.example.logtest:remote (since 2026-10-10 03:07:42)", "pid 7815 com.example.logtest (since 2026-10-10 03:03:44)",
-		"pid 8029 com.example.logtest:remote (03:07:04–03:07:40, died; crashed")
+		"proc pid=8076 name=com.example.logtest:remote state=running since=2026-10-10T03:07:42.339+08:00", "proc pid=7815 name=com.example.logtest state=running since=2026-10-10T03:03:44.038+08:00",
+		"proc pid=8029 name=com.example.logtest:remote state=ended start=2026-10-10T03:07:04.999+08:00 end=2026-10-10T03:07:40.234+08:00 reason=died crash=cr4")
 	notContains(t, out, "pid reused", "<pre-initialized>")
 }
 
@@ -518,7 +518,7 @@ func TestReplayPSDuringBacklog(t *testing.T) {
 	e.pipe.SeedPS(psRows(), sec(1791574767)) // snapshot taken "now" (03:39:27), 3418 already gone
 	e.replay(rest)
 	out := e.ok("logcat_status", `{"package":"com.example.logtest"}`,
-		"pid 3418 com.example.logtest (03:22:31–03:26:20, exited (signal 6); crashed")
+		"proc pid=3418 name=com.example.logtest state=ended", "reason=exited_(signal_6)", "crash=")
 	notContains(t, out, "gone (not in ps)")
 }
 
@@ -541,7 +541,7 @@ func TestReplayDropboxBeforeLogcat(t *testing.T) {
 			t.Errorf("not merged: %s", c)
 		}
 	}
-	e.ok("logcat_crashes", `{"package":"com.example.logtest"}`, "2 crash groups (2 events)")
+	e.ok("logcat_crashes", `{"package":"com.example.logtest"}`, "groups=2 events=2")
 }
 
 // Live regression (v2 e2e): DropBox merged into a crash, then a later logcat

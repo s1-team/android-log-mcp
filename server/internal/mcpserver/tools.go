@@ -37,6 +37,9 @@ type crashArgs struct {
 	To      string   `json:"to"`
 	ID      string   `json:"id"`
 	Limit   int      `json:"limit"`
+	// BeforeLines: lines of the crashed process before the crash in a detail
+	BeforeLines int  `json:"before_lines"`
+	Verbose     bool `json:"verbose"`
 }
 
 type launchArgs struct {
@@ -45,6 +48,7 @@ type launchArgs struct {
 	From    string `json:"from"`
 	To      string `json:"to"`
 	Limit   int    `json:"limit"`
+	Verbose bool   `json:"verbose"`
 }
 
 func toolDefs() []toolDef {
@@ -57,7 +61,8 @@ func toolDefs() []toolDef {
 				"Recording starts on use: the first log tool call for a device backfills what is still in its log buffer, waiting up to 10 s. If the response says backfill in progress, call logcat_status again before using a cursor (no cursor is returned until the backfill has caught up).\n" +
 				"Each device stops recording after a while without log tool calls (shown in the response); record_for keeps it recording until a deadline regardless of calls.\n" +
 				"With several connected devices and no `device`, nothing is started: pass device=<id>.\n" +
-				"With `package`, also reports install state and live/recently-dead processes (pid, process name, start/end time), including multi-process names like com.foo:remote.",
+				"With `package`, also reports install state and live/recently-dead processes (pid, process name, start/end time), including multi-process names like com.foo:remote.\n" +
+				"Response format (fmt=1): line 1 is `ok` or `empty` then key=value fields (view=status, devices, device=<target>, caught_up=0|1, cursor=<cursor>|none, dev_now, clock, offset_s, fmt). Then one line per fact: `adb`, `store`, `device id=... state=... model=... tz=...` followed by indented `recording state=...`, `window`, `stored`, `memory`, `clock_jumps`, and `note code=...` / `hint code=... next: ...` lines. With `package`: `package id=... installed=1|0|unknown uid=N running=N` and one `proc pid=N name=... state=running|ended since=<ISO> | start= end= reason= [crash=cr3|anr=anr1] scope=this_boot|before_reboot` per process (ended ones capped at 6, then `truncated procs_ended=N exact=1 next: verbose=true`). Times are device time in ISO-8601; verbose=true adds host_now, tz and the rarely-changing lines.",
 			schema: `{"type":"object","properties":{
 "device":{"type":"string","description":"adb serial or device ID. Omit when only one device is connected."},
 "record_for":{"type":"string","description":"Keep recording this device for this long, independent of calls: a duration with a unit like 30m, 2h or 1h30m (max 24h; the deadline never shortens). \"0\" stops recording the device now and removes the pin."},
@@ -103,7 +108,8 @@ func toolDefs() []toolDef {
 			title: "Crashes and ANRs",
 			desc: "List Java crashes, native crashes (tombstones) and ANRs, newest first, already parsed and grouped — use this instead of searching for \"FATAL EXCEPTION\" yourself.\n" +
 				"Sources: crash/system/events log buffers (AndroidRuntime FATAL EXCEPTION, libc \"Fatal signal\" + DEBUG tombstone lines attributed to the crashed pid, am_anr + \"ANR in\" block) plus the device DropBox (data_app_crash / data_app_native_crash / data_app_anr), which also covers crashes from before recording started and ANR thread dumps.\n" +
-				"Pass `id` (e.g. \"cr3\") for full detail: complete stack / Caused-by chain, the crashed process's last 40 log lines before the crash, and for ANRs the reason plus main-thread trace (or why traces are unavailable). If only one crash matches, detail is returned automatically.",
+				"Pass `id` (e.g. \"cr3\") for full detail: complete stack / Caused-by chain, the crashed process's last `before_lines` (default 20, max 100) log lines before the crash, and for ANRs the reason plus main-thread trace (or why traces are unavailable). If only one crash matches, detail is returned automatically.\n" +
+				"Response format (fmt=1): line 1 is `ok`, `empty` or `error` then key=value fields (view=list|detail, device, groups, events, shown, order=newest_first|arrival, history_from, dropbox=<only sources that are not ok>, dev_now, clock, offset_s, fmt). List entries start with `crash id=cr3 time=<ISO> kind=java pid=N process=P`; `same_signature same_sig=N ids=... next: id=...` names the other events of a group. Every cut is `truncated ... next: param=value`. The lines before the crash have no process column (the header names the process): `time level pid/tid tag: message`, in arrival order. Errors: `error code=... next: ...`. verbose=true adds host_now, tz, the ANR CPU block and the shared-uid package list.",
 			schema: `{"type":"object","properties":{
 "device":{"type":"string","description":"adb serial. Omit when only one device has logs."},
 "package":{"type":"string","description":"Exact application id. Omit for all apps."},
@@ -111,7 +117,9 @@ func toolDefs() []toolDef {
 "from":{"type":"string","description":"Device time; same formats as logcat_search.from. Default: everything recorded."},
 "to":{"type":"string","description":"Device time; same formats as logcat_search.to."},
 "id":{"type":"string","description":"Crash id from a previous list (e.g. cr3, anr1) to get full detail."},
-"limit":{"type":"integer","minimum":1,"maximum":50,"default":10}
+"limit":{"type":"integer","minimum":1,"maximum":50,"default":10},
+"before_lines":{"type":"integer","minimum":1,"maximum":100,"default":20,"description":"With id: how many log lines of the crashed process before the crash to show."},
+"verbose":{"type":"boolean","default":false,"description":"Also print host_now, tz, the ANR CPU block and the shared-uid package list."}
 },"additionalProperties":false}`,
 		},
 		{
@@ -119,13 +127,15 @@ func toolDefs() []toolDef {
 			title: "App launch timings",
 			desc: "Report recent app launches with computed timings — use this for \"how long does cold start take / time to first onResume\".\n" +
 				"For each launch: cold/warm/hot, the launched activity, and a timeline relative to the launch request: process start (am_proc_start), Activity onCreate, onStart, onResume (from wm_on_*_called events in the app process), Displayed (time to initial display, TTID) and Fully drawn (TTFD, only if the app calls reportFullyDrawn()).\n" +
-				"This tool only reads logs; launch the app yourself first (e.g. `adb shell am force-stop <pkg>` then `adb shell am start -W -n <pkg>/<activity>`), or ask the user to tap the icon, then call this.",
+				"This tool only reads logs; launch the app yourself first (e.g. `adb shell am force-stop <pkg>` then `adb shell am start -W -n <pkg>/<activity>`), or ask the user to tap the icon, then call this.\n" +
+				"Response format (fmt=1): line 1 is `ok` or `empty` then key=value fields (view=launches, device, launches, shown, order=newest_first, since, note=no_callback_durations when this Android version logs lifecycle callbacks without durations, dev_now, clock, offset_s, fmt). Each launch is `#N launch time=<ISO> kind=COLD|WARM|HOT component=... pid=N ttid_ms=N|ttid=none ttfd_ms=N|ttfd=none` followed by `step name=... at_ms=N [took_ms=N]` lines: at_ms is when the line was logged, relative to the launch request; onX lines are logged when the callback returned; TTID/TTFD are the system's own measurement (request to first frame / reportFullyDrawn) and can be logged much later than they happened. `at_ms=? unreliable=clock_jump device_time=<ISO>` marks a step logged after a device clock jump: its duration is not shown (the system-measured ttid_ms/ttfd_ms/took_ms stay valid). `step ... logged=0` = not logged. Cuts are `truncated older=N exact=1 next: limit=N`; an empty result has `hint code=no_launch_requests next: ...`. verbose=true adds host_now and tz.",
 			schema: `{"type":"object","properties":{
 "device":{"type":"string","description":"adb serial. Omit when only one device has logs."},
 "package":{"type":"string","description":"Exact application id. Omit for all apps."},
 "from":{"type":"string","description":"Device time. Default: 30m (device now minus 30 minutes, up to device now + 2 s). Same formats as logcat_search.from."},
 "to":{"type":"string","description":"Device time; same formats as logcat_search.to."},
-"limit":{"type":"integer","minimum":1,"maximum":20,"default":5}
+"limit":{"type":"integer","minimum":1,"maximum":20,"default":5},
+"verbose":{"type":"boolean","default":false,"description":"Also print host_now and tz."}
 },"additionalProperties":false}`,
 		},
 	}

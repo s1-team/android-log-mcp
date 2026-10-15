@@ -185,15 +185,15 @@ func TestCrashes(t *testing.T) {
 	t.Parallel()
 	tl := fixture(t)
 	out, e := call(t, tl, "logcat_crashes", `{}`)
-	must(t, out, e, "cr1", "NullPointerException", "Repo.load", "before crash", "Repo: loading user")
+	must(t, out, e, "cr1", "NullPointerException", "Repo.load", "before_crash", "Repo: loading user")
 	out, isErr := call(t, tl, "logcat_crashes", `{"id":"cr9"}`)
 	if !isErr || !strings.Contains(out, "cr1") {
 		t.Errorf("bad id: %s", out)
 	}
 	out, e = call(t, tl, "logcat_crashes", `{"package":"com.bar"}`)
-	must(t, out, e, "no crashes")
+	must(t, out, e, "empty view=list", "hint code=no_crash_for_package")
 	out, e = call(t, tl, "logcat_crashes", `{"kinds":["anr"]}`)
-	must(t, out, e, "no crashes")
+	must(t, out, e, "empty view=list", "hint code=no_match")
 	if out, isErr := call(t, tl, "logcat_crashes", `{"kinds":["oom"]}`); !isErr {
 		t.Errorf("kinds: %s", out)
 	}
@@ -203,7 +203,7 @@ func TestLaunches(t *testing.T) {
 	t.Parallel()
 	tl := fixture(t)
 	out, e := call(t, tl, "logcat_app_launches", `{"package":"com.foo"}`)
-	must(t, out, e, "1 launches", "COLD", "com.foo/.ui.MainActivity", "+440 ms", "TTID (time to initial display", "812")
+	must(t, out, e, "ok view=launches", " launches=1 ", "kind=COLD", "com.foo/.ui.MainActivity", "at_ms=440", "ttid ms=812")
 }
 
 func TestStatus(t *testing.T) {
@@ -220,8 +220,8 @@ func TestTrimStack(t *testing.T) {
 	for i := 0; i < 2000; i++ {
 		fmt.Fprintf(&b, "\tat com.foo.A.f%d(A.kt:1)\n", i)
 	}
-	s := trimStack(b.String())
-	if len(s) > 5000 || !strings.Contains(s, "frames omitted") || !strings.Contains(s, "f1999") || !strings.Contains(s, "f39(") || strings.Contains(s, "f40(") {
+	s := trimStack(b.String(), `id="cr1"`)
+	if len(s) > 5000 || !strings.Contains(s, "frames_omitted=") || !strings.Contains(s, "f1999") || !strings.Contains(s, "f39(") || strings.Contains(s, "f40(") {
 		t.Errorf("trim: %d\n%s", len(s), s)
 	}
 }
