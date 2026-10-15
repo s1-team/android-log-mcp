@@ -1,0 +1,10 @@
+device avd-api29 · device time Asia/Kuching (+08:00) · device now 2026-10-16 03:34:01 (observed) · host now 2026-10-16 03:34:02 +08 · clock offset -0.92s · all apps · 3 crash groups (3 events) in recorded history
+history: logcat from 2026-10-12 00:11:27; DropBox adds older entries when available (status: data_app_crash ok, data_app_native_crash ok, data_app_anr ok)
+anr8 2026-10-16 03:29:42  anr    pid 12974 com.example.logtest  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+     main thread: "main" prio=5 tid=1 Sleeping — at java.lang.Thread.sleep(Native method)   [traces: data_app_anr]
+anr7 2026-10-16 03:27:29  anr    pid 12761 com.example.logtest  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+     main thread: traces not available yet (see detail)
+anr6 2026-10-16 03:28:34  anr    pid 12761 com.example.logtest  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+     main thread: "main" prio=5 tid=1 Sleeping — at java.lang.Thread.sleep(Native method)   [traces: data_app_anr]
+more: logcat_crashes id="anr8" for full detail
+
