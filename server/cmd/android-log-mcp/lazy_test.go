@@ -73,7 +73,7 @@ func TestLazyRecording(t *testing.T) {
 	if c := e.Calls(); len(c) != 0 {
 		t.Fatalf("adb run before the first log tool call: %q", c)
 	}
-	if out, _, _ := cliEnv(t, env, "service", "status"); !strings.HasPrefix(out, "ok service running=1 pid="+strconv.Itoa(pid)+" ") || strings.Count(out, "\n") != 2 {
+	if out, _, _ := cliEnv(t, env, "service", "status"); !strings.HasPrefix(out, "ok service running=1 pid="+strconv.Itoa(pid)+" ") || strings.Count(out, "\n") != 2 || !strings.Contains(strings.SplitN(out, "\n", 2)[0], " recording=") {
 		t.Fatalf("service status (default):\n%s", out)
 	}
 	if out, _, _ := cliEnv(t, env, "service", "status", "--verbose"); !strings.Contains(out, "recording: idle") {
