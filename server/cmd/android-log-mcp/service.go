@@ -180,7 +180,7 @@ func serviceStatus(args []string) int {
 		fmt.Println(string(b))
 		return 0
 	}
-	fmt.Println(mcpserver.KV("ok service", "running", true, "pid", info.PID, "version", info.Version, "root", info.Root))
+	fmt.Println(mcpserver.KV("ok service", "running", true, "pid", info.PID, "version", info.Version, "root", info.Root, "recording", info.Recording))
 	if verbose {
 		fmt.Print(info.Text())
 		fmt.Printf("socket: %s\n", info.Socket)
