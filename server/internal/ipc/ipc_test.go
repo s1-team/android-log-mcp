@@ -224,7 +224,11 @@ func TestSocketPathFallbackIsUnderCacheDir(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("windows keeps its temp dir")
 	}
-	home := filepath.Dir(shortDir(t))
+	home, err := os.MkdirTemp("/tmp", "almh") // short: macOS's temp dir is too long for a socket under HOME/Library/Caches
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(home) })
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CACHE_HOME", home)
 	long := filepath.Join(os.TempDir(), strings.Repeat("d", 120), "run")
