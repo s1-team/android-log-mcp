@@ -141,6 +141,43 @@ func (d *Detector) remember(c *Crash) {
 	}
 }
 
+// anrPairWindow is how far apart the sources of one ANR may be logged:
+// am_anr (events) when the ANR is declared, the "ANR in" block after the
+// ANR dump finished, which takes 30+ s on a loaded system_server or a TCG
+// emulator. The DropBox entry of an ANR is matched with the same window.
+const anrPairWindow = 120e9
+
+// findAnr finds the ANR of pid within anrPairWindow of ns that still lacks
+// the source being added (one-to-one pairing: a complete ANR is never
+// joined by a second am_anr or block, so the long window cannot merge two
+// different ANRs of one process). needEvent: the caller is am_anr and
+// wants an ANR without an events:am_anr source; otherwise the caller is the
+// block and wants one without a Body.
+func (d *Detector) findAnr(pid int, boot string, ns int64, needEvent bool) *Crash {
+	for i := len(d.recent) - 1; i >= 0; i-- {
+		c := d.recent[i]
+		if c.Kind != "anr" || c.PID != pid || abs(c.adj-ns) > anrPairWindow {
+			continue
+		}
+		if c.Boot != "" && boot != "" && c.Boot != boot {
+			continue
+		}
+		if needEvent && !c.hasSource("events:am_anr") || !needEvent && c.Body == "" {
+			return c
+		}
+	}
+	return nil
+}
+
+func (c *Crash) hasSource(s string) bool {
+	for _, x := range c.Sources {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
 func (d *Detector) findRecent(kind string, pid int, ns int64, window int64) *Crash {
 	for i := len(d.recent) - 1; i >= 0; i-- {
 		c := d.recent[i]
@@ -330,7 +367,7 @@ func (d *Detector) Feed(r *model.Record) {
 		f := logcat.EventFields(r.Msg, 5)
 		if len(f) >= 5 {
 			pid, _ := strconv.Atoi(f[1])
-			c := d.findRecent("anr", pid, u, 30e9)
+			c := d.findAnr(pid, r.Boot, u, true)
 			if c == nil {
 				c = &Crash{Kind: "anr", Boot: r.Boot, TimeNs: r.TimeNs, adj: u, Seq: r.Seq, PID: pid, Process: f[2], Package: d.pkgOf(f[2]), Headline: f[4]}
 				d.remember(c)
@@ -349,7 +386,7 @@ func (d *Detector) Feed(r *model.Record) {
 		if pm := reANRPid.FindStringSubmatch(r.Msg); pm != nil {
 			pid, _ = strconv.Atoi(pm[1])
 		}
-		c := d.findRecent("anr", pid, u, 30e9)
+		c := d.findAnr(pid, r.Boot, u, false)
 		if c == nil {
 			c = &Crash{Kind: "anr", Boot: r.Boot, TimeNs: r.TimeNs, adj: u, Seq: r.Seq, PID: pid, Process: proc, Package: d.pkgOf(proc)}
 			d.remember(c)
