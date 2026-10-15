@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"sync"
 	"sync/atomic"
 
@@ -171,13 +170,14 @@ func (x *crashIndex) addLocked(data []byte, base int64) {
 
 func (x *crashIndex) summariesLocked() []*analysis.Crash {
 	if x.sorted == nil {
+		// newest first by arrival: the order of first appearance in
+		// crashes.jsonl, reversed. Device time is not an order: after a
+		// device clock jump back, newer crashes have older device times
+		// (issue #55). DropBox-only crashes (Seq 0) have a position too.
 		out := make([]*analysis.Crash, 0, len(x.order))
-		for _, id := range x.order {
-			out = append(out, x.ents[id].sum)
+		for i := len(x.order) - 1; i >= 0; i-- {
+			out = append(out, x.ents[x.order[i]].sum)
 		}
-		// same order as before the index: first appearance, then newest
-		// device time first (stable)
-		sort.SliceStable(out, func(i, j int) bool { return out[i].TimeNs > out[j].TimeNs })
 		x.sorted = out
 	}
 	return x.sorted

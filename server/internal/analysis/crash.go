@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/s1crab/android-log-mcp/server/internal/logcat"
 	"github.com/s1crab/android-log-mcp/server/internal/model"
@@ -34,6 +35,11 @@ type Crash struct {
 	Dropbox   string   `json:"dropbox,omitempty"`   // raw dropbox entry (crash/native when no logcat evidence)
 	Tombstone string   `json:"tombstone,omitempty"` // full tombstone (all threads) from DropBox SYSTEM_TOMBSTONE
 	Location  string   `json:"location,omitempty"`  // native: first app frame (fallback: #00)
+
+	// adj is the detector's private time: device time minus the clock
+	// jumps seen so far (continuous time). Windows compare adj, never TimeNs
+	// (issue #55). Not stored.
+	adj int64
 }
 
 // MaxTombstone caps the stored SYSTEM_TOMBSTONE text per crash.
@@ -66,12 +72,17 @@ type Detector struct {
 	amNative []amNative         // am_crash "Native crash" events waiting for the tombstone
 	natives  map[int]*Crash     // pending native crash by crashed pid
 	tombs    map[int]*tombstone // DEBUG lines by crash_dump pid
-	lastTs   int64
+	lastTs   int64              // continuous time (adj) of the newest record
+	lastHost time.Time
+	jumpNs   int64 // sum of the device clock jumps seen (ClockJump)
+	// Now is the host clock Tick(0) advances by (nil: time.Now).
+	Now func() time.Time
 }
 
 type amNative struct {
 	proc, boot, sig string
-	ns              int64
+	ns              int64 // continuous time (adj)
+	dev             int64 // device time
 	seq             uint64
 }
 
@@ -88,7 +99,7 @@ func (d *Detector) pendingNative(proc string) *Crash {
 func (d *Detector) mergeAmNative(c *Crash) {
 	kept := d.amNative[:0]
 	for _, a := range d.amNative {
-		if sameProc(c.Process, a.proc) && abs(a.ns-c.TimeNs) < 60e9 {
+		if sameProc(c.Process, a.proc) && abs(a.ns-c.adj) < 60e9 {
 			c.addSource("events:am_crash")
 			c.Process, c.Package = a.proc, d.pkgOf(a.proc)
 			continue
@@ -100,9 +111,10 @@ func (d *Detector) mergeAmNative(c *Crash) {
 
 type tombstone struct {
 	lines   []string
-	pid     int // crashed pid from "pid: N, tid: ..." line
-	lastTs  int64
-	firstTs int64
+	pid     int   // crashed pid from "pid: N, tid: ..." line
+	lastTs  int64 // continuous time (adj)
+	firstTs int64 // device time
+	firstU  int64 // continuous time (adj)
 	seq     uint64
 	boot    string
 }
@@ -132,7 +144,7 @@ func (d *Detector) remember(c *Crash) {
 func (d *Detector) findRecent(kind string, pid int, ns int64, window int64) *Crash {
 	for i := len(d.recent) - 1; i >= 0; i-- {
 		c := d.recent[i]
-		if c.Kind == kind && c.PID == pid && abs(c.TimeNs-ns) <= window {
+		if c.Kind == kind && c.PID == pid && abs(c.adj-ns) <= window {
 			return c
 		}
 	}
@@ -143,7 +155,7 @@ func (d *Detector) findRecent(kind string, pid int, ns int64, window int64) *Cra
 func (d *Detector) findRecentProc(kind, proc string, ns int64, window int64) *Crash {
 	for i := len(d.recent) - 1; i >= 0; i-- {
 		c := d.recent[i]
-		if c.Kind == kind && sameProc(c.Process, proc) && abs(c.TimeNs-ns) <= window {
+		if c.Kind == kind && sameProc(c.Process, proc) && abs(c.adj-ns) <= window {
 			return c
 		}
 	}
@@ -188,8 +200,9 @@ func (d *Detector) Feed(r *model.Record) {
 			}
 		}
 	}()
-	d.lastTs = max(d.lastTs, r.TimeNs)
-	emit = append(emit, d.expireLocked(r.TimeNs)...)
+	u := r.TimeNs - d.jumpNs
+	d.lastTs, d.lastHost = u, d.now()
+	emit = append(emit, d.expireLocked(u)...)
 
 	switch {
 	case r.Tag == "AndroidRuntime" && r.Level == model.Error && strings.HasPrefix(r.Msg, "FATAL EXCEPTION"):
@@ -198,13 +211,13 @@ func (d *Detector) Feed(r *model.Record) {
 		if pid == 0 {
 			pid = r.PID
 		}
-		c := d.findRecent("java", pid, r.TimeNs, 15e9)
+		c := d.findRecent("java", pid, u, 15e9)
 		if c == nil {
-			c = &Crash{Kind: "java", Boot: r.Boot, TimeNs: r.TimeNs, Seq: r.Seq, PID: pid}
+			c = &Crash{Kind: "java", Boot: r.Boot, TimeNs: r.TimeNs, adj: u, Seq: r.Seq, PID: pid}
 			d.remember(c)
 		} else {
 			// am_crash came first: upgrade it with the real stack, keep its ID
-			c.TimeNs, c.Seq = r.TimeNs, r.Seq
+			c.TimeNs, c.Seq, c.adj = r.TimeNs, r.Seq, u
 		}
 		c.Thread, c.Headline, c.Body, c.Signature = j.Thread, j.Headline, j.Body, j.Signature
 		c.Process = j.Process
@@ -231,7 +244,7 @@ func (d *Detector) Feed(r *model.Record) {
 		if exc == "Native crash" {
 			// pid is system_server's here; the tombstone/libc evidence is
 			// keyed by the app. Merge into that native crash.
-			if c := d.findRecentProc("native", proc, r.TimeNs, 60e9); c != nil {
+			if c := d.findRecentProc("native", proc, u, 60e9); c != nil {
 				c.addSource("events:am_crash")
 				if c.Process == "" || len(c.Process) < len(proc) {
 					c.Process, c.Package = proc, d.pkgOf(proc)
@@ -241,17 +254,17 @@ func (d *Detector) Feed(r *model.Record) {
 				c.addSource("events:am_crash")
 				c.Process, c.Package = proc, d.pkgOf(proc)
 			} else {
-				d.amNative = append(d.amNative, amNative{proc: proc, ns: r.TimeNs, seq: r.Seq, boot: r.Boot, sig: msg})
+				d.amNative = append(d.amNative, amNative{proc: proc, ns: u, dev: r.TimeNs, seq: r.Seq, boot: r.Boot, sig: msg})
 			}
 			dropbox = append(dropbox, "data_app_native_crash")
 			break
 		}
-		if c := d.findRecent("java", pid, r.TimeNs, 15e9); c != nil {
+		if c := d.findRecent("java", pid, u, 15e9); c != nil {
 			c.addSource("events:am_crash")
 			emit = append(emit, c)
 			break
 		}
-		c := &Crash{Kind: "java", Boot: r.Boot, TimeNs: r.TimeNs, Seq: r.Seq, PID: pid, Process: proc, Package: d.pkgOf(proc),
+		c := &Crash{Kind: "java", Boot: r.Boot, TimeNs: r.TimeNs, adj: u, Seq: r.Seq, PID: pid, Process: proc, Package: d.pkgOf(proc),
 			Headline: strings.TrimSpace(exc + ": " + msg)}
 		c.Signature = exc + "@" + msg
 		if len(f) >= 8 {
@@ -264,7 +277,7 @@ func (d *Detector) Feed(r *model.Record) {
 		dropbox = append(dropbox, "data_app_crash")
 
 	case r.Tag == "libc" && r.Level.Rank() == 6 && strings.HasPrefix(r.Msg, "Fatal signal"):
-		c := &Crash{Kind: "native", Boot: r.Boot, TimeNs: r.TimeNs, Seq: r.Seq, PID: r.PID, Process: r.Process, Package: r.Package}
+		c := &Crash{Kind: "native", Boot: r.Boot, TimeNs: r.TimeNs, adj: u, Seq: r.Seq, PID: r.PID, Process: r.Process, Package: r.Package}
 		if m := reFatalSig.FindStringSubmatch(r.Msg); m != nil {
 			c.Headline = m[2]
 			if m[4] != "" {
@@ -299,15 +312,15 @@ func (d *Detector) Feed(r *model.Record) {
 			if t != nil {
 				emit = append(emit, d.finishTombLocked(r.PID)...)
 			}
-			t = &tombstone{firstTs: r.TimeNs, seq: r.Seq, boot: r.Boot}
+			t = &tombstone{firstTs: r.TimeNs, firstU: u, seq: r.Seq, boot: r.Boot}
 			d.tombs[r.PID] = t
 		}
 		if t == nil {
-			t = &tombstone{firstTs: r.TimeNs, seq: r.Seq, boot: r.Boot}
+			t = &tombstone{firstTs: r.TimeNs, firstU: u, seq: r.Seq, boot: r.Boot}
 			d.tombs[r.PID] = t
 		}
 		t.lines = append(t.lines, r.Msg)
-		t.lastTs = r.TimeNs
+		t.lastTs = u
 		if m := reTombPID.FindStringSubmatch(r.Msg); m != nil {
 			t.pid, _ = strconv.Atoi(m[1])
 		}
@@ -317,9 +330,9 @@ func (d *Detector) Feed(r *model.Record) {
 		f := logcat.EventFields(r.Msg, 5)
 		if len(f) >= 5 {
 			pid, _ := strconv.Atoi(f[1])
-			c := d.findRecent("anr", pid, r.TimeNs, 30e9)
+			c := d.findRecent("anr", pid, u, 30e9)
 			if c == nil {
-				c = &Crash{Kind: "anr", Boot: r.Boot, TimeNs: r.TimeNs, Seq: r.Seq, PID: pid, Process: f[2], Package: d.pkgOf(f[2]), Headline: f[4]}
+				c = &Crash{Kind: "anr", Boot: r.Boot, TimeNs: r.TimeNs, adj: u, Seq: r.Seq, PID: pid, Process: f[2], Package: d.pkgOf(f[2]), Headline: f[4]}
 				d.remember(c)
 			} else if c.Headline == "" {
 				c.Headline = f[4]
@@ -336,9 +349,9 @@ func (d *Detector) Feed(r *model.Record) {
 		if pm := reANRPid.FindStringSubmatch(r.Msg); pm != nil {
 			pid, _ = strconv.Atoi(pm[1])
 		}
-		c := d.findRecent("anr", pid, r.TimeNs, 30e9)
+		c := d.findRecent("anr", pid, u, 30e9)
 		if c == nil {
-			c = &Crash{Kind: "anr", Boot: r.Boot, TimeNs: r.TimeNs, Seq: r.Seq, PID: pid, Process: proc, Package: d.pkgOf(proc)}
+			c = &Crash{Kind: "anr", Boot: r.Boot, TimeNs: r.TimeNs, adj: u, Seq: r.Seq, PID: pid, Process: proc, Package: d.pkgOf(proc)}
 			d.remember(c)
 		}
 		if rm := reANRReason.FindStringSubmatch(r.Msg); rm != nil && c.Headline == "" {
@@ -354,12 +367,38 @@ func (d *Detector) Feed(r *model.Record) {
 	}
 }
 
-// Tick finalizes pending native crashes after quiet periods (call ~1/s with
-// the newest device time seen, or 0 to use the last record time).
+// ClockJump tells the detector that the device clock jumped by deltaNs
+// (new time minus old) between the previous record and the next one fed.
+// Pending items keep their place on a continuous time line, so a jump in
+// the middle of a crash neither splits nor merges it, and nothing waits
+// for the device clock to catch up. Crash.TimeNs stays device time.
+// Do not call it for a "possible" jump (a quiet hour, not a clock set).
+func (d *Detector) ClockJump(deltaNs int64) {
+	d.mu.Lock()
+	d.jumpNs += deltaNs
+	d.mu.Unlock()
+}
+
+func (d *Detector) now() time.Time {
+	if d.Now != nil {
+		return d.Now()
+	}
+	return time.Now()
+}
+
+// Tick finalizes pending native crashes after quiet periods. Call it ~1/s
+// with the newest device time seen, or with 0: then the host time elapsed
+// since the last record counts as quiet time, so a pending crash ends even
+// when no more lines arrive (issue #55).
 func (d *Detector) Tick(nowNs int64) {
 	d.mu.Lock()
 	if nowNs == 0 {
 		nowNs = d.lastTs
+		if !d.lastHost.IsZero() {
+			nowNs += d.now().Sub(d.lastHost).Nanoseconds()
+		}
+	} else {
+		nowNs -= d.jumpNs
 	}
 	out := d.expireLocked(nowNs)
 	d.mu.Unlock()
@@ -383,7 +422,7 @@ func (d *Detector) expireLocked(now int64) []*Crash {
 		}
 	}
 	for pid, c := range d.natives {
-		if now-c.TimeNs > quietNs+2e9 {
+		if now-c.adj > quietNs+2e9 {
 			delete(d.natives, pid)
 			if c.Signature == "" {
 				c.Signature = c.Headline
@@ -402,7 +441,7 @@ func (d *Detector) expireLocked(now int64) []*Crash {
 		if d.findRecentProc("native", a.proc, a.ns, 60e9) != nil {
 			continue
 		}
-		c := &Crash{Kind: "native", Boot: a.boot, TimeNs: a.ns, Seq: a.seq, Process: a.proc, Package: d.pkgOf(a.proc),
+		c := &Crash{Kind: "native", Boot: a.boot, TimeNs: a.dev, adj: a.ns, Seq: a.seq, Process: a.proc, Package: d.pkgOf(a.proc),
 			Headline: "Native crash: " + a.sig, Signature: "native@" + a.proc + ":" + a.sig,
 			Body: "only ActivityManager's am_crash event was recorded (no libc/DEBUG tombstone lines in the log buffers); see DropBox data_app_native_crash / SYSTEM_TOMBSTONE"}
 		c.addSource("events:am_crash")
@@ -424,7 +463,7 @@ func (d *Detector) finishTombLocked(dpid int) []*Crash {
 	if c != nil {
 		delete(d.natives, t.pid)
 	} else {
-		c = &Crash{Kind: "native", Boot: t.boot, TimeNs: t.firstTs, Seq: t.seq, PID: t.pid}
+		c = &Crash{Kind: "native", Boot: t.boot, TimeNs: t.firstTs, adj: t.firstU, Seq: t.seq, PID: t.pid}
 	}
 	c.addSource("logcat:tombstone")
 	ParseTombstoneInto(c, body)
