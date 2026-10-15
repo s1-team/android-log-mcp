@@ -73,6 +73,7 @@ func runReport(ctx context.Context, offlineDir string, args []string) int {
 	fs.Var(&keepDom, "keep-domain", "`DOMAIN` (and its subdomains) to leave unredacted, e.g. your own API host (repeatable)")
 	noRedact := fs.Bool("no-redact", false, "disable redaction (the report may then contain tokens, passwords, personal data)")
 	keepPrivate := fs.Bool("keep-private-ip", false, "do not redact private/link-local IP addresses (10/8, 192.168/16, fe80::, …)")
+	logsOnly := fs.Bool("logs-only", false, "no recorded device data: only the service log, crash log, service.json, a diagnosis of the service lock and `adb devices -l` (a small zip to attach to an issue; works with --offline DIR when the service is down)")
 	offline := fs.Bool("no-adb", false, "do not use adb (no live device info, DropBox or --am-start)")
 	out := fs.String("o", "", "output zip (default ./android-log-mcp-report-<time>.zip)")
 	fs.StringVar(out, "out", "", "same as -o")
@@ -84,7 +85,7 @@ func runReport(ctx context.Context, offlineDir string, args []string) int {
 		fs.Usage()
 		return 2
 	}
-	a := service.ReportArgs{Serials: serials, From: *from, To: *to, Package: *pkg, AmStart: *amStart, Out: *out, NoADB: *offline}
+	a := service.ReportArgs{Serials: serials, From: *from, To: *to, Package: *pkg, AmStart: *amStart, Out: *out, NoADB: *offline, LogsOnly: *logsOnly}
 	if *from == "" {
 		d, err := time.ParseDuration(*since)
 		if err != nil {
@@ -127,6 +128,11 @@ func runReport(ctx context.Context, offlineDir string, args []string) int {
 	if offlineDir != "" {
 		// --offline DIR report: that dataset, in this process, without adb
 		a.NoADB = true
+		a.DevicesList = !*offline // only `adb devices -l`, for the bundle
+		ctrl := service.DefaultControl()
+		if r, _ := service.ConfiguredRoot(ctrl); sameDir(offlineDir, r) {
+			a.Control = ctrl // this user's own dataset: say who holds the lock
+		}
 		if a.AmStart != "" {
 			fmt.Fprintln(os.Stderr, "report: --am-start cannot be combined with --offline")
 			return 2
@@ -162,6 +168,13 @@ func runReport(ctx context.Context, offlineDir string, args []string) int {
 	fmt.Fprintln(os.Stderr, "report: review the zip before sharing it: redaction is pattern based")
 	fmt.Println(a.Out)
 	return 0
+}
+
+func sameDir(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	return filepath.Clean(a) == filepath.Clean(b)
 }
 
 func fmtHits(h map[string]int) string {
