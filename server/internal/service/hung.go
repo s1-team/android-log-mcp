@@ -186,9 +186,9 @@ type StopResult struct {
 // StopOptions tunes StopHolder.
 type StopOptions struct {
 	// Auto: a client replacing a silent service; requires a strong identity
-	// (image and start time) and refuses an in-process service. Without it
-	// (service stop --force) an image match is enough when service.json has
-	// no start time (written by an older version).
+	// (image and start time). Without it (service stop --force) an image
+	// match is enough when service.json has no start time (written by an
+	// older version). Neither path kills an in-process service.
 	Auto     bool
 	TermWait time.Duration // wait for a graceful stop (default 10 s)
 	KillWait time.Duration // wait for the lock after the kill (default 5 s)
@@ -215,11 +215,13 @@ func StopHolder(ctrl Control, d Diagnosis, o StopOptions) (StopResult, error) {
 	if !d.HaveState || !d.Alive {
 		return StopResult{}, fmt.Errorf("%w: %s", ErrNotOurs, d.Why)
 	}
-	if !d.Ours || (o.Auto && (!d.Strong || d.Embedded)) {
+	// An in-process service shares its pid with the MCP process that hosts
+	// it: killing it would kill that MCP process, with or without --force.
+	if !d.Ours || d.Embedded || (o.Auto && !d.Strong) {
 		why := d.Why
 		switch {
-		case d.Ours && d.Embedded:
-			why = "it runs inside an MCP process, which this tool does not kill"
+		case d.Embedded:
+			why = fmt.Sprintf("it runs inside an MCP process (pid %d), which this tool never kills; end that MCP process instead (close the session or restart the MCP host's MCP entry) and the service stops with it", d.PID)
 		case d.Ours:
 			why = "service.json has no start time to rule out a reused pid"
 		}

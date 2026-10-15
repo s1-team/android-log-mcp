@@ -28,6 +28,7 @@ import (
 //	ignoreterm  ignores SIGTERM (so the graceful stop does not work)
 //	badexe      service.json names another executable
 //	badstart    service.json has another start time
+//	embedded    service.json says the service runs inside an MCP process
 //
 // It writes service.json like a service and prints "ready".
 func holderMain() (int, bool) {
@@ -61,7 +62,8 @@ func holderMain() (int, bool) {
 	if strings.Contains(mode, "badstart") {
 		start++
 	}
-	st := State{PID: os.Getpid(), Socket: ctrl.Socket(), Version: "0.0.1", Proto: Proto, Root: os.Getenv("ALM_TEST_ROOT"), Exe: exe, StartTime: start, Started: time.Now().UTC()}
+	embedded := strings.Contains(mode, "embedded")
+	st := State{Embedded: embedded, PID: os.Getpid(), Socket: ctrl.Socket(), Version: "0.0.1", Proto: Proto, Root: os.Getenv("ALM_TEST_ROOT"), Exe: exe, StartTime: start, Started: time.Now().UTC()}
 	b, _ := json.Marshal(st)
 	if err := writeFileAtomic(ctrl.StatePath(), b, 0o600); err != nil {
 		return 6, true
@@ -171,6 +173,54 @@ func TestForeignHolderIsNotSignalled(t *testing.T) {
 			}
 			if h.dead() {
 				t.Fatal("--force signalled a process that is not this service")
+			}
+		})
+	}
+}
+
+// Neither the automatic replacement nor service stop --force may signal a
+// holder that is not provably this service: a reused pid (other image or other
+// start time) or an in-process service (its pid is an MCP process).
+func TestStopRefusesReusedPidAndEmbedded(t *testing.T) {
+	cases := []struct{ mode, msg string }{
+		{"silent,badexe", "not recognised"},
+		{"silent,badstart", "not recognised"},
+		{"silent,badexe,ignoreterm", "not recognised"},
+		{"silent,badstart,ignoreterm", "not recognised"},
+		{"silent,embedded", "inside an MCP process"},
+		{"silent,embedded,ignoreterm", "inside an MCP process"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.mode, func(t *testing.T) {
+			ctrl := testControl(t)
+			h := startHolder(t, ctrl, "", tc.mode)
+			for _, force := range []bool{false, true} {
+				var out, errb bytes.Buffer
+				code := RunStop(ctrl, "0.5.0", force, &out, &errb)
+				if code != 1 {
+					t.Fatalf("force=%v: exit %d %q %q", force, code, out.String(), errb.String())
+				}
+				if force && !strings.Contains(errb.String(), tc.msg) {
+					t.Fatalf("force: message %q lacks %q", errb.String(), tc.msg)
+				}
+				time.Sleep(200 * time.Millisecond)
+				if h.dead() {
+					t.Fatalf("force=%v signalled the holder", force)
+				}
+			}
+			// the automatic path refuses too
+			c := newRepairClient(ctrl)
+			defer c.Close()
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if _, err := c.Connect(ctx); err == nil {
+				t.Fatal("Connect succeeded against a holder that must be refused")
+			}
+			if h.dead() {
+				t.Fatal("automatic replacement signalled the holder")
+			}
+			if !Running(ctrl) || ctrl.ReadState() == nil {
+				t.Fatal("the holder's lock or service.json was removed")
 			}
 		})
 	}

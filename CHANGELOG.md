@@ -13,14 +13,14 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ### Added
 
-- `android-log-mcp service stop --force` ends a service that holds the lock but does not answer: SIGTERM first, SIGKILL after 10 s (Windows: a stop request, then TerminateProcess after 10 s; lines the service had not flushed yet can be lost, and the command says so). It only signals a process that is verified to be the service recorded in `run/service.json` (same executable and start time) ([#83](https://github.com/s1crab/android-log-mcp/issues/83)).
+- `android-log-mcp service stop --force` ends a service that holds the lock but does not answer: SIGTERM first, SIGKILL after 10 s (Windows: a stop request, then TerminateProcess after 10 s; lines the service had not flushed yet can be lost, and the command says so). It only signals a process that is verified to be the service recorded in `run/service.json` (same executable and start time), and it never kills a service that runs inside an MCP process (that would kill the MCP process): it refuses and says to end that MCP process instead ([#83](https://github.com/s1crab/android-log-mcp/issues/83)).
 - `service status` says so when a service holds the lock but does not answer (exit 1; `{"running":false,"unresponsive":true,…}` with `--json`).
 - `run/service.json` records the service's OS start time (`start_time`).
 
 ### Changed
 
 - The service watches its socket every 30 s and recreates it when the file was removed (for example by a tmp cleaner), logging a warning ([#83](https://github.com/s1crab/android-log-mcp/issues/83)).
-- Client messages are levelled: "using the service pid …", "replacing the older service …", "connection lost" and similar notes go to the service log only; only warnings and errors also reach stderr, which MCP hosts such as Cursor show as `[error]` ([#84](https://github.com/s1crab/android-log-mcp/issues/84)).
+- MCP process and CLI process messages are levelled: "using the service pid …", "replacing the older service …", "connection lost" and similar notes go to the service log only; only warnings and errors also reach stderr, which MCP hosts such as Cursor show as `[error]` ([#84](https://github.com/s1crab/android-log-mcp/issues/84)).
 - Documentation reorganised ([#87](https://github.com/s1crab/android-log-mcp/issues/87)): the README only covers install, a short tools list, filter syntax and FAQ. Details moved to [docs/tools.md](docs/tools.md), [docs/reference.md](docs/reference.md) and [docs/compatibility.md](docs/compatibility.md); the repository layout is in [AGENTS.md](AGENTS.md). The README "Upgrading" section is removed: upgrade notes and breaking changes are only in this changelog.
 - `logcat_crashes` lists crashes newest first by arrival, no longer by device time ([#55](https://github.com/s1crab/android-log-mcp/issues/55)). After the device clock is set back, crashes that arrive later have older device times and used to sort as old, so the newest page could leave them out. Shown times and the `from`/`to` window stay device time; ids are unchanged. A DropBox-only crash of an old event that is imported late appears at the top of the list.
 
