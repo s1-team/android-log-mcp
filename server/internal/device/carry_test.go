@@ -39,9 +39,13 @@ func TestCarryOverAndUncarry(t *testing.T) {
 	}
 	m := nst.Meta()
 	nst.Close()
-	if m.SeqFloor != 3 || m.ResumeDedup == nil || m.ResumeDedup.TimeNs != 200 || len(m.ResumeDedup.Hashes) != 3 {
-		// all lines within resumeSlack of the newest arrival (issue #52)
+	rd := m.ResumeDedup
+	if m.SeqFloor != 3 || rd == nil || rd.Count != 3 || rd.SeqFloor != 3 || rd.BootID != "b" || len(rd.Hashes) != 0 {
+		// the last lines of the boot session by seq, in resume_dedup.bin (issue #56)
 		t.Fatalf("meta: %+v", m)
+	}
+	if b, err := os.ReadFile(filepath.Join(cs[0].To, store.ResumeDedupFile)); err != nil || len(b) != 24 {
+		t.Fatalf("%s: %d bytes, %v", store.ResumeDedupFile, len(b), err)
 	}
 	Uncarry(cs)
 	if _, err := os.Stat(cs[0].To); !os.IsNotExist(err) {

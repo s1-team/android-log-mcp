@@ -1,6 +1,7 @@
 package store
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"os"
@@ -12,6 +13,13 @@ import (
 // it moves to another data root (set-root). Segments stay where they are.
 var CarriedFiles = []string{"crashes.jsonl", "procs.jsonl", "dropbox_seen.jsonl", "packages.json"}
 
+// ResumeDedupFile holds the hashes carried by a set-root move: 8 bytes per
+// line, little-endian, at most MaxResumeDedup of them (issue #56).
+const ResumeDedupFile = "resume_dedup.bin"
+
+// MaxResumeDedup bounds the carried hashes (4 MB file).
+const MaxResumeDedup = 500000
+
 // ContinueIn prepares dst so that the recording of the (closed, flushed)
 // store in src continues there (set-root, issue #3): meta.json (sessions, gaps, the logcat -T
 // resume point, counters) and the aux files are copied, and the seqs
@@ -19,9 +27,10 @@ var CarriedFiles = []string{"crashes.jsonl", "procs.jsonl", "dropbox_seen.jsonl"
 // monotonic and no seq is reused. If dst already holds segments of this
 // device (the recording moves back to a root it used before), the seqs
 // recorded elsewhere in between are noted as a hole. The first append in
-// dst starts a new segment. boundary are the hashes of the lines stored at
-// the resume timestamp (meta.ResumeDedup).
-func ContinueIn(src, dst string, lastSeq uint64, boundary []uint64) error {
+// dst starts a new segment. carried are the hashes of the newest stored lines
+// of the current boot (resume_dedup.bin, meta.ResumeDedup), which a resume
+// in dst can repeat.
+func ContinueIn(src, dst string, lastSeq uint64, carried []uint64) error {
 	if filepath.Clean(src) == filepath.Clean(dst) {
 		return errors.New("store: continue into the same directory")
 	}
@@ -56,8 +65,19 @@ func ContinueIn(src, dst string, lastSeq uint64, boundary []uint64) error {
 		}
 	}
 	m.ResumeDedup = nil
-	if len(boundary) > 0 && m.ArrivalNs() > 0 {
-		m.ResumeDedup = &ResumeDedup{TimeNs: m.ArrivalNs(), Hashes: boundary}
+	os.Remove(filepath.Join(dst, ResumeDedupFile)) // stale file from an earlier stay in this root
+	if len(carried) > MaxResumeDedup {
+		carried = carried[len(carried)-MaxResumeDedup:]
+	}
+	if len(carried) > 0 && m.LastBootID != "" {
+		buf := make([]byte, 8*len(carried))
+		for i, h := range carried {
+			binary.LittleEndian.PutUint64(buf[8*i:], h)
+		}
+		if err := writeAtomic(filepath.Join(dst, ResumeDedupFile), buf); err != nil {
+			return err
+		}
+		m.ResumeDedup = &ResumeDedup{BootID: m.LastBootID, SeqFloor: lastSeq, Count: len(carried)}
 	}
 	m.LastSeenHostNs = time.Now().UnixNano()
 	for _, name := range CarriedFiles {
@@ -90,4 +110,33 @@ func writeAtomic(p string, b []byte) error {
 		return err
 	}
 	return os.Rename(tmp, p)
+}
+
+// LoadResumeDedup returns the hashes a set-root move carried into this
+// directory: resume_dedup.bin, or the legacy inline set of meta.json.
+func (s *Store) LoadResumeDedup() []uint64 {
+	m := s.Meta()
+	rd := m.ResumeDedup
+	if rd == nil {
+		return nil
+	}
+	if rd.Count == 0 {
+		return rd.Hashes
+	}
+	b, err := os.ReadFile(filepath.Join(s.Dir, ResumeDedupFile))
+	if err != nil || len(b) != 8*rd.Count {
+		return nil // missing or damaged: de-dup falls back to the stored lines
+	}
+	out := make([]uint64, rd.Count)
+	for i := range out {
+		out[i] = binary.LittleEndian.Uint64(b[8*i:])
+	}
+	return out
+}
+
+// ClearResumeDedup drops the carried set (writer only): the file and the
+// meta field.
+func (s *Store) ClearResumeDedup() {
+	os.Remove(filepath.Join(s.Dir, ResumeDedupFile))
+	s.UpdateMeta(func(m *Meta) { m.ResumeDedup = nil })
 }

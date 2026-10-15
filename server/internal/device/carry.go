@@ -38,19 +38,19 @@ func CarryOver(oldRoot, newRoot string) ([]Carried, error) {
 			return out, fmt.Errorf("%s: %v", dir, err)
 		}
 		c := Carried{ID: filepath.Base(dir), From: dir, To: filepath.Join(store.DataDir(newRoot), filepath.Base(dir)), LastSeq: st.LastSeq()}
-		boundary := boundaryHashes(st)
+		carried := carriedHashes(st)
 		st.Close()
 		if _, err := os.Stat(c.To); err == nil {
 			c.Existed = true
 			c.Backup = map[string][]byte{}
-			for _, name := range append([]string{"meta.json"}, store.CarriedFiles...) {
+			for _, name := range carryStateFiles() {
 				if b, err := os.ReadFile(filepath.Join(c.To, name)); err == nil {
 					c.Backup[name] = b
 				}
 			}
 		}
 		out = append(out, c)
-		if err := store.ContinueIn(c.From, c.To, c.LastSeq, boundary); err != nil {
+		if err := store.ContinueIn(c.From, c.To, c.LastSeq, carried); err != nil {
 			return out, fmt.Errorf("%s -> %s: %v", c.From, c.To, err)
 		}
 	}
@@ -64,7 +64,7 @@ func Uncarry(cs []Carried) {
 			os.RemoveAll(c.To)
 			continue
 		}
-		for _, name := range append([]string{"meta.json"}, store.CarriedFiles...) {
+		for _, name := range carryStateFiles() {
 			p := filepath.Join(c.To, name)
 			if b, ok := c.Backup[name]; ok {
 				os.WriteFile(p, b, 0o644)
@@ -75,13 +75,23 @@ func Uncarry(cs []Carried) {
 	}
 }
 
-// boundaryHashes are the hashes of the stored lines that logcat -T
-// <newest arrival> can repeat (see boundaryMultiset); the new root does
-// not have them to deduplicate against.
-func boundaryHashes(st *store.Store) []uint64 {
+// carryStateFiles are the files of a device directory that CarryOver
+// writes (and Uncarry restores).
+func carryStateFiles() []string {
+	return append([]string{"meta.json", store.ResumeDedupFile}, store.CarriedFiles...)
+}
+
+// carriedHashes are the hashes of the newest stored lines of the current
+// boot, chosen by seq (see tailMultiset): the lines a resume in the new
+// root can repeat, whatever the device clock did (issue #56). The new root
+// does not have them to deduplicate against.
+func carriedHashes(st *store.Store) []uint64 {
 	m := st.Meta()
+	if m.LastBootID == "" {
+		return nil
+	}
 	var out []uint64
-	for h, n := range boundaryMultiset(st, m.ArrivalNs()) {
+	for h, n := range tailMultiset(st, store.MaxResumeDedup) {
 		for ; n > 0; n-- {
 			out = append(out, h)
 		}
