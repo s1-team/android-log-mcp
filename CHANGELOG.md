@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ### Fixed
 
+- A DropBox entry is now matched to its logcat crash or ANR across a device clock jump ([#93](https://github.com/s1crab/android-log-mcp/issues/93)). The entry time is compared with the crash time as stored and as shifted by the clock jumps stored after the crash ("possible" jumps are ignored); the windows stay 60 s (Java and native crash) and 120 s (ANR), and kind, pid, process and boot must still agree. Before, a crash and its DropBox entry that straddled a jump were listed twice, or a different crash of the same process fell inside the window and got the wrong DropBox details. When two different crashes are equally near, the entry is left unmatched instead of merged into one of them.
 - Windows: stopping a device (or the service) now waits up to 500 ms for each killed adb grandchild process to really exit, so a process that is still exiting no longer keeps the data or temp directory locked ([#73](https://github.com/s1crab/android-log-mcp/issues/73)).
 
 ## [0.7.1] - 2026-10-16

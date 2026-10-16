@@ -335,10 +335,11 @@ func (p *Pipeline) EmitCrash(c *analysis.Crash) {
 	if c.ID == "" && !strings.HasPrefix(firstSource(c), "dropbox:") {
 		// pick the DropBox-only crash to adopt from the summaries, then
 		// adopt from its full version (one decode, not the whole file)
+		jumps := p.dropboxJumps()
 		probe := *c
-		if analysis.AdoptDropbox(CrashSummaries(p.Store), &probe) {
+		if analysis.AdoptDropbox(CrashSummaries(p.Store), &probe, jumps) {
 			if full := CrashFull(p.Store, probe.ID)[0]; full != nil {
-				analysis.AdoptDropbox([]*analysis.Crash{full}, c)
+				analysis.AdoptDropbox([]*analysis.Crash{full}, c, jumps)
 			}
 		}
 	} else if c.ID != "" {
@@ -358,6 +359,27 @@ func (p *Pipeline) EmitCrash(c *analysis.Crash) {
 		})
 	}
 	p.Store.AppendAux("crashes", crashAuxLine{Crash: c, HostNs: time.Now().UnixNano()})
+}
+
+// dropboxJumps are the stored clock jumps of this pipeline's boot session
+// that DropBox matching shifts crash times by (issue #93): "possible"
+// jumps carry no reliable delta and are left out, and so are jumps before
+// the session's first line (an earlier boot).
+func (p *Pipeline) dropboxJumps() []analysis.ClockShift {
+	m := p.Store.Meta()
+	var first uint64
+	for _, s := range m.Sessions {
+		if s.Boot == p.Boot {
+			first = s.FirstSeq
+		}
+	}
+	var out []analysis.ClockShift
+	for _, j := range p.Store.ClockJumps() {
+		if j.Source != "possible" && j.Seq > first {
+			out = append(out, analysis.ClockShift{Seq: j.Seq, DeltaNs: j.DeltaNs})
+		}
+	}
+	return out
 }
 
 // ApplyDropbox merges `dumpsys dropbox --print <tag>` output into the crash list.
@@ -411,13 +433,13 @@ func (p *Pipeline) ApplyDropbox(out string) {
 		// match against the summaries; for an existing crash, merge into
 		// its full version (MatchDropbox copies the match and keeps its
 		// traces / DropBox text)
-		c, isNew := analysis.MatchDropboxBoot(CrashSummaries(p.Store), e, p.Boot)
+		c, isNew := analysis.MatchDropboxBoot(CrashSummaries(p.Store), e, p.Boot, p.dropboxJumps())
 		if c != nil && !isNew {
 			full := CrashFull(p.Store, c.ID)[0]
 			if full == nil {
 				continue
 			}
-			c, isNew = analysis.MatchDropboxBoot([]*analysis.Crash{full}, e, p.Boot)
+			c, isNew = analysis.MatchDropboxBoot([]*analysis.Crash{full}, e, p.Boot, p.dropboxJumps())
 		}
 		p.Store.AppendAux("dropbox_seen", seenLine{Key: key, HostNs: time.Now().UnixNano()})
 		if c == nil {
