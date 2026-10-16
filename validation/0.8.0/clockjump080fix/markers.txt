@@ -1,0 +1,24 @@
+ok view=lines device=avd-api29 matched=16 exact=1 shown=16 order=arrival range=2026-10-15T14:45:52.081+08:00/2026-10-16T15:51:28.930+08:00 dev_now=2026-10-16T15:52:19+08:00 clock=observed offset_s=-80.8 clock_age_s=7 fmt=1
+clock_jumps=17 splitting=6 seq=29713 delta_s=86400.9 matches_before=14 matches_after=2 next: after="c1.YXZkLWFwaTI5.4ae92773.29712"
+14:44:48.622 I 10405/10405 uid:shell ALMJUMP8: J0-before
+14:45:33.119 I 10517/10517 uid:shell ALMJUMP8: J0b
+--- 2026-10-15 ---
+14:45:52.081 I 10614/10614 uid:root ALMJUMP8: J1-after-back
+14:46:29.169 I 10674/10674 uid:root ALMJUMP8: J1b
+14:47:15.563 I 10769/10769 uid:root ALMJUMP8: J1c
+14:48:41.090 I 10920/10920 uid:root ALMJUMP8: J1d-after-anr
+--- 2026-10-16 ---
+14:48:48.626 I 10935/10935 uid:root ALMJUMP8: J2-forward
+14:49:27.640 I 11025/11025 uid:root ALMJUMP8: J2b
+15:46:46.453 I 13354/13354 uid:shell ALMJUMP8: J0-before
+15:47:27.937 I 13447/13447 uid:shell ALMJUMP8: J0b
+--- 2026-10-15 ---
+15:47:46.484 I 13543/13543 uid:root ALMJUMP8: J1-after-back
+15:48:27.512 I 13612/13612 uid:root ALMJUMP8: J1b
+15:49:17.454 I 13722/13722 uid:root ALMJUMP8: J1c
+15:50:39.459 I 13808/13808 uid:root ALMJUMP8: J1d-after-anr
+--- 2026-10-16 ---
+15:50:50.044 I 13825/13825 uid:root ALMJUMP8: J2-forward
+15:51:28.930 I 13910/13910 uid:root ALMJUMP8: J2b
+newer: after="c1.YXZkLWFwaTI5.4ae92773.30329"
+
