@@ -281,11 +281,6 @@ func (m *Manager) unwantIdle(id, reason string) {
 // and the stop.
 var beforeIdleStop atomic.Value // func(id string)
 
-// ReleasePause (tests) delays release() after the recorder stopped, before
-// the store is reopened read-only and tracking stops: the window a call
-// can hit while a device is being stopped (slow on Windows; issue #15).
-var ReleasePause = newDur(0)
-
 func (m *Manager) unwantLocked(id, reason string) {
 	m.mu.Lock()
 	_, ok := m.wanted[id]
@@ -308,11 +303,11 @@ func (m *Manager) release(id string, d *Device) {
 	go func() { d.runWG.Wait(); close(done) }()
 	select {
 	case <-done:
-	case <-time.After(recorderStopWait.Get()):
-		log.Printf("%s: recorder did not stop within %s", id, recorderStopWait.Get())
+	case <-time.After(m.Timing.RecorderStopWait.Get()):
+		log.Printf("%s: recorder did not stop within %s", id, m.Timing.RecorderStopWait.Get())
 	}
 	d.waitBackground()
-	if p := ReleasePause.Get(); p > 0 {
+	if p := m.Timing.ReleasePause.Get(); p > 0 {
 		time.Sleep(p)
 	}
 	m.attachMu.Lock()

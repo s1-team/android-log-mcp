@@ -16,6 +16,7 @@ import (
 )
 
 func TestSetPinNeverShortens(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	pf := &PinFile{Pins: map[string]*Pin{}}
 	p := pf.SetPin("d", 2*time.Hour, "a", "0.5.0", now)
@@ -33,6 +34,7 @@ func TestSetPinNeverShortens(t *testing.T) {
 }
 
 func TestPinsFile(t *testing.T) {
+	t.Parallel()
 	ctrl := testControl(t)
 	os.MkdirAll(ctrl.Run(), 0o700)
 	now := time.Now()
@@ -83,6 +85,7 @@ func TestPinsFile(t *testing.T) {
 }
 
 func TestPinCrashLoop(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	pf := &PinFile{Pins: map[string]*Pin{}}
 	pf.SetPin("d", time.Hour, "t", "0.5.0", now)
@@ -112,6 +115,7 @@ func TestPinCrashLoop(t *testing.T) {
 // is kept on a same-version takeover and reset by a different version or
 // a new pin.
 func TestPinCrashBudget(t *testing.T) {
+	t.Parallel()
 	ctrl := testControl(t)
 	os.MkdirAll(ctrl.Run(), 0o700)
 	now := time.Now()
@@ -159,7 +163,7 @@ func TestPinCrashBudget(t *testing.T) {
 // down) counts a crash for every active pin; three in a minute suspend it,
 // shown by the service status.
 func TestServiceCountsCrashes(t *testing.T) {
-	shortExit(t, time.Hour)
+	t.Parallel()
 	ctrl := testControl(t)
 	os.MkdirAll(ctrl.Run(), 0o700)
 	now := time.Now()
@@ -168,7 +172,7 @@ func TestServiceCountsCrashes(t *testing.T) {
 		stale := State{PID: deadPID(t), Version: "0.5.0", Started: time.Now().Add(-time.Minute), Root: ctrl.Dir}
 		b, _ := json.Marshal(stale)
 		os.WriteFile(ctrl.StatePath(), b, 0o600)
-		s, err := Start(Options{Control: ctrl, Version: "0.5.0", Drain: time.Second})
+		s, err := Start(Options{Control: ctrl, Version: "0.5.0", Drain: time.Second, ExitGrace: time.Hour})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -189,7 +193,7 @@ func TestServiceCountsCrashes(t *testing.T) {
 		}
 	}
 	// a clean stop leaves no service.json: the next start is no crash
-	s, err := Start(Options{Control: ctrl, Version: "0.5.0", Drain: time.Second})
+	s, err := Start(Options{Control: ctrl, Version: "0.5.0", Drain: time.Second, ExitGrace: time.Hour})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,10 +218,10 @@ func deadPID(t *testing.T) int {
 // longer --for extends, --stop stops it at once and removes the pin; an
 // unusable record.json makes --for refuse.
 func TestRecordOp(t *testing.T) {
-	shortExit(t, time.Hour)
-	e := installFake(t, "FAKEA")
+	t.Parallel()
+	e, adb := installFake(t, "FAKEA")
 	ctrl := testControl(t)
-	s := startTest(t, ctrl, "0.5.0")
+	s := startTest(t, ctrl, "0.5.0", exitAfter(time.Hour), adb)
 	ctx := context.Background()
 	if !s.Manager().Idle() || len(e.Calls()) != 0 {
 		t.Fatal("not idle at start")
@@ -266,10 +270,10 @@ func TestRecordOp(t *testing.T) {
 
 // set-root keeps started devices, their timers and the pins.
 func TestSetRootKeepsStartedDevices(t *testing.T) {
-	shortExit(t, time.Hour)
-	installFake(t, "FAKEA")
+	t.Parallel()
+	_, adb := installFake(t, "FAKEA")
 	ctrl := testControl(t)
-	s := startTest(t, ctrl, "0.5.0")
+	s := startTest(t, ctrl, "0.5.0", exitAfter(time.Hour), adb)
 	if _, err := s.record(context.Background(), RecordArgs{For: "10m"}); err != nil {
 		t.Fatal(err)
 	}
@@ -283,15 +287,15 @@ func TestSetRootKeepsStartedDevices(t *testing.T) {
 	}
 }
 
-func installFake(t *testing.T, serials ...string) fakeadb.Env {
+// installFake installs a fake adb with online devices; the option points
+// the service's device manager at it.
+func installFake(t *testing.T, serials ...string) (fakeadb.Env, func(*Options)) {
 	t.Helper()
 	dir := t.TempDir()
 	adb, err := fakeadb.Install(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("ANDROID_LOG_MCP_ADB", adb)
-	t.Setenv(fakeadb.EnvDir, dir)
 	e := fakeadb.Env{Dir: dir}
 	states := map[string]string{}
 	for _, s := range serials {
@@ -300,5 +304,5 @@ func installFake(t *testing.T, serials ...string) fakeadb.Env {
 		states[s] = "device"
 	}
 	e.SetDevices(states)
-	return e
+	return e, func(o *Options) { o.ADBPath = adb }
 }

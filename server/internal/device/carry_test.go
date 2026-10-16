@@ -10,6 +10,7 @@ import (
 )
 
 func TestCarryOverAndUncarry(t *testing.T) {
+	t.Parallel()
 	oldRoot, newRoot := t.TempDir(), filepath.Join(t.TempDir(), "new")
 	st, err := store.Open(oldRoot, "dev", store.Config{})
 	if err != nil {

@@ -12,9 +12,8 @@ import (
 // list makes the session read `pm list packages -U` again, at most once per
 // packagesRefreshEvery, however many such processes start.
 func TestUnknownUIDRefreshesPackagesOncePerWindow(t *testing.T) {
-	old := packagesRefreshEvery.Get()
-	packagesRefreshEvery.Set(3 * time.Second)
-	t.Cleanup(func() { packagesRefreshEvery.Set(old) })
+	t.Parallel()
+	testTiming(t).PackagesRefreshEvery.Set(3 * time.Second)
 	e := fakeEnv(t)
 	addDevices(t, e, 5, "FAKEA")
 	m, cancel := closeManager(t)
@@ -46,7 +45,7 @@ func TestUnknownUIDRefreshesPackagesOncePerWindow(t *testing.T) {
 		t.Fatalf("pm list packages ran %d times within the first window, want 1", n)
 	}
 	// a new window: exactly one more read for two bursts of unknown uids
-	time.Sleep(packagesRefreshEvery.Get())
+	time.Sleep(testTiming(t).PackagesRefreshEvery.Get())
 	burst()
 	burst()
 	waitFor(t, "a second package list read", 30*time.Second, func() bool { return pm() == 2 })

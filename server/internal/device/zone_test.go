@@ -8,6 +8,7 @@ import (
 
 // `date +%z` is the source of truth; persist.sys.timezone is used only when it agrees.
 func TestResolveZone(t *testing.T) {
+	t.Parallel()
 	at := time.Unix(1791572000, 0)
 	l, label := ResolveZone("Asia/Kuching", "+0800", at)
 	if l == nil || l.String() != "Asia/Kuching" || label != "Asia/Kuching" {

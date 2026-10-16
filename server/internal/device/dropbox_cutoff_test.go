@@ -48,6 +48,7 @@ func cutoffPipe(t *testing.T, newest time.Time) (*Pipeline, *store.Store, *time.
 // imported once; entries from before the reset, already imported, are not
 // imported again, and entries past retention are not imported.
 func TestDropboxCutoffAfter1970Reset(t *testing.T) {
+	t.Parallel()
 	p, st, now := cutoffPipe(t, time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC))
 	before := []string{"2026-10-10 09:00:00", "2026-10-10 11:00:00"}
 	p.ApplyDropbox(dropboxOut(before...))
@@ -68,6 +69,7 @@ func TestDropboxCutoffAfter1970Reset(t *testing.T) {
 // imported (the old cutoff stayed a year ahead), the +1 y entry once, and
 // entries past retention are not imported.
 func TestDropboxCutoffYearAheadUndone(t *testing.T) {
+	t.Parallel()
 	base := time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
 	p, st, now := cutoffPipe(t, base)
 	ahead := base.AddDate(1, 0, 0)

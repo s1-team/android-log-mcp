@@ -265,12 +265,12 @@ func TestSlowIdentity(t *testing.T) {
 // Issue #30: a reconnect whose previous recording session does not stop in
 // time starts recording anyway, and logcat_status says so explicitly.
 func TestStatusShowsLateHandover(t *testing.T) {
-	// serial: device.HoldSessionEndForTest sets package globals (hook, recorderStopWait)
+	// serial: device.HoldSessionEndForTest sets a package-wide hook (sessionEndHook)
 	l := newLazy(t, 3, "FAKEA")
 	if out, isErr := l.call(t, "logcat_status", `{}`); isErr {
 		t.Fatal(out)
 	}
-	release := device.HoldSessionEndForTest("FAKEA", 1, 200*time.Millisecond)
+	release := device.HoldSessionEndForTest(l.m, "FAKEA", 1, 200*time.Millisecond)
 	defer release()
 	l.e.SetDevices(map[string]string{"FAKEA": "offline"})
 	deadline := time.Now().Add(20 * time.Second)

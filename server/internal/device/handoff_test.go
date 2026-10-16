@@ -43,13 +43,13 @@ func setHook(t *testing.T, f func(*Device, uint64)) {
 // killed and returned, and logcat_status says the new session started
 // before the previous one had stopped.
 func TestReconnectWaitsForPreviousBackgroundWork(t *testing.T) {
+	// serial: swaps the package-wide log output or session hook
 	e := fakeEnv(t)
 	addDevices(t, e, 5, "FAKEA")
 	if err := e.SetHang("FAKEA", "STUCKCMD"); err != nil {
 		t.Fatal(err)
 	}
-	bgStopWait.Set(300 * time.Millisecond)
-	t.Cleanup(func() { bgStopWait.Set(5 * time.Second) })
+	testTiming(t).BgStopWait.Set(300 * time.Millisecond)
 	buf := captureLog(t)
 	m, cancel := closeManager(t)
 	defer func() { cancel(); m.Close() }()
@@ -99,6 +99,7 @@ func TestReconnectWaitsForPreviousBackgroundWork(t *testing.T) {
 // The previous session's recorder is still stopping (draining into the
 // store): the new session starts only after it returned.
 func TestReconnectWaitsForPreviousRecorder(t *testing.T) {
+	// serial: swaps the package-wide log output or session hook
 	e := fakeEnv(t)
 	addDevices(t, e, 5, "FAKEA")
 	m, cancel := closeManager(t)
@@ -137,10 +138,10 @@ func TestReconnectWaitsForPreviousRecorder(t *testing.T) {
 // session starts anyway, and both the service log and logcat_status say
 // which device and which sessions.
 func TestReconnectRecorderTimeoutIsReported(t *testing.T) {
+	// serial: swaps the package-wide log output or session hook
 	e := fakeEnv(t)
 	addDevices(t, e, 5, "FAKEA")
-	recorderStopWait.Set(300 * time.Millisecond)
-	t.Cleanup(func() { recorderStopWait.Set(10 * time.Second) })
+	testTiming(t).RecorderStopWait.Set(300 * time.Millisecond)
 	buf := captureLog(t)
 	m, cancel := closeManager(t)
 	release := make(chan struct{})
@@ -167,6 +168,7 @@ func TestReconnectRecorderTimeoutIsReported(t *testing.T) {
 // Rapid reconnects: the previous session never ends the new session's
 // pending catch-up (it did in about 6 of 20 before #30).
 func TestReconnectKeepsNewCatchUp(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 5, "FAKEA")
 	m, cancel := closeManager(t)
@@ -199,6 +201,7 @@ func TestReconnectKeepsNewCatchUp(t *testing.T) {
 // call still holding the old device keeps reading, including what the new
 // recorder writes.
 func TestSwapClosesReplacedReadOnlyStore(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 5, "FAKEA")
 	m := lazyManager(t, time.Minute)
@@ -223,13 +226,13 @@ func TestSwapClosesReplacedReadOnlyStore(t *testing.T) {
 // shuts it down like release() (recorder, background work, adb children)
 // before closing its store.
 func TestSwapOwnedDeviceShutsDown(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 2, "FAKEA")
 	if err := e.SetHang("FAKEA", "STUCKCMD"); err != nil {
 		t.Fatal(err)
 	}
-	bgStopWait.Set(300 * time.Millisecond)
-	t.Cleanup(func() { bgStopWait.Set(5 * time.Second) })
+	testTiming(t).BgStopWait.Set(300 * time.Millisecond)
 	m, cancel := closeManager(t)
 	d := startDevice(t, m, "FAKEA")
 	d.bg.spawn("stuck", func() {

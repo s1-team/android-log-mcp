@@ -20,7 +20,7 @@ import (
 
 func managerAt(t *testing.T, root string) (*Manager, func()) {
 	t.Helper()
-	m := NewManager(root, store.Config{})
+	m := newTestManager(t, root, store.Config{})
 	m.Lazy = true
 	m.IdleTick = 20 * time.Millisecond
 	m.Linger = func(*Device) time.Duration { return time.Minute }

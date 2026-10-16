@@ -30,10 +30,6 @@ import (
 // by time) finds them, and the holes are stored late. Android 12+ logd
 // compares sequence numbers and is not affected.
 
-// reconcileEvery is how often the device buffer is compared with the
-// stored lines in repair mode.
-var reconcileEvery = newDur(20 * time.Second)
-
 // reconcileMaxSDK is the last API level whose logd positions readers by time.
 const reconcileMaxSDK = 30
 
@@ -100,7 +96,7 @@ func (d *Device) repairNeeded(bufN uint64) bool {
 }
 
 // reconcileLoop is the repair mode (issue #65): while repairNeeded, it
-// dumps the device buffer every reconcileEvery, compares it with the
+// dumps the device buffer every Timing.ReconcileEvery, compares it with the
 // stored lines and sends the lines the stream skipped to out. Outside it,
 // it only checks the recorded clock jumps (no adb call).
 func (d *Device) reconcileLoop(ctx context.Context, caught <-chan struct{}, out chan<- []*model.Record) {
@@ -128,7 +124,7 @@ func (d *Device) reconcileLoop(ctx context.Context, caught <-chan struct{}, out 
 			return
 		case <-t.C:
 		}
-		t.Reset(reconcileEvery.Get())
+		t.Reset(d.timing().ReconcileEvery.Get())
 		if !backJumpAfter(d.Store, sessionFirst(d.Store)) {
 			d.setRepair(false, "")
 			prev = 0
@@ -168,7 +164,7 @@ func (d *Device) reconcileLoop(ctx context.Context, caught <-chan struct{}, out 
 		// lines the dump printed that the stream still holds (pipeline
 		// Delay) are stored before the compare
 		select {
-		case <-time.After(reconcileSettle.Get()):
+		case <-time.After(d.timing().ReconcileSettle.Get()):
 		case <-ctx.Done():
 			return
 		}
@@ -194,10 +190,6 @@ func (d *Device) reconcileLoop(ctx context.Context, caught <-chan struct{}, out 
 		}
 	}
 }
-
-// reconcileSettle: wait this long after a read before comparing it, so
-// lines the stream delivered meanwhile are stored (pipeline Delay 800 ms).
-var reconcileSettle = newDur(2 * time.Second)
 
 // reconcileSize is how many entries to dump. A skip only hits entries
 // logged after the stream's position, so a read must cover the entries
@@ -389,7 +381,7 @@ func (d *Device) RecoveredNote() string {
 	d.mu.RUnlock()
 	s := ""
 	if since != 0 {
-		s = "repair reads on since host time " + time.Unix(0, since).Format("15:04:05") + ": the device clock was set back and logd (Android 11 and older) can skip lines of the live stream while the device buffer holds lines dated after device now; the buffer is compared with the stored lines every " + reconcileEvery.Get().String()
+		s = "repair reads on since host time " + time.Unix(0, since).Format("15:04:05") + ": the device clock was set back and logd (Android 11 and older) can skip lines of the live stream while the device buffer holds lines dated after device now; the buffer is compared with the stored lines every " + d.timing().ReconcileEvery.Get().String()
 	}
 	if n > 0 {
 		if s != "" {

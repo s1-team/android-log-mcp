@@ -69,6 +69,7 @@ func resume(t *testing.T, e fakeadb.Env, m *Manager, serial string) (*Device, st
 // (Adjacent lines with the same header are one multi-line message, so
 // another thread's line sits between the copies.)
 func TestSameLineTwiceSameMs(t *testing.T) {
+	t.Parallel()
 	for _, back := range []bool{false, true} {
 		e := fakeEnv(t)
 		addDevices(t, e, 3, "FAKEA")
@@ -98,6 +99,7 @@ func TestSameLineTwiceSameMs(t *testing.T) {
 // newest stored line's device time again before the reconnect. The lines
 // dated before it must not be dropped, and the whole buffer is read.
 func TestSetBackWhileDisconnectedLosesNothing(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 0, "FAKEA")
 	now := time.Now()
@@ -129,6 +131,7 @@ func TestSetBackWhileDisconnectedLosesNothing(t *testing.T) {
 // rollback resume must not import the buffer again; the earlier code
 // chose the stored lines to compare by device time and found none.
 func TestRollbackNoReimport(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 5, "FAKEA")
 	m := lazyManager(t, time.Minute)
@@ -158,6 +161,7 @@ func TestRollbackNoReimport(t *testing.T) {
 // rollback mode: the -T resume point is the newest arrival, not the
 // maximum device time.
 func TestYearJumpUndoneNoRollback(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 2, "FAKEA")
 	m := lazyManager(t, time.Minute)
@@ -184,10 +188,12 @@ func TestYearJumpUndoneNoRollback(t *testing.T) {
 // disconnected: right when the resume reports caught up (D3), the stored
 // lines equal the device buffer as a multiset.
 func TestReconnectAfterEachJumpSize(t *testing.T) {
+	t.Parallel()
 	day := 24 * time.Hour
 	for _, j := range []time.Duration{-365 * day, -day, -time.Hour, -90 * time.Second, -30 * time.Second,
 		30 * time.Second, 90 * time.Second, time.Hour, day, 365 * day} {
 		t.Run(j.String(), func(t *testing.T) {
+			t.Parallel() // each subtest has its own fake adb and Manager
 			e := fakeEnv(t)
 			addDevices(t, e, 5, "FAKEA")
 			m := lazyManager(t, time.Minute)

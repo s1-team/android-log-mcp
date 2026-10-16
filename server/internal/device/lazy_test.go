@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -23,9 +25,57 @@ func fakeEnv(t *testing.T) fakeadb.Env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("ANDROID_LOG_MCP_ADB", adb)
-	t.Setenv(fakeadb.EnvDir, dir)
+	testADBs.Store(t.Name(), adb)
+	t.Cleanup(func() { testADBs.Delete(t.Name()) })
 	return fakeadb.Env{Dir: dir}
+}
+
+// Per-test fake adb paths and Timings (#26): fakeEnv and testTiming
+// register them under the test's name, and newTestManager configures its
+// Manager from them, so tests change neither the process environment nor
+// package globals and can run in parallel. A subtest finds its parent's.
+var testADBs, testTimings sync.Map
+
+func lookupTest(m *sync.Map, t testing.TB) (any, bool) {
+	for n := t.Name(); ; {
+		if v, ok := m.Load(n); ok {
+			return v, true
+		}
+		i := strings.LastIndex(n, "/")
+		if i < 0 {
+			return nil, false
+		}
+		n = n[:i]
+	}
+}
+
+// fakeADB is the fake adb of the test (fakeEnv); without one, a path that
+// does not exist, so no test ever runs a real adb.
+func fakeADB(t testing.TB) string {
+	if v, ok := lookupTest(&testADBs, t); ok {
+		return v.(string)
+	}
+	return filepath.Join(os.TempDir(), "alm-test-no-adb")
+}
+
+// testTiming is the Timing of the test's Managers (DefaultTiming until the
+// test shortens a value).
+func testTiming(t testing.TB) *Timing {
+	if v, ok := lookupTest(&testTimings, t); ok {
+		return v.(*Timing)
+	}
+	tm := DefaultTiming()
+	testTimings.Store(t.Name(), tm)
+	t.Cleanup(func() { testTimings.Delete(t.Name()) })
+	return tm
+}
+
+// newTestManager is NewManager with the test's fake adb and Timing.
+func newTestManager(t testing.TB, base string, cfg store.Config) *Manager {
+	m := NewManager(base, cfg)
+	m.ADBPath = fakeADB(t)
+	m.Timing = testTiming(t)
+	return m
 }
 
 // addDevices creates online devices with n buffered lines each (oldest
@@ -54,7 +104,7 @@ func addDevices(t *testing.T, e fakeadb.Env, n int, serials ...string) {
 
 func lazyManager(t *testing.T, linger time.Duration) *Manager {
 	t.Helper()
-	m := NewManager(t.TempDir(), store.Config{})
+	m := newTestManager(t, t.TempDir(), store.Config{})
 	m.Lazy = true
 	m.IdleTick = 20 * time.Millisecond
 	m.Linger = func(*Device) time.Duration { return linger }
@@ -112,6 +162,7 @@ func lastStream(t *testing.T, e fakeadb.Env, serial string, n int) []string {
 }
 
 func TestLazyIdleRunsNoADB(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 5, "FAKEA")
 	m := lazyManager(t, time.Minute)
@@ -131,6 +182,7 @@ func TestLazyIdleRunsNoADB(t *testing.T) {
 // do concurrently; the other online device stays unrecorded (no store,
 // no logcat).
 func TestLazyStartsOnlyWantedDevice(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 5, "FAKEA", "FAKEB")
 	m := lazyManager(t, time.Minute)
@@ -172,6 +224,7 @@ func TestLazyStartsOnlyWantedDevice(t *testing.T) {
 // slowly the device is not caught up; it is right after the line at T_end
 // is stored.
 func TestCatchUpDeterministic(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 30, "FAKEA")
 	e.SetDelay("FAKEA", 60*time.Millisecond) // ~1.8 s for the dump
@@ -198,6 +251,7 @@ func TestCatchUpDeterministic(t *testing.T) {
 }
 
 func TestCatchUpEmptyBuffer(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 0, "FAKEA")
 	m := lazyManager(t, time.Minute)
@@ -211,6 +265,7 @@ func TestCatchUpEmptyBuffer(t *testing.T) {
 // nothing new in the buffer it is caught up at once, and lines logged
 // while it was idle are backfilled without duplicates.
 func TestResumeAfterIdle(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 5, "FAKEA")
 	m := lazyManager(t, time.Minute)
@@ -251,6 +306,7 @@ func TestResumeAfterIdle(t *testing.T) {
 // would wait for the future, so the whole buffer is read without -T and
 // lines already stored are dropped.
 func TestClockRollback(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 5, "FAKEA")
 	m := lazyManager(t, time.Minute)
@@ -281,6 +337,7 @@ func TestClockRollback(t *testing.T) {
 // Per-device idle: B stops after its linger while A, kept busy (a long
 // poll), continues; with nothing recorded adb tracking stops too.
 func TestPerDeviceIdle(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 3, "FAKEA", "FAKEB")
 	m := lazyManager(t, 400*time.Millisecond)
@@ -308,6 +365,7 @@ func TestPerDeviceIdle(t *testing.T) {
 
 // A pin keeps a device recording past its linger.
 func TestPinnedDeviceStays(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 3, "FAKEA")
 	m := lazyManager(t, 100*time.Millisecond)
@@ -326,6 +384,7 @@ func TestPinnedDeviceStays(t *testing.T) {
 }
 
 func TestMaxDevices(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 1, "FAKEA", "FAKEB")
 	m := lazyManager(t, time.Minute)
@@ -340,6 +399,7 @@ func TestMaxDevices(t *testing.T) {
 
 // Snapshot/Restore carry started devices and their timers (set-root).
 func TestSnapshotRestore(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 1, "FAKEA")
 	m := lazyManager(t, time.Minute)
@@ -354,6 +414,7 @@ func TestSnapshotRestore(t *testing.T) {
 }
 
 func TestParseDate(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		in     string
 		coarse bool
@@ -370,6 +431,7 @@ func TestParseDate(t *testing.T) {
 // none named) stops after TrackGrace: the manager is idle again and no
 // adb child runs.
 func TestTrackingWithoutDeviceStops(t *testing.T) {
+	// serial: sets the package variable TrackGrace
 	old := TrackGrace
 	TrackGrace = 300 * time.Millisecond
 	t.Cleanup(func() { TrackGrace = old })
@@ -390,6 +452,7 @@ func TestTrackingWithoutDeviceStops(t *testing.T) {
 // the set back is recorded as a live clock jump at the first of them
 // (issue #48).
 func TestSetBackWhileLiveAfterResume(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 5, "FAKEA")
 	m := lazyManager(t, time.Minute)

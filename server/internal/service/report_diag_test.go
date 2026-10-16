@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"context"
 	"encoding/json"
+	"github.com/s1crab/android-log-mcp/server/internal/device"
 	"io"
 	"os"
 	"path/filepath"
@@ -35,7 +36,7 @@ func readZip(t *testing.T, p string) map[string]string {
 // --logs-only: diagnostics only (service log redacted, lock diagnosis,
 // adb devices -l), no recorded data; works with no service running.
 func TestReportLogsOnly(t *testing.T) {
-	installFake(t, "FAKEA")
+	adb := fakeADBFor(t, "FAKEA")
 	ctrl := testControl(t)
 	root := t.TempDir()
 	if err := os.MkdirAll(LogDir(root), 0o755); err != nil {
@@ -43,7 +44,7 @@ func TestReportLogsOnly(t *testing.T) {
 	}
 	os.WriteFile(filepath.Join(LogDir(root), "service.log"), []byte("2026/10/15 service started\n2026/10/15 user bob@example.com asked\n"), 0o644)
 	out := filepath.Join(t.TempDir(), "r.zip")
-	rep, err := BuildReport(context.Background(), root, "0.5.0", ReportArgs{Out: out, LogsOnly: true, NoADB: true, DevicesList: true, Control: ctrl}, nil)
+	rep, err := BuildReport(context.Background(), root, "0.5.0", ReportArgs{Out: out, LogsOnly: true, NoADB: true, DevicesList: true, Control: ctrl}, adb)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +77,7 @@ func TestReportLogsOnly(t *testing.T) {
 // directory and the user names in /home/<user>, /Users/<user> and
 // C:\Users\<user> never appear in the zip.
 func TestReportRedactsUserPaths(t *testing.T) {
-	installFake(t, "FAKEA")
+	adb := fakeADBFor(t, "FAKEA")
 	base, err := os.MkdirTemp("", "almh")
 	if err != nil {
 		t.Fatal(err)
@@ -102,7 +103,7 @@ func TestReportRedactsUserPaths(t *testing.T) {
 	os.WriteFile(filepath.Join(LogDir(root), "service.log"), []byte(logTxt), 0o644)
 	os.WriteFile(filepath.Join(LogDir(root), "crash.log"), []byte("panic in /Users/gina/src/x.go:1\n"), 0o644)
 	out := filepath.Join(t.TempDir(), "r.zip")
-	if _, err := BuildReport(context.Background(), root, "0.5.0", ReportArgs{Out: out, LogsOnly: true, NoADB: true, DevicesList: true, Control: ctrl, Args: []string{"report", "--out", filepath.Join(home, "r.zip")}}, nil); err != nil {
+	if _, err := BuildReport(context.Background(), root, "0.5.0", ReportArgs{Out: out, LogsOnly: true, NoADB: true, DevicesList: true, Control: ctrl, Args: []string{"report", "--out", filepath.Join(home, "r.zip")}}, adb); err != nil {
 		t.Fatal(err)
 	}
 	files := readZip(t, out)
@@ -207,4 +208,14 @@ func TestNoNetworkImports(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// fakeADBFor installs the fake adb and returns it for BuildReport (adb is
+// per call now, not the ANDROID_LOG_MCP_ADB environment).
+func fakeADBFor(t *testing.T, serials ...string) *device.ADB {
+	t.Helper()
+	_, opt := installFake(t, serials...)
+	var o Options
+	opt(&o)
+	return &device.ADB{Path: o.ADBPath}
 }
