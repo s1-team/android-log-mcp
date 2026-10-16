@@ -128,7 +128,7 @@ func recordOffline(ctrl service.Control, a service.RecordArgs, asJSON bool) int 
 			return nil
 		})
 		if err != nil {
-			fmt.Fprintln(os.Stderr, mcpserver.CLIError("several_devices", severalNext(err), "msg", err.Error()))
+			fmt.Fprintln(os.Stderr, mcpserver.CLIErrorAlts("several_devices", severalNext(err), "msg", err.Error()))
 			return 1
 		}
 	}
@@ -219,15 +219,16 @@ func (e *severalPinnedError) Error() string {
 	return fmt.Sprintf("%d devices are pinned; pass --device one of: %s", len(e.ids), strings.Join(e.ids, ", "))
 }
 
-// severalNext is one executable alternative per pinned device.
-func severalNext(err error) string {
+// severalNext is one standalone command per pinned device (each becomes its
+// own `next:` line: they must never run together).
+func severalNext(err error) []string {
 	var se *severalPinnedError
 	if !errors.As(err, &se) {
-		return "android-log-mcp record"
+		return []string{"android-log-mcp record"}
 	}
-	var alts []string
+	var cmds []string
 	for _, id := range se.ids {
-		alts = append(alts, "android-log-mcp record --stop --device "+shellQuote(id))
+		cmds = append(cmds, "android-log-mcp record --stop --device "+shellQuote(id))
 	}
-	return strings.Join(alts, " | ")
+	return cmds
 }

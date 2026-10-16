@@ -63,11 +63,11 @@ func TestRootCommand(t *testing.T) {
 		args []string
 		next string
 	}{
-		{[]string{"set-root", d1}, "next: android-log-mcp set-root " + shellQuote(d1) + " --keep-old | "},
-		{[]string{"set-root", d2, "--keep-old", "--delete-old"}, "next: android-log-mcp set-root " + shellQuote(d2) + " --keep-old | "},
+		{[]string{"set-root", d1}, "next: android-log-mcp set-root " + shellQuote(d1) + " --keep-old"},
+		{[]string{"set-root", d2, "--keep-old", "--delete-old"}, "next: android-log-mcp set-root " + shellQuote(d2) + " --keep-old"},
 		{[]string{"set-root", "--keep-old"}, "next: android-log-mcp root"},
 	} {
-		if _, errOut, code := cli(t, nil, c.args...); code != 2 || !strings.HasPrefix(errOut, "error code=usage ") || !strings.Contains(errOut, c.next) {
+		if _, errOut, code := cli(t, nil, c.args...); code != 2 || !strings.HasPrefix(errOut, "error code=usage ") || !strings.Contains(errOut, c.next) || strings.Contains(errOut[strings.Index(errOut, "next:"):], "--delete-old") || strings.Contains(errOut[strings.Index(errOut, "next:"):], " | ") {
 			t.Fatalf("%v: exit %d\n%s", c.args, code, errOut)
 		}
 	}
