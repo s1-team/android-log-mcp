@@ -11,8 +11,13 @@ import (
 type DropboxEntry struct {
 	Tag    string `json:"tag"`
 	TimeNs int64  `json:"t"` // device-local wall clock, second precision
-	Body   string `json:"body"`
-	Note   string `json:"note,omitempty"` // e.g. "contents lost"
+	// BodyTimeNs is the real time of an ANR entry read from its body
+	// ("----- pid N at <time> -----", device zone); 0 when absent or not
+	// parseable. DropBox re-dates entries after a back-jump, the body keeps
+	// the time the ANR was dumped (issue #152). Not stored.
+	BodyTimeNs int64  `json:"-"`
+	Body       string `json:"body"`
+	Note       string `json:"note,omitempty"` // e.g. "contents lost"
 }
 
 var reDropHdr = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?) (\S+)(?: \((.*)\))?$`)
@@ -52,6 +57,9 @@ func ParseDropbox(out string, loc *time.Location) []DropboxEntry {
 			continue
 		}
 		e := DropboxEntry{Tag: m[2], TimeNs: t.UnixNano(), Body: strings.TrimRight(body, "\n")}
+		if strings.HasSuffix(e.Tag, "_anr") {
+			e.BodyTimeNs = anrBodyTime(e.Body, loc)
+		}
 		if strings.Contains(m[3], "lost") || strings.Contains(hdr, "(no file)") {
 			e.Note = "contents lost"
 		}
@@ -61,6 +69,40 @@ func ParseDropbox(out string, loc *time.Location) []DropboxEntry {
 		res = append(res, e)
 	}
 	return res
+}
+
+var reTraceHdr = regexp.MustCompile(`(?m)^----- pid (\d+) at (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?) -----\s*$`)
+
+// anrBodyTime is the time of the ANR's own trace header, the one for the
+// entry's PID ("----- pid N at <time> -----"; the other processes' dumps
+// follow it), in loc, the device zone. 0 when there is none, it names no
+// PID of this entry, or the time does not parse: the caller then keeps the
+// entry's header time.
+func anrBodyTime(body string, loc *time.Location) int64 {
+	pid := headerField(body, "PID")
+	if pid == "" {
+		return 0
+	}
+	for _, m := range reTraceHdr.FindAllStringSubmatch(body, -1) {
+		if m[1] != pid {
+			continue
+		}
+		t, err := time.ParseInLocation("2006-01-02 15:04:05.999", m[2], loc)
+		if err != nil {
+			return 0
+		}
+		return t.UnixNano()
+	}
+	return 0
+}
+
+// RealTimeNs is the time an entry stands for: the body time when the body
+// carries one, else the DropBox header time.
+func (e DropboxEntry) RealTimeNs() int64 {
+	if e.BodyTimeNs != 0 {
+		return e.BodyTimeNs
+	}
+	return e.TimeNs
 }
 
 func headerField(body, key string) string {
@@ -128,6 +170,9 @@ func dropboxDelta(crashNs int64, crashSeq uint64, entryNs int64, jumps []ClockSh
 // dated after device now when the clock was set back (issue #63). ANRs
 // keep the time rule: a process can survive an ANR and ANR again.
 //
+// For an ANR the time of the entry is the one in its body when it has one
+// (issue #152), else the header time; the header time stays a candidate.
+//
 // Kind, pid, process and boot must agree; the window (60 s, ANR
 // anrPairWindow) is checked against the raw time difference and against
 // the one shifted by the clock jumps stored after the crash (jumps, issue
@@ -187,6 +232,13 @@ func MatchDropboxBoot(list []*Crash, e DropboxEntry, boot string, jumps []ClockS
 			continue
 		}
 		d, shifted := dropboxDelta(x.TimeNs, x.Seq, e.TimeNs, jumps)
+		if e.BodyTimeNs != 0 {
+			// the body time is the real one, the header time may have been
+			// re-dated by the device (issue #152); either may match
+			if db, sb := dropboxDelta(x.TimeNs, x.Seq, e.BodyTimeNs, jumps); db < d || db == d && !sb && shifted {
+				d, shifted = db, sb
+			}
+		}
 		win := int64(60e9)
 		if kind == "anr" {
 			win = anrPairWindow
@@ -244,7 +296,7 @@ func MatchDropboxBoot(list []*Crash, e DropboxEntry, boot string, jumps []ClockS
 	if e.Note != "" && e.Body == "" {
 		return nil, false
 	}
-	c = &Crash{Kind: kind, TimeNs: e.TimeNs, PID: pid, Process: proc, Package: pkgOf(proc), Sources: []string{src}}
+	c = &Crash{Kind: kind, TimeNs: e.RealTimeNs(), PID: pid, Process: proc, Package: pkgOf(proc), Sources: []string{src}}
 	switch kind {
 	case "java":
 		j := JavaCrashFromMessage(stripHeaders(e.Body))

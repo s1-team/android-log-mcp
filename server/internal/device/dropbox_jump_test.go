@@ -12,9 +12,10 @@ import (
 // Issue #93: the pipeline hands the stored clock jumps of its boot session
 // (not the "possible" ones) to the DropBox matching.
 
+// The trace header carries no time here: these cases test the header time (#93); body times are tested in #152.
 func anrEntry(ts string) string {
 	return "========================================\n" + ts + " data_app_anr (text, 100 bytes)\nProcess: com.example.app\nPID: 4321\n" +
-		"Subject: Input dispatching timed out\n\n----- pid 4321 at 2026-10-11 19:00:00 -----\nCmd line: com.example.app\n\n"
+		"Subject: Input dispatching timed out\n\n----- pid 4321 at (no time) -----\nCmd line: com.example.app\n\n"
 }
 
 func TestDropboxMatchUsesStoredClockJumps(t *testing.T) {
