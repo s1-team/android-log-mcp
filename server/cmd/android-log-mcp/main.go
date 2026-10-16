@@ -36,8 +36,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, `android-log-mcp %s — MCP stdio server for Android logcat
 
 usage:
-  android-log-mcp                              run as MCP server on stdin/stdout (a thin client of the
-                                               background service, which it starts when needed)
+  android-log-mcp                              run as MCP server on stdin/stdout (forwards every call to the
+                                               service process, which it starts when needed)
   android-log-mcp call TOOL [JSON]             debug: call one tool through the service, print the result
   android-log-mcp record [--device X]... --for 2h | --stop | [--json]
                                                keep recording a device until a deadline, stop it, or show
@@ -46,9 +46,9 @@ usage:
                                                (android-log-mcp report -h for flags)
   android-log-mcp root [--json]                print the data root (default: <user cache dir>/android-log-mcp)
   android-log-mcp set-root DIR (--keep-old|--delete-old)
-                                               move the data root for every client (android-log-mcp set-root -h)
-  android-log-mcp service [status|stop]        the background service (see android-log-mcp service -h)
-  android-log-mcp install [--json]             copy this binary to a fixed path for MCP clients to run directly
+                                               move the data root for every MCP and CLI process (android-log-mcp set-root -h)
+  android-log-mcp service [status|stop]        the service process (see android-log-mcp service -h)
+  android-log-mcp install [--json]             copy this binary to a fixed path for MCP hosts to run directly
   android-log-mcp --offline R/store ...         browse a dataset read-only, e.g. an unzipped report (no adb, no writes)
   android-log-mcp compat [--serial S] [--json]  probe a device for the features this tool needs (read-only)
 
@@ -204,7 +204,7 @@ func runClient(ctx context.Context, args []string) int {
 	cancel()
 	if err != nil {
 		// keep serving MCP: every tool call reports the problem (and retries)
-		log.Printf("cannot reach the background service: %v", err)
+		log.Printf("cannot reach the service process: %v", err)
 	} else {
 		defs, instr = h.Tools, h.Instructions
 	}

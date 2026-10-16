@@ -20,7 +20,7 @@ func runInstall(args []string) int {
 
 Copies this android-log-mcp binary to a fixed path and prints it:
   %s
-Configure your MCP client to run that path directly (no args) instead of
+Configure your MCP host to run that path directly (no args) instead of
 npx. Run it again (e.g. npx -y android-log-mcp@latest install) to update;
 a copy that is running is replaced safely.
 `, service.DefaultControl().StableExe())
@@ -45,6 +45,6 @@ a copy that is running is replaced safely.
 		state = "already up to date"
 	}
 	cfg, _ := json.Marshal(map[string]any{"mcpServers": map[string]any{"android-log": map[string]any{"command": p, "args": []string{}}}})
-	fmt.Fprintf(os.Stderr, "android-log-mcp %s %s at %s\nMCP client config (run the binary directly):\n  %s\n", mcpserver.Version, state, p, cfg)
+	fmt.Fprintf(os.Stderr, "android-log-mcp %s %s at %s\nMCP host config (run the binary directly):\n  %s\n", mcpserver.Version, state, p, cfg)
 	return 0
 }

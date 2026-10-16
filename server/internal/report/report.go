@@ -362,7 +362,7 @@ func Build(ctx context.Context, o Options) (*Manifest, error) {
 	}
 	man.Load = []string{
 		"unzip REPORT.zip -d r && android-log-mcp --offline r/store call logcat_crashes '{}'",
-		"or point an MCP client at: android-log-mcp --offline r/store",
+		"or point an MCP host at: android-log-mcp --offline r/store",
 		"raw logcat text for replay tests: devices/<serial>/logcat/<boot>.txt (device.Pipeline.ReplayText), DropBox: devices/<serial>/dropbox/<tag>.txt (Pipeline.ApplyDropbox)",
 	}
 	if o.LogsOnly {

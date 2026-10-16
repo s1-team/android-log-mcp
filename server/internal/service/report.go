@@ -200,7 +200,7 @@ func RunOrLocal(ctx context.Context, ctrl Control, version, role string, remote 
 			if !ProtoCompatible(Proto, h.MinProto, h.Proto) {
 				if CompareVersions(version, h.Version) > 0 {
 					return fmt.Errorf("the running android-log-mcp service (pid %d, version %s, protocol %d) is older than this command (version %s, protocol %d) and cannot serve it; "+
-						"stop it with `android-log-mcp service stop` (the next MCP client starts the new version) and retry", h.PID, h.Version, h.Proto, version, Proto)
+						"stop it with `android-log-mcp service stop` (the next MCP or CLI process starts the new version) and retry", h.PID, h.Version, h.Proto, version, Proto)
 				}
 				return &ErrIncompatible{Client: HelloReply{Version: version, Proto: Proto}, Service: h}
 			}

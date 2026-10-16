@@ -36,7 +36,7 @@ func SocketPath(runDir string) string {
 }
 
 // ErrUnsupported is returned when the OS has no AF_UNIX sockets.
-var ErrUnsupported = errors.New("this system has no AF_UNIX socket support, which the android-log-mcp background service needs: Windows 10 version 1803 / Windows Server 2019 or later is required (older Windows is not supported)")
+var ErrUnsupported = errors.New("this system has no AF_UNIX socket support, which the android-log-mcp service process needs: Windows 10 version 1803 / Windows Server 2019 or later is required (older Windows is not supported)")
 
 // PrepareDir creates dir for the socket with current-user-only access:
 // mode 0700 (unix; an existing directory owned by another user is refused),

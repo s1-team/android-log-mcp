@@ -200,7 +200,7 @@
       "value": 11,
       "unit": "MiB",
       "kind": "mem",
-      "desc": "size of the built CLI binary (copied to \u003croot\u003e/bin by the first client)"
+      "desc": "size of the built CLI binary (copied to \u003croot\u003e/bin by the first MCP or CLI process)"
     },
     "calib.cpu_ms": {
       "value": 88.65,
@@ -237,7 +237,7 @@
       "unit": "ms",
       "kind": "time",
       "budget": 1000,
-      "desc": "logcat_search {} through MCP client + service, median of 5"
+      "desc": "logcat_search {} through MCP process + service, median of 5"
     },
     "first_call.backfill_lines_per_sec": {
       "value": 37752,
@@ -277,7 +277,7 @@
       "unit": "MiB",
       "kind": "mem",
       "budget": 64,
-      "desc": "RSS of one MCP stdio client process (thin proxy)"
+      "desc": "RSS of one MCP process (forwards calls to the service process)"
     },
     "mem.heap_after_queries_mib": {
       "value": 29.7,
@@ -310,7 +310,7 @@
       "unit": "MiB",
       "kind": "mem",
       "budget": 64,
-      "desc": "service RSS with a client connected, nothing recorded yet"
+      "desc": "service RSS with an MCP process connected, nothing recorded yet"
     },
     "mem.service_rss_recording_mib": {
       "value": 53.9,

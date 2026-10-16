@@ -67,7 +67,7 @@ func TestServiceSingleInstanceAndOps(t *testing.T) {
 	if err := c.Do(context.Background(), "call", CallArgs{Name: "logcat_status"}, &r); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"service: background service pid", "version 0.4.0", "protocol 2", "root: " + ctrl.Dir} {
+	for _, want := range []string{"service: service process pid", "version 0.4.0", "protocol 2", "root: " + ctrl.Dir} {
 		if !strings.Contains(r.Text, want) {
 			t.Fatalf("status lacks %q:\n%s", want, r.Text)
 		}
@@ -274,7 +274,7 @@ func TestServiceLifetime(t *testing.T) {
 	}
 	var info Info
 	c.Do(context.Background(), "status", nil, &info)
-	if !strings.Contains(info.Recording, "idle (starts on the first log tool call)") || !strings.Contains(info.Lifetime, "staying: 1 client") {
+	if !strings.Contains(info.Recording, "idle (starts on the first log tool call)") || !strings.Contains(info.Lifetime, "staying: 1 MCP/CLI process") {
 		t.Fatalf("info %+v", info)
 	}
 	if !strings.Contains(info.Text(), "recording: idle") {
@@ -283,7 +283,7 @@ func TestServiceLifetime(t *testing.T) {
 	c.Close()
 	select {
 	case <-s.Done():
-		if !strings.Contains(s.Reason(), "no client, no pin") {
+		if !strings.Contains(s.Reason(), "no MCP or CLI process, no pin") {
 			t.Fatalf("reason %q", s.Reason())
 		}
 	case <-time.After(5 * time.Second):

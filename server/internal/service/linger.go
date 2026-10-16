@@ -104,7 +104,7 @@ func (s *Service) checkExit(now time.Time) (string, bool) {
 		s.idleSince = now
 	}
 	if now.Sub(s.idleSince) >= s.exitGrace {
-		return fmt.Sprintf("no client, no pin and no recorded device for %s", s.exitGrace), true
+		return fmt.Sprintf("no MCP or CLI process, no pin and no recorded device for %s", s.exitGrace), true
 	}
 	return "", false
 }
@@ -117,7 +117,7 @@ func (s *Service) busyReason(now time.Time) string {
 	s.mu.Unlock()
 	switch {
 	case n > 0:
-		return fmt.Sprintf("%d client(s) connected", n)
+		return fmt.Sprintf("%d MCP/CLI process(es) connected", n)
 	case s.anyActivePin(now):
 		return "a recording pin is active"
 	case m != nil && !m.Idle():
@@ -129,10 +129,10 @@ func (s *Service) busyReason(now time.Time) string {
 // lifeText describes the exit rule and the current state.
 func (s *Service) lifeText() string {
 	if s.opt.Embedded != "" {
-		return "stops with its MCP client (in-process); the other clients then start a new one"
+		return "stops with its MCP process (in-process); another MCP or CLI process then starts a new one"
 	}
 	now := time.Now()
-	txt := fmt.Sprintf("exits %s after there are no clients, no active pin and no recorded device", s.exitGrace)
+	txt := fmt.Sprintf("exits %s after there is no MCP or CLI process, no active pin and no recorded device", s.exitGrace)
 	if b := s.busyReason(now); b != "" {
 		return txt + "; staying: " + b
 	}
