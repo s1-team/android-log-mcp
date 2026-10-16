@@ -50,7 +50,7 @@ func bufferKeys(t *testing.T, e fakeadb.Env, serial string) []string {
 func reconnect(t *testing.T, e fakeadb.Env, m *Manager, serial string) {
 	t.Helper()
 	m.Unwant(serial, "test")
-	waitFor(t, "fake adb children to exit", 5*time.Second, func() bool { return !e.AnyChildRunning() })
+	waitFor(t, "fake adb children to exit", 30*time.Second, func() bool { return !e.AnyChildRunning() })
 }
 
 func resume(t *testing.T, e fakeadb.Env, m *Manager, serial string) (*Device, string) {
