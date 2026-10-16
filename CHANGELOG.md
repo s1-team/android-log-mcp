@@ -6,9 +6,17 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-17
+
+Platform status: Windows and macOS are covered by CI only (unit tests with the fake adb); they were not tested with a real or emulator-attached adb for this release and are **unverified**. The emulator checks ran on API 29 locally (software emulation / TCG); API 35 is noted in the release PR / validation README.
+
 ### Added
 
 - Exact filtered counts for tag / package / process / level / uid queries via per-block class counts in the history index ([#37](https://github.com/s1crab/android-log-mcp/issues/37)). Countable `logcat_search` queries report `exact=1` with no 100 ms count budget; blocks with zero matching classes are skipped; `view=summary` levels / tags / processes are exact over the whole range. Index built lazily at query time (ingest unchanged). Cap: >4096 classes in a block falls back to decode so the result stays exact.
+
+### Fixed
+
+- `CountMatch` / `AggClasses` skipped decoding only for seq-range misses; blocks wholly outside a time window were still decoded, which slowed `from`/`to` and `view=summary` queries after #37. They now use the same `outside` check as `ScanTime`.
 
 ## [0.8.0] - 2026-10-16
 
@@ -315,7 +323,8 @@ Upgrade notes are in the **Breaking** entries below.
 - First release: an MCP stdio server giving AI agents read-only access to Android logcat, with background recording of every connected device, the tools `logcat_status`, `logcat_search` (Android Studio filter syntax with strict errors), `logcat_crashes` and `logcat_app_launches`, and the `call` debug subcommand.
 - npm packaging: a Node launcher plus per-platform binary packages (linux / darwin / win32 × x64 / arm64), CI and release workflows.
 
-[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/s1crab/android-log-mcp/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/s1crab/android-log-mcp/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/s1crab/android-log-mcp/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/s1crab/android-log-mcp/compare/v0.6.0...v0.7.0
