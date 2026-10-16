@@ -145,7 +145,20 @@ func TestKillTreeKillsGrandchild(t *testing.T) {
 		_, err := a.Shell(ctx, "FAKEA", time.Minute, "STUCKCMD")
 		done <- err
 	}()
-	waitFor(t, "the grandchild", 30*time.Second, e.Hanging)
+	// Fail at once, with the reason, if the call ended or the fake could not
+	// start its grandchild, instead of waiting out the deadline (#103).
+	var early error
+	waitFor(t, "the grandchild", 30*time.Second, func() bool {
+		if he := e.HangError(); he != "" {
+			t.Fatalf("the fake adb could not start its hang grandchild: %s", he)
+		}
+		select {
+		case early = <-done:
+			t.Fatalf("the adb call ended before the grandchild started: %v", early)
+		default:
+		}
+		return e.Hanging()
+	})
 	cancel()
 	select {
 	case <-done:

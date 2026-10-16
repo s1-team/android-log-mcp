@@ -90,7 +90,41 @@ func Install(dir string) (string, error) {
 	if err := os.WriteFile(filepath.Join(dir, "bin", markerName), nil, 0o644); err != nil {
 		return "", err
 	}
-	return dst, os.WriteFile(dst, b, 0o755)
+	if err := os.WriteFile(dst, b, 0o755); err != nil {
+		return "", err
+	}
+	return dst, waitExecutable(dst)
+}
+
+// isBusy reports ETXTBSY ("text file busy"): exec of a file that some
+// process still has open for writing.
+func isBusy(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "text file busy")
+}
+
+// waitExecutable runs the fresh copy once (`adb version`, with its own
+// scratch state directory) until the kernel accepts it. A parallel test
+// that forks while WriteFile has the copy open lets the child inherit the
+// write descriptor until its exec, and exec of the copy then fails with
+// ETXTBSY: the test's first adb call failed with no output, and tests that
+// wait for the fake to start timed out (TestKillTreeKillsGrandchild, #103).
+// Once one exec succeeded no process can hold a write descriptor any more.
+func waitExecutable(path string) error {
+	scratch, err := os.MkdirTemp("", "fakeadb-probe")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(scratch)
+	end := time.Now().Add(10 * time.Second)
+	for {
+		cmd := procattr.Hide(exec.Command(path, "version"))
+		cmd.Env = append(os.Environ(), EnvDir+"="+scratch)
+		err := cmd.Run()
+		if !isBusy(err) || time.Now().After(end) {
+			return err
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 }
 
 // Env manipulates a state directory.
@@ -609,6 +643,12 @@ func (e Env) Hanging() bool {
 	return err == nil
 }
 
+// HangError is why no hang grandchild was started ("" if none failed).
+func (e Env) HangError() string {
+	b, _ := os.ReadFile(filepath.Join(e.Dir, "hang_error"))
+	return strings.TrimSpace(string(b))
+}
+
 func hang(e Env) int {
 	exe, err := os.Executable()
 	if err == nil {
@@ -621,10 +661,20 @@ func hang(e Env) int {
 				}
 			}
 		}
-		cmd := procattr.Hide(exec.Command(helper))
-		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr // holds our output pipes
-		if cmd.Start() == nil {
-			appendLine(filepath.Join(e.Dir, "hang_started"), strconv.Itoa(cmd.Process.Pid))
+		var serr error
+		for end := time.Now().Add(10 * time.Second); ; time.Sleep(5 * time.Millisecond) {
+			cmd := procattr.Hide(exec.Command(helper))
+			cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr // holds our output pipes
+			if serr = cmd.Start(); serr == nil {
+				appendLine(filepath.Join(e.Dir, "hang_started"), strconv.Itoa(cmd.Process.Pid))
+				break
+			}
+			if !isBusy(serr) || time.Now().After(end) { // helper copy still open for writing
+				break
+			}
+		}
+		if serr != nil { // a test waiting for Hanging can say why it never will
+			appendLine(filepath.Join(e.Dir, "hang_error"), serr.Error())
 		}
 	}
 	time.Sleep(time.Minute)
