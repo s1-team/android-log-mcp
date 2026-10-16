@@ -1,0 +1,4 @@
+report built_by=service pid=2148510 version=0.8.0 root=/workspace/scratch/r080b/android-log-mcp
+report device=avd-api29 records=568 first="2026-10-16 14:05:01.898194" last="2026-10-16 14:25:04.339575" crashes=0 device_info=live
+report redacted=29 hits="bank_card=2 cookie=1 credential=4 device_id=2 domain=4 email=2 id_card=1 ipv4=1 ipv6=1 jwt=1 mac=1 password=1 phone=2 secret=4 token=1 url_param=1"
+notice: review the zip before sharing it: redaction is pattern based

@@ -1,0 +1,29 @@
+1792131865.737235  2000  9051  9051 I LeakTest: LT1792131943 #1 Authorization: Bearer [REDACTED:token#1]
+1792131867.156121  2000  9054  9054 I LeakTest: LT1792131943 #2 got id_token [REDACTED:jwt#1]
+1792131868.698370  2000  9057  9057 I LeakTest: LT1792131943 #3 github key [REDACTED:secret#1]
+1792131870.311614  2000  9060  9060 I LeakTest: LT1792131943 #4 openai key [REDACTED:secret#2]
+1792131871.913021  2000  9063  9063 I LeakTest: LT1792131943 #5 npm token [REDACTED:secret#3]
+1792131873.678247  2000  9066  9066 I LeakTest: LT1792131943 #6 aws [REDACTED:secret#4] configured
+1792131874.749693  2000  9069  9069 I LeakTest: LT1792131943 #7 login {"password":[REDACTED:credential#1],"user":"bob"}
+1792131876.470810  2000  9072  9072 I LeakTest: LT1792131943 #8 config api_key=[REDACTED:credential#2] client_secret=[REDACTED:credential#3]
+1792131877.818191  2000  9075  9075 I LeakTest: LT1792131943 #9 GET https://[REDACTED:domain#1]/a.png?Expires=1791572202&Signature=[REDACTED:url_param#1]&x=1
+1792131879.328362  2000  9078  9078 I LeakTest: LT1792131943 #10 connect postgres://bob:[REDACTED:password#1]@[REDACTED:domain#2]:5432/app
+1792131879.918487  2000  9081  9081 I LeakTest: LT1792131943 #11 Cookie: [REDACTED:cookie#1]
+1792131880.250205  2000  9084  9084 I LeakTest: LT1792131943 #12 signed in as [REDACTED:email#1]
+1792131880.582186  2000  9087  9087 I LeakTest: LT1792131943 #13 sms code sent to [REDACTED:phone#1]
+1792131884.251766  2000  9108  9108 I LeakTest: LT1792131943 #14 call [REDACTED:phone#2] now
+1792131885.268091  2000  9115  9115 I LeakTest: LT1792131943 #15 kyc id [REDACTED:id_card#1] verified
+1792131885.951236  2000  9121  9121 I LeakTest: LT1792131943 #16 paid with card [REDACTED:bank_card#1]
+1792131887.016396  2000  9127  9127 I LeakTest: LT1792131943 #17 card=[REDACTED:bank_card#2] charged
+1792131888.311179  2000  9133  9133 I LeakTest: LT1792131943 #18 imei=[REDACTED:device_id#1] slot=0
+1792131889.331551  2000  9139  9139 I LeakTest: LT1792131943 #19 connecting to [REDACTED:ipv4#1]:443
+1792131890.265547  2000  9142  9142 I LeakTest: LT1792131943 #20 peer [REDACTED:ipv6#1] up
+1792131891.260258  2000  9145  9145 I LeakTest: LT1792131943 #21 wlan0 hwaddr [REDACTED:mac#1]
+1792131891.913694  2000  9150  9150 I LeakTest: LT1792131943 #22 --> POST https://[REDACTED:domain#3]:8443/v1/login?page=2 (64-byte body)
+1792131892.543614  2000  9154  9154 I LeakTest: LT1792131943 #23 Unable to resolve host [REDACTED:domain#4]: No address associated with hostname
+1792131892.954101  2000  9157  9157 I LeakTest: LT1792131943 keep pid 13812 tid 13813 uid 10146 at 1791572202.589379
+1792131893.300435  2000  9160  9160 I LeakTest: LT1792131943 keep fault addr 0x7ffd5b8e1a20 rcx 4111111111111111 rdx 0000000000000004
+1792131893.656567  2000  9163  9163 I LeakTest: LT1792131943 keep #01 pc 0000000013812345  /data/app/com.example.logtest-1/lib/x86_64/liblogtest.so
+1792131894.041584  2000  9166  9166 I LeakTest: LT1792131943 keep versionName=10.0.2.15 Chrome/83.0.41.10 build 2026-10-10 03:05:52.878
+1792131894.436283  2000  9169  9169 I LeakTest: LT1792131943 keep at com.example.logtest.Net.call(Net.java:42) java.lang.RuntimeException android.app.ActivityThread
+1792131895.173732  2000  9172  9172 I LeakTest: LT1792131943 keep act=android.intent.action.MAIN ro.build.fingerprint persist.sys.timezone base.apk libc.so base.odex main.xml app.json

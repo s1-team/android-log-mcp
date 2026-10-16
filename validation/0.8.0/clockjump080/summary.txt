@@ -1,0 +1,15 @@
+ok view=summary device=avd-api29 matched=24994 exact=1 order=arrival range=2026-10-15T14:45:44.095+08:00/2026-10-16T14:50:04.960+08:00 dev_now=2026-10-16T14:50:12+08:00 clock=observed offset_s=-80.1 clock_age_s=7 fmt=1
+clock_jumps=11 splitting=11 seq=24430 delta_s=86400.3 matches_before=24429 matches_after=565 next: after="c1.YXZkLWFwaTI5.4ae92773.24429"
+levels V=449 D=4024 I=12610 W=5734 E=2051 F=126
+tags dvm_lock_sample:1619,system_server:1460,ActivityManager:1272,audio_hw_generic:931,sysui_multi_action:836,Looper:805,android.os.Debug:579,memtrack:579,gralloc_ranchu:570,/system/bin/tombstoned:453 more=651
+procs uid:system:11750,com.android.systemui:2035,uid:root:1654,system_server:1328,uid:audioserver:1171
+msgs 715x"audio_hw_generic: Not supplying enough data to HAL, expected position # , only wrote #",579x"android.os.Debug: failed to get memory consumption info: -#",579x"memtrack: Couldn't load memtrack module",570x"gralloc_ranchu: gralloc_alloc: Creating ashmem region of size #",314x"InputReader: Device has associated, but no associated display id."
+crashes=25 anrs=22 next: logcat_crashes from="2026-10-15T14:45:44.095+08:00" to="2026-10-16T14:50:05.960+08:00"
+latest_errors=5
+14:49:18.746 E 1852/2531 media.codec OMXNodeInstance: setConfig(0xf2746360:google.vorbis.decoder, ConfigPriority(0x6f800002)) ERROR: Undefined(0x80001001)
+14:49:18.813 E 1852/1852 media.codec OMXNodeInstance: getConfig(0xf2746360:google.vorbis.decoder, ConfigAndroidVendorExtension(0x6f100004)) ERROR: Undefined(0x80001001)
+14:49:33.533 E 1733/11045 netd ResolverController: No valid NAT64 prefix (100, <unspecified>/0)
+14:49:49.864 E 1809/1809 netmgr netmgr: Failed to open QEMU pipe 'qemud:network': Invalid argument
+14:49:50.939 E 1857/1857 wifi_forwarder wifi_forwarder: RemoteConnection failed to initialize: RemoteConnection failed to open pipe
+next: view="lines" tags=["dvm_lock_sample"] | logcat_crashes id="cr31"
+

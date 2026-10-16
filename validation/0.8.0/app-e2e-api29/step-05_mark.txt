@@ -1,0 +1,3 @@
+### device 2026-10-16
+$ adb shell log -t ALMCI_MARK 'ALMCI1792131987 hello'; log -p e -t ALMCI_MARK 'ALMCI1792131987 error mark'; log -t ALMCI_MARK 'ALMCI1792131987 printable: café ✓ 中文'
+### exit=0

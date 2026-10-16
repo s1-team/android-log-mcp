@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-16
+
+Platform status: Windows and macOS are covered by CI only (unit tests with the fake adb); they were not tested with a real or emulator-attached adb for this release and are **unverified**. The emulator checks ran on API 29 and API 35 on the GitHub runners, and on API 29 locally (software emulation).
+
 Output format `fmt=1` ([#85](https://github.com/s1crab/android-log-mcp/issues/85), agent-first output, [docs/GOALS.md](docs/GOALS.md)). The whole set ships in one breaking release (0.8.0); this version covers `logcat_search`, `logcat_status`, `logcat_crashes`, `logcat_app_launches` and the errors shared by all tools (the CLI in this part).
 
 ### Upgrade notes
@@ -28,7 +32,7 @@ Output format `fmt=1` ([#85](https://github.com/s1crab/android-log-mcp/issues/85
 
 ### Changed
 
-- Text that agents and users read says **MCP process**, **CLI process**, **service process** and **MCP host** (see [docs/glossary.md](docs/glossary.md)) instead of "client", "MCP client" and "background service": `service status`, `logcat_status` (lifetime and linger lines), errors (version skew, handoff, repair), `install`, the `--home` error, usage texts, the `report` README and the perf baseline descriptions. The version-skew note of `logcat_status` is structured: `note code=version_skew mcp_process=0.7.0 service=0.8.0 protocol=2 compatible=1`. Not renamed: the JSON `clients` field of `service status --json` and `service.json`, Go identifiers and perf metric keys ([#40](https://github.com/s1crab/android-log-mcp/issues/40)).
+- **Breaking:** text that agents and users read says **MCP process**, **CLI process**, **service process** and **MCP host** (see [docs/glossary.md](docs/glossary.md)) instead of "client", "MCP client" and "background service": `service status`, `logcat_status` (lifetime and linger lines), errors (version skew, handoff, repair), `install`, the `--home` error, usage texts, the `report` README and the perf baseline descriptions. The version-skew note of `logcat_status` is structured: `note code=version_skew mcp_process=0.7.0 service=0.8.0 protocol=2 compatible=1`. Not renamed: the JSON `clients` field of `service status --json` and `service.json`, Go identifiers and perf metric keys ([#40](https://github.com/s1crab/android-log-mcp/issues/40)).
 - `tools/list` (sent at the start of every session) is **smaller**: 10,378 bytes on 0.7.x, 10,230 bytes now (-1%), although `logcat_search`, `logcat_crashes` and `logcat_app_launches` gained the `verbose` parameter and a one-line description of the fmt=1 response (the full format is in [docs/reference.md](docs/reference.md)).
 - **Breaking:** `logcat_search` responses start with one header line `ok`, `empty` or `error`, then `key=value` fields (`view device matched exact shown order range dev_now clock offset_s clock_age_s fmt=1`). Times are ISO-8601 with offset, numbers are plain integers (no thousands separators), durations are seconds (`_s`). The old prose header (`device … · device time … · device now … · host now …`), the `format:` line and the `count:` line are gone. `host now` is no longer printed by default; pass `verbose=true` to get `host_now`, `tz` and the column legend. Upgrade: parse the first line as `ok|empty|error k=v …`; read the count from `matched`/`exact` (`exact=0` means a lower bound, with `counted_from`/`counted_to`).
 - **Breaking:** rows of `logcat_search` use one-token columns `time level pid/tid process tag: message`: the process is never `?(uid system)` any more but `uid:system` (`?` = unknown); continuation lines of a multi-line message start with `| `; `↳ ×N identical until T` became `^ rep=N until=T`; Java stack markers became `^ frames_hidden=K` and `^ same_frames=K as=T`. Upgrade: split a row on whitespace into 5 tokens, the rest is the message.
@@ -307,7 +311,8 @@ Upgrade notes are in the **Breaking** entries below.
 - First release: an MCP stdio server giving AI agents read-only access to Android logcat, with background recording of every connected device, the tools `logcat_status`, `logcat_search` (Android Studio filter syntax with strict errors), `logcat_crashes` and `logcat_app_launches`, and the `call` debug subcommand.
 - npm packaging: a Node launcher plus per-platform binary packages (linux / darwin / win32 × x64 / arm64), CI and release workflows.
 
-[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/s1crab/android-log-mcp/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/s1crab/android-log-mcp/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/s1crab/android-log-mcp/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/s1crab/android-log-mcp/compare/v0.5.2...v0.6.0
