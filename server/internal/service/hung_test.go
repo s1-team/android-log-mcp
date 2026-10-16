@@ -114,6 +114,20 @@ func (h *holder) dead() bool {
 	}
 }
 
+// waitDead reports whether the holder has been reaped within d. The service
+// kills the holder and returns as soon as the process is gone; the reaper
+// goroutine of startHolder (cmd.Wait) may close done a moment later, more so
+// under CPU load, so a test that expects the holder dead waits for it with a
+// deadline instead of a single non-blocking look (#103).
+func (h *holder) waitDead(d time.Duration) bool {
+	select {
+	case <-h.done:
+		return true
+	case <-time.After(d):
+		return false
+	}
+}
+
 func fastRepair() RepairTiming {
 	return RepairTiming{SilentFor: time.Second, StoppingWait: 1500 * time.Millisecond, TermWait: 2 * time.Second, KillWait: 5 * time.Second, WaiterWait: 40 * time.Second, HelloWait: 300 * time.Millisecond}
 }
@@ -139,7 +153,7 @@ func TestSilentHolderIsReplaced(t *testing.T) {
 			if el := time.Since(t0); el > 20*time.Second {
 				t.Fatalf("took %s", el)
 			}
-			if !h.dead() {
+			if !h.waitDead(10 * time.Second) {
 				t.Fatal("the silent holder is still running")
 			}
 			if hello.PID != os.Getpid() {
@@ -258,7 +272,7 @@ func TestConcurrentClientsShareOneRepair(t *testing.T) {
 	if el := time.Since(t0); el > 25*time.Second {
 		t.Fatalf("took %s", el)
 	}
-	if !h.dead() {
+	if !h.waitDead(10 * time.Second) {
 		t.Fatal("holder still running")
 	}
 	b, _ := os.ReadFile(filepath.Join(ctrl.Run(), "replace.json"))
@@ -327,7 +341,7 @@ func TestStopForce(t *testing.T) {
 	if code := RunStop(ctrl, "0.5.0", true, &out, &errb); code != 0 {
 		t.Fatalf("--force: %d %q %q", code, out.String(), errb.String())
 	}
-	if !h.dead() || Running(ctrl) {
+	if !h.waitDead(10*time.Second) || Running(ctrl) {
 		t.Fatal("--force did not stop the holder")
 	}
 }
