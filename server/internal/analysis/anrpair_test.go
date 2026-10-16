@@ -117,7 +117,7 @@ func TestANRDropboxWindowBothOrders(t *testing.T) {
 	for _, gap := range []int64{59, 65, 100} {
 		dbOnly := &Crash{ID: "c1", Kind: "anr", TimeNs: 1000e9 + gap*1e9, PID: 4321, Process: "com.foo", Sources: []string{"dropbox:data_app_anr"}}
 		fresh := &Crash{Kind: "anr", TimeNs: 1000e9, PID: 4321, Process: "com.foo", Sources: []string{"events:am_anr"}}
-		if !AdoptDropbox([]*Crash{dbOnly}, fresh) || fresh.ID != "c1" {
+		if !AdoptDropbox([]*Crash{dbOnly}, fresh, nil) || fresh.ID != "c1" {
 			t.Errorf("AdoptDropbox: dropbox %d s after am_anr not adopted", gap)
 		}
 		logc := &Crash{ID: "c2", Kind: "anr", TimeNs: 1000e9, PID: 4321, Process: "com.foo", Sources: []string{"events:am_anr"}}
@@ -133,7 +133,7 @@ func TestANRDropboxWindowBothOrders(t *testing.T) {
 	}{{59, true}, {65, false}} {
 		dbOnly := &Crash{ID: "j1", Kind: "java", TimeNs: 1000e9 + tc.gap*1e9, PID: 4321, Process: "com.foo", Sources: []string{"dropbox:data_app_crash"}}
 		fresh := &Crash{Kind: "java", TimeNs: 1000e9, PID: 4321, Process: "com.foo"}
-		if got := AdoptDropbox([]*Crash{dbOnly}, fresh); got != tc.want {
+		if got := AdoptDropbox([]*Crash{dbOnly}, fresh, nil); got != tc.want {
 			t.Errorf("java crash, dropbox %d s apart: adopted=%v, want %v", tc.gap, got, tc.want)
 		}
 	}

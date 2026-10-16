@@ -78,7 +78,47 @@ func headerField(body, key string) string {
 // crash (returned with isNew=true) when nothing matches. Returns nil if the
 // entry is not a crash/ANR tag or is useless.
 func MatchDropbox(list []*Crash, e DropboxEntry) (c *Crash, isNew bool) {
-	return MatchDropboxBoot(list, e, "")
+	return MatchDropboxBoot(list, e, "", nil)
+}
+
+// ClockShift is a stored device clock jump as the DropBox matching needs
+// it: Seq is the first stored line after the jump, DeltaNs its size
+// (+ forward, − back). Callers pass only real jumps, never "possible" ones
+// (a quiet hour carries no reliable delta), and only those of the boot
+// session being matched.
+type ClockShift struct {
+	Seq     uint64
+	DeltaNs int64
+}
+
+// shiftAfter sums the jumps that happened after the line seq (issue #93).
+// A crash without a seq (DropBox only) has no place to measure from.
+func shiftAfter(jumps []ClockShift, seq uint64) int64 {
+	if seq == 0 {
+		return 0
+	}
+	var sum int64
+	for _, j := range jumps {
+		if j.Seq > seq {
+			sum += j.DeltaNs
+		}
+	}
+	return sum
+}
+
+// dropboxDelta is the distance between a crash (device time crashNs, line
+// crashSeq) and a DropBox entry (entryNs): the smaller of the raw
+// difference and the one with the crash time moved by the jumps stored
+// after the crash. The entry may have been written on either side of a
+// jump, so both readings count. shifted reports that the shift won.
+func dropboxDelta(crashNs int64, crashSeq uint64, entryNs int64, jumps []ClockShift) (d int64, shifted bool) {
+	d = abs(crashNs - entryNs)
+	if sh := shiftAfter(jumps, crashSeq); sh != 0 {
+		if ds := abs(crashNs + sh - entryNs); ds < d {
+			return ds, true
+		}
+	}
+	return d, false
 }
 
 // MatchDropboxBoot is MatchDropbox for an entry fetched during boot
@@ -87,7 +127,14 @@ func MatchDropbox(list []*Crash, e DropboxEntry) (c *Crash, isNew bool) {
 // by. A process instance crashes once, and DropBox re-times entries
 // dated after device now when the clock was set back (issue #63). ANRs
 // keep the time rule: a process can survive an ANR and ANR again.
-func MatchDropboxBoot(list []*Crash, e DropboxEntry, boot string) (c *Crash, isNew bool) {
+//
+// Kind, pid, process and boot must agree; the window (60 s, ANR
+// anrPairWindow) is checked against the raw time difference and against
+// the one shifted by the clock jumps stored after the crash (jumps, issue
+// #93). When two different crashes are equally near and one of them got
+// there through a shift, the entry stays unmatched: a missing attachment
+// beats a wrong merge.
+func MatchDropboxBoot(list []*Crash, e DropboxEntry, boot string, jumps []ClockShift) (c *Crash, isNew bool) {
 	kind := ""
 	switch {
 	case e.Tag == "SYSTEM_TOMBSTONE":
@@ -125,8 +172,12 @@ func MatchDropboxBoot(list []*Crash, e DropboxEntry, boot string) (c *Crash, isN
 	}
 	var best, far *Crash
 	var bestD, farD int64 = 1 << 62, 1 << 62
+	var bestShifted, tie bool
 	for _, x := range list {
 		if x.Kind != kind {
+			continue
+		}
+		if boot != "" && x.Boot != "" && x.Boot != boot {
 			continue
 		}
 		if pid != 0 && x.PID != 0 && x.PID != pid {
@@ -135,17 +186,22 @@ func MatchDropboxBoot(list []*Crash, e DropboxEntry, boot string) (c *Crash, isN
 		if proc != "" && x.Process != "" && x.Process != proc && pkgOf(x.Process) != pkgOf(proc) {
 			continue
 		}
-		d := abs(x.TimeNs - e.TimeNs)
+		d, shifted := dropboxDelta(x.TimeNs, x.Seq, e.TimeNs, jumps)
 		win := int64(60e9)
 		if kind == "anr" {
 			win = anrPairWindow
 		}
 		if d < win && d < bestD {
-			best, bestD = x, d
+			best, bestD, bestShifted, tie = x, d, shifted, false
+		} else if d < win && d == bestD && best != x && (shifted || bestShifted) {
+			tie = true
 		} else if d >= win && boot != "" && x.Boot == boot && kind != "anr" && pid != 0 && x.PID == pid &&
 			proc != "" && x.Process == proc && (far == nil || d < farD) {
 			far, farD = x, d
 		}
+	}
+	if tie {
+		best, far = nil, nil
 	}
 	if best == nil {
 		best = far
@@ -248,13 +304,15 @@ func crashingThread(tomb string) string {
 // only from DropBox (e.g. fetched while the logcat backlog was still being
 // replayed) is later seen in logcat. The new logcat crash c (ID == "") takes
 // over the DropBox entry's ID and its DropBox-only details. Returns true if
-// an entry was adopted.
-func AdoptDropbox(list []*Crash, c *Crash) bool {
+// an entry was adopted. jumps are the stored clock jumps (see
+// MatchDropboxBoot); the same boot, kind and pid still have to agree.
+func AdoptDropbox(list []*Crash, c *Crash, jumps []ClockShift) bool {
 	if c.ID != "" || c.PID == 0 {
 		return false
 	}
 	var best *Crash
 	var bestD int64 = 1 << 62
+	var bestShifted, tie bool
 	for _, x := range list {
 		if x.Kind != c.Kind || x.PID != c.PID || x.Boot != "" && c.Boot != "" && x.Boot != c.Boot || !dropboxOnly(x) {
 			continue
@@ -263,11 +321,14 @@ func AdoptDropbox(list []*Crash, c *Crash) bool {
 		if c.Kind == "anr" {
 			win = anrPairWindow
 		}
-		if d := abs(x.TimeNs - c.TimeNs); d < win && d < bestD {
-			best, bestD = x, d
+		d, shifted := dropboxDelta(c.TimeNs, c.Seq, x.TimeNs, jumps)
+		if d < win && d < bestD {
+			best, bestD, bestShifted, tie = x, d, shifted, false
+		} else if d < win && d == bestD && best != x && (shifted || bestShifted) {
+			tie = true
 		}
 	}
-	if best == nil {
+	if best == nil || tie {
 		return false
 	}
 	c.ID = best.ID
