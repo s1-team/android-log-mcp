@@ -299,30 +299,37 @@ func TestServiceLifetime(t *testing.T) {
 }
 
 // An active pin keeps the service alive with no clients; once it ends the
-// service exits.
+// service exits. The pin is long (an hour) and ended explicitly with dropPin,
+// so neither slow startup nor timer resolution (Windows CI) can expire it
+// mid-test.
 func TestPinKeepsServiceAlive(t *testing.T) {
 	t.Parallel()
 	ctrl := testControl(t)
 	if err := os.MkdirAll(ctrl.Run(), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	pf := &PinFile{Pins: map[string]*Pin{"dev1": {Deadline: time.Now().Add(1500 * time.Millisecond), SetAt: time.Now(), SetBy: "test"}}}
+	pf := &PinFile{Pins: map[string]*Pin{"dev1": {Deadline: time.Now().Add(time.Hour), SetAt: time.Now(), SetBy: "test"}}}
 	if err := WritePins(ctrl, pf); err != nil {
 		t.Fatal(err)
 	}
-	s := startTest(t, ctrl, "0.5.0", exitAfter(300*time.Millisecond))
-	time.Sleep(time.Second)
+	const grace = 300 * time.Millisecond
+	s := startTest(t, ctrl, "0.5.0", exitAfter(grace))
+	// stays well past the exit grace (several ticks) because of the pin
 	select {
 	case <-s.Done():
 		t.Fatal("stopped although a pin is active")
-	default:
+	case <-time.After(3 * grace):
 	}
 	if txt := s.Info().Text(); !strings.Contains(txt, "dev1: pinned until") {
 		t.Errorf("status text:\n%s", txt)
 	}
+	// end the pin: the service now exits after the grace
+	if err := s.dropPin("dev1"); err != nil {
+		t.Fatal(err)
+	}
 	select {
 	case <-s.Done():
-	case <-time.After(5 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("did not stop after the pin ended")
 	}
 }
