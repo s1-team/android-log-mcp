@@ -135,7 +135,9 @@ def search_live(s):
 def wait_recording(s, root=None, t=60):
     end = time.time() + t
     while time.time() < end:
-        txt = s.call("logcat_status")
+        # verbose: the root line is shown only when it changed since this
+        # client last saw it otherwise (#23)
+        txt = s.call("logcat_status", {"verbose": True} if root else None)
         if re.search(r"^    recording", txt, re.M) and (root is None or f"root: {root}" in txt):
             return True
         time.sleep(1)
