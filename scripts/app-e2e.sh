@@ -11,6 +11,7 @@
 # XDG_CACHE_HOME (Linux) to a scratch directory unless you mean to test the
 # real service (AGENTS.md §7).
 #   env ANDROID_LOG_MCP_BIN: the binary (default: built from this checkout)
+# Assertions match the fmt=1 output (#85): `key=value` header and row lines.
 # Exit status: 0 when every check passed. Each check prints PASS / FAIL.
 set -uo pipefail
 
@@ -72,23 +73,23 @@ step 15_ps 1 ps -A -o PID,UID,NAME
 
 D="\"device\":\"$SERIAL\""
 call launches logcat_app_launches "{$D,\"package\":\"$PKG\",\"from\":\"$FROM\",\"limit\":20}" || FAILS=$((FAILS + 1))
-check "a COLD launch of $PKG/.MainActivity" has launches "COLD +$PKG/\.MainActivity"
-check "a HOT launch of $PKG/.MainActivity" has launches "HOT +$PKG/\.MainActivity"
-check "a TTID for a launch" has launches "TTID \(time to initial display, system-measured\): [0-9]+ ms"
+check "a COLD launch of $PKG/.MainActivity" has launches "kind=COLD component=$PKG/\.MainActivity"
+check "a HOT launch of $PKG/.MainActivity" has launches "kind=HOT component=$PKG/\.MainActivity"
+check "a TTID for a launch" has launches "ttid_ms=[0-9]+"
 
 call crashes logcat_crashes "{$D,\"package\":\"$PKG\",\"from\":\"$FROM\",\"limit\":50}" || FAILS=$((FAILS + 1))
 check "Java crash (wrapped, root cause shown)" has crashes "LogTest wrapped crash"
 check "Java crash root cause" has crashes "repo not ready"
-check "native SIGSEGV in liblogtest.so" has crashes "native .*SIGSEGV.*liblogtest\.so"
-check "native SIGABRT with the abort message" has crashes "native .*SIGABRT.*LogTest deliberate abort"
-check "Java crash in the :remote process" has crashes "java +pid [0-9]+ $PKG:remote"
-check "broadcast ANR of $PKG" has crashes "anr +pid [0-9]+ $PKG "
+check "native SIGSEGV in liblogtest.so" has crashes "SIGSEGV .* in liblogtest\.so"
+check "native SIGABRT with the abort message" has crashes "SIGABRT .*abort: .LogTest deliberate abort"
+check "Java crash in the :remote process" has crashes "kind=java pid=[0-9]+ process=$PKG:remote"
+check "broadcast ANR of $PKG" has crashes "kind=anr pid=[0-9]+ process=$PKG( |$)"
 
 call marks logcat_search "{$D,\"filter\":\"tag:ALMCI_MARK message:$RUN\",\"from\":\"$FROM\"}" || FAILS=$((FAILS + 1))
 check "marker line" has marks "$RUN hello"
 check "error marker at level E" has marks "[0-9] E .*ALMCI_MARK: $RUN error mark"
 check "non-ASCII marker intact" has marks "$RUN printable: café ✓ 中文"
-check "markers counted exactly (3)" has marks "^count: total=3 count_exact=true"
+check "markers counted exactly (3)" has marks "^ok view=lines .* matched=3 exact=1 "
 
 call status logcat_status "{$D,\"package\":\"$PKG\"}" || FAILS=$((FAILS + 1))
 check "logcat_status lists $PKG:remote" has status "$PKG:remote"
