@@ -6,30 +6,30 @@
     "go": "go1.24.4",
     "cpu": "Intel(R) Xeon(R) Processor",
     "num_cpu": 8,
-    "date": "2026-10-16T02:10:37Z",
-    "commit": "cc88488"
+    "date": "2026-10-16T02:25:33Z",
+    "commit": "7c08558"
   },
   "metrics": {
     "allocs.call.crashes_default.allocs_per_op": {
-      "value": 1375,
+      "value": 1461,
       "unit": "allocs/op",
       "kind": "allocs",
       "desc": "logcat_crashes {} on the fixture, per call"
     },
     "allocs.call.crashes_default.bytes_per_op": {
-      "value": 1293682,
+      "value": 1305598,
       "unit": "B/op",
       "kind": "allocs",
       "desc": "logcat_crashes {} on the fixture, per call"
     },
     "allocs.call.launches_package.allocs_per_op": {
-      "value": 529,
+      "value": 705,
       "unit": "allocs/op",
       "kind": "allocs",
       "desc": "logcat_app_launches {\"package\":\"com.example.logtest\",\"from\":\"2026-10-10 02:50:00\"} on the fixture, per call"
     },
     "allocs.call.launches_package.bytes_per_op": {
-      "value": 52971,
+      "value": 57456,
       "unit": "B/op",
       "kind": "allocs",
       "desc": "logcat_app_launches {\"package\":\"com.example.logtest\",\"from\":\"2026-10-10 02:50:00\"} on the fixture, per call"
@@ -41,7 +41,7 @@
       "desc": "logcat_search {} on the fixture, per call"
     },
     "allocs.call.search_default.bytes_per_op": {
-      "value": 239026,
+      "value": 239170,
       "unit": "B/op",
       "kind": "allocs",
       "desc": "logcat_search {} on the fixture, per call"
@@ -53,7 +53,7 @@
       "desc": "logcat_search {\"package\":\"com.example.logtest\",\"min_level\":\"warn\"} on the fixture, per call"
     },
     "allocs.call.search_package_errors.bytes_per_op": {
-      "value": 189652,
+      "value": 189671,
       "unit": "B/op",
       "kind": "allocs",
       "desc": "logcat_search {\"package\":\"com.example.logtest\",\"min_level\":\"warn\"} on the fixture, per call"
@@ -65,7 +65,7 @@
       "desc": "logcat_search {\"filter\":\"message~:\\\"Displayed .*MainActivity\\\"\"} on the fixture, per call"
     },
     "allocs.call.search_regex.bytes_per_op": {
-      "value": 86340,
+      "value": 86475,
       "unit": "B/op",
       "kind": "allocs",
       "desc": "logcat_search {\"filter\":\"message~:\\\"Displayed .*MainActivity\\\"\"} on the fixture, per call"
@@ -77,19 +77,19 @@
       "desc": "logcat_search {\"view\":\"summary\"} on the fixture, per call"
     },
     "allocs.call.search_summary.bytes_per_op": {
-      "value": 2291869,
+      "value": 2291129,
       "unit": "B/op",
       "kind": "allocs",
       "desc": "logcat_search {\"view\":\"summary\"} on the fixture, per call"
     },
     "allocs.call.status.allocs_per_op": {
-      "value": 156,
+      "value": 189,
       "unit": "allocs/op",
       "kind": "allocs",
       "desc": "logcat_status {} on the fixture, per call"
     },
     "allocs.call.status.bytes_per_op": {
-      "value": 77874,
+      "value": 80529,
       "unit": "B/op",
       "kind": "allocs",
       "desc": "logcat_status {} on the fixture, per call"
@@ -155,7 +155,7 @@
       "desc": "filter.Parse of a typical 6-term filter"
     },
     "allocs.filter_parse.bytes_per_op": {
-      "value": 7963,
+      "value": 7962,
       "unit": "B/op",
       "kind": "allocs",
       "desc": "filter.Parse of a typical 6-term filter"
@@ -203,7 +203,7 @@
       "desc": "size of the built CLI binary (copied to \u003croot\u003e/bin by the first client)"
     },
     "calib.cpu_ms": {
-      "value": 77.69,
+      "value": 88.65,
       "unit": "ms",
       "kind": "info",
       "desc": "stdlib-only CPU calibration workload (mean over the test binaries)"
@@ -233,20 +233,20 @@
       "desc": "the logcat text itself, for comparison"
     },
     "e2e.search_default_ms": {
-      "value": 1.74,
+      "value": 2.19,
       "unit": "ms",
       "kind": "time",
       "budget": 1000,
       "desc": "logcat_search {} through MCP client + service, median of 5"
     },
     "first_call.backfill_lines_per_sec": {
-      "value": 39629,
+      "value": 37752,
       "unit": "lines/s",
       "kind": "rate",
       "desc": "buffer lines / first-call time (the fake adb streams as fast as it can)"
     },
     "first_call.backfill_ms": {
-      "value": 1332.55,
+      "value": 1398.78,
       "unit": "ms",
       "kind": "time",
       "budget": 10000,
@@ -259,14 +259,14 @@
       "desc": "lines in the fake device buffer (8 MiB)"
     },
     "ingest.crash_emit_ms_at_2000": {
-      "value": 0.16,
+      "value": 0.147,
       "unit": "ms",
       "kind": "time",
       "budget": 10,
       "desc": "EmitCrash (new crash, DropBox adoption check) with 2,000 stored crashes, median of 20"
     },
     "ingest.lines_per_sec": {
-      "value": 362109,
+      "value": 371776,
       "unit": "lines/s",
       "kind": "rate",
       "budget": 20000,
@@ -286,7 +286,7 @@
       "desc": "live heap after all queries (recent window + history cache + indexes), after GC"
     },
     "mem.heap_after_release_mib": {
-      "value": 5.2,
+      "value": 5.1,
       "unit": "MiB",
       "kind": "mem",
       "desc": "live heap after the idle release (40.6 MiB freed)"
@@ -299,43 +299,43 @@
       "desc": "decoded history blocks kept (limit 32 MiB)"
     },
     "mem.service_rss_after_queries_mib": {
-      "value": 55.4,
+      "value": 55,
       "unit": "MiB",
       "kind": "mem",
       "budget": 192,
       "desc": "service RSS after summary / regex / crashes / launches / context queries over the backfilled data"
     },
     "mem.service_rss_idle_mib": {
-      "value": 10.9,
+      "value": 10.8,
       "unit": "MiB",
       "kind": "mem",
       "budget": 64,
       "desc": "service RSS with a client connected, nothing recorded yet"
     },
     "mem.service_rss_recording_mib": {
-      "value": 52.5,
+      "value": 53.9,
       "unit": "MiB",
       "kind": "mem",
       "budget": 128,
       "desc": "service RSS recording one device after backfilling 8 MiB"
     },
     "out.crashes_default.bytes": {
-      "value": 3061,
+      "value": 3125,
       "unit": "bytes",
       "kind": "exact",
-      "desc": "logcat_crashes {} on the API 29 fixture (≈ 765 tokens)"
+      "desc": "logcat_crashes {} on the API 29 fixture (≈ 781 tokens)"
     },
     "out.crashes_detail_java.bytes": {
-      "value": 6290,
+      "value": 3334,
       "unit": "bytes",
       "kind": "exact",
-      "desc": "logcat_crashes {\"id\":\"cr1\"} on the API 29 fixture (≈ 1572 tokens)"
+      "desc": "logcat_crashes {\"id\":\"cr1\"} on the API 29 fixture (≈ 833 tokens)"
     },
     "out.crashes_package.bytes": {
-      "value": 2131,
+      "value": 2143,
       "unit": "bytes",
       "kind": "exact",
-      "desc": "logcat_crashes {\"package\":\"com.example.logtest\"} on the API 29 fixture (≈ 532 tokens)"
+      "desc": "logcat_crashes {\"package\":\"com.example.logtest\"} on the API 29 fixture (≈ 535 tokens)"
     },
     "out.initialize.bytes": {
       "value": 1187,
@@ -344,16 +344,16 @@
       "desc": "initialize result (server info + instructions)"
     },
     "out.launches_default.bytes": {
-      "value": 4396,
+      "value": 2970,
       "unit": "bytes",
       "kind": "exact",
-      "desc": "logcat_app_launches {} on the API 29 fixture (≈ 1099 tokens)"
+      "desc": "logcat_app_launches {} on the API 29 fixture (≈ 742 tokens)"
     },
     "out.launches_package.bytes": {
-      "value": 4415,
+      "value": 2998,
       "unit": "bytes",
       "kind": "exact",
-      "desc": "logcat_app_launches {\"package\":\"com.example.logtest\",\"from\":\"2026-10-10 02:50:00\"} on the API 29 fixture (≈ 1103 tokens)"
+      "desc": "logcat_app_launches {\"package\":\"com.example.logtest\",\"from\":\"2026-10-10 02:50:00\"} on the API 29 fixture (≈ 749 tokens)"
     },
     "out.search_crash_context.bytes": {
       "value": 3243,
@@ -398,104 +398,104 @@
       "desc": "logcat_search {\"filter\":\"tag=:ActivityManager\",\"limit\":20} on the API 29 fixture (≈ 1328 tokens)"
     },
     "out.status.bytes": {
-      "value": 812,
+      "value": 615,
       "unit": "bytes",
       "kind": "exact",
-      "desc": "logcat_status {} on the API 29 fixture (≈ 203 tokens)"
+      "desc": "logcat_status {} on the API 29 fixture (≈ 153 tokens)"
     },
     "out.status_package.bytes": {
-      "value": 1400,
+      "value": 1396,
       "unit": "bytes",
       "kind": "exact",
-      "desc": "logcat_status {\"package\":\"com.example.logtest\"} on the API 29 fixture (≈ 350 tokens)"
+      "desc": "logcat_status {\"package\":\"com.example.logtest\"} on the API 29 fixture (≈ 349 tokens)"
     },
     "out.tools_list.bytes": {
-      "value": 10262,
+      "value": 10230,
       "unit": "bytes",
       "kind": "exact",
       "desc": "tools/list result (4 tool definitions)"
     },
     "query.crash_list_at_2000.ms": {
-      "value": 0.005,
+      "value": 0.004,
       "unit": "ms",
       "kind": "time",
       "budget": 50,
       "desc": "crash list (summaries of 2,020 crashes) as logcat_crashes / logcat_status read it, median of 5 (warm)"
     },
     "query.crashes_default.bytes": {
-      "value": 4411,
+      "value": 4510,
       "unit": "bytes",
       "kind": "info",
       "desc": "output size at scale (≈ tokens × 4)"
     },
     "query.crashes_default.ms": {
-      "value": 0.69,
+      "value": 0.65,
       "unit": "ms",
       "kind": "time",
       "budget": 3500,
       "desc": "logcat_crashes {}, median of 5 (warm)"
     },
     "query.crashes_detail_oldest.bytes": {
-      "value": 6549,
+      "value": 3442,
       "unit": "bytes",
       "kind": "info",
       "desc": "output size at scale (≈ tokens × 4)"
     },
     "query.crashes_detail_oldest.cold_ms": {
-      "value": 24.59,
+      "value": 18.62,
       "unit": "ms",
       "kind": "time",
       "budget": 4000,
       "desc": "logcat_crashes {\"id\":\"cr1\"}, history cache dropped first"
     },
     "query.crashes_detail_oldest.ms": {
-      "value": 0.21,
+      "value": 0.11,
       "unit": "ms",
       "kind": "time",
       "budget": 3500,
       "desc": "logcat_crashes {\"id\":\"cr1\"}, median of 5 (warm)"
     },
     "query.crashes_package.bytes": {
-      "value": 3818,
+      "value": 3910,
       "unit": "bytes",
       "kind": "info",
       "desc": "output size at scale (≈ tokens × 4)"
     },
     "query.crashes_package.ms": {
-      "value": 0.51,
+      "value": 0.47,
       "unit": "ms",
       "kind": "time",
       "budget": 3500,
       "desc": "logcat_crashes {\"package\":\"com.example.logtest\"}, median of 5 (warm)"
     },
     "query.launches_package.bytes": {
-      "value": 4459,
+      "value": 3038,
       "unit": "bytes",
       "kind": "info",
       "desc": "output size at scale (≈ tokens × 4)"
     },
     "query.launches_package.ms": {
-      "value": 1.15,
+      "value": 0.92,
       "unit": "ms",
       "kind": "time",
       "budget": 3500,
       "desc": "logcat_app_launches {\"package\":\"com.example.logtest\"}, median of 5 (warm)"
     },
     "query.launches_package_24h.bytes": {
-      "value": 16153,
+      "value": 11308,
       "unit": "bytes",
       "kind": "info",
       "desc": "output size at scale (≈ tokens × 4)"
     },
     "query.launches_package_24h.cold_ms": {
-      "value": 470.26,
+      "value": 420.27,
       "unit": "ms",
       "kind": "time",
       "budget": 4000,
       "desc": "logcat_app_launches {\"package\":\"com.example.logtest\",\"from\":\"24h\",\"limit\":20}, history cache dropped first"
     },
     "query.launches_package_24h.ms": {
-      "value": 463.5,
+      "value": 434.74,
       "unit": "ms",
       "kind": "time",
       "budget": 3500,
@@ -514,7 +514,7 @@
       "desc": "1: the match count is exact; 0: a lower bound (count stopped 100 ms after the page was full)"
     },
     "query.search_age.ms": {
-      "value": 0.62,
+      "value": 0.44,
       "unit": "ms",
       "kind": "time",
       "budget": 3500,
@@ -534,7 +534,7 @@
       "desc": "1: the match count is exact; 0: a lower bound (count stopped 100 ms after the page was full); must be exact without a filter"
     },
     "query.search_default.ms": {
-      "value": 0.63,
+      "value": 0.85,
       "unit": "ms",
       "kind": "time",
       "budget": 3500,
@@ -547,7 +547,7 @@
       "desc": "output size at scale (≈ tokens × 4)"
     },
     "query.search_full_scan_no_match.cold_ms": {
-      "value": 812.57,
+      "value": 835.16,
       "unit": "ms",
       "kind": "time",
       "budget": 4000,
@@ -560,7 +560,7 @@
       "desc": "1: the match count is exact; 0: a lower bound (count stopped 100 ms after the page was full)"
     },
     "query.search_full_scan_no_match.ms": {
-      "value": 779.5,
+      "value": 829.66,
       "unit": "ms",
       "kind": "time",
       "budget": 3500,
@@ -579,7 +579,7 @@
       "desc": "1: the match count is exact; 0: a lower bound (count stopped 100 ms after the page was full)"
     },
     "query.search_level_error.ms": {
-      "value": 103.86,
+      "value": 103.99,
       "unit": "ms",
       "kind": "time",
       "budget": 3500,
@@ -598,7 +598,7 @@
       "desc": "1: the match count is exact; 0: a lower bound (count stopped 100 ms after the page was full)"
     },
     "query.search_negation.ms": {
-      "value": 103.99,
+      "value": 105.35,
       "unit": "ms",
       "kind": "time",
       "budget": 3500,
@@ -611,7 +611,7 @@
       "desc": "output size at scale (≈ tokens × 4)"
     },
     "query.search_old_range.cold_ms": {
-      "value": 30.04,
+      "value": 23.8,
       "unit": "ms",
       "kind": "time",
       "budget": 4000,
@@ -624,7 +624,7 @@
       "desc": "1: the match count is exact; 0: a lower bound (count stopped 100 ms after the page was full)"
     },
     "query.search_old_range.ms": {
-      "value": 1.11,
+      "value": 0.86,
       "unit": "ms",
       "kind": "time",
       "budget": 3500,
@@ -643,7 +643,7 @@
       "desc": "1: the match count is exact; 0: a lower bound (count stopped 100 ms after the page was full)"
     },
     "query.search_package.ms": {
-      "value": 104.19,
+      "value": 104.23,
       "unit": "ms",
       "kind": "time",
       "budget": 3500,
@@ -662,7 +662,7 @@
       "desc": "1: the match count is exact; 0: a lower bound (count stopped 100 ms after the page was full)"
     },
     "query.search_regex.ms": {
-      "value": 168.25,
+      "value": 164.72,
       "unit": "ms",
       "kind": "time",
       "budget": 3500,
@@ -675,7 +675,7 @@
       "desc": "output size at scale (≈ tokens × 4)"
     },
     "query.search_summary_1h.ms": {
-      "value": 14.95,
+      "value": 16.34,
       "unit": "ms",
       "kind": "time",
       "budget": 3500,
@@ -694,33 +694,33 @@
       "desc": "1: the match count is exact; 0: a lower bound (count stopped 100 ms after the page was full)"
     },
     "query.search_tag.ms": {
-      "value": 104.54,
+      "value": 103.47,
       "unit": "ms",
       "kind": "time",
       "budget": 3500,
       "desc": "logcat_search {\"filter\":\"tag=:ActivityManager\"}, median of 5 (warm)"
     },
     "query.status.bytes": {
-      "value": 852,
+      "value": 660,
       "unit": "bytes",
       "kind": "info",
       "desc": "output size at scale (≈ tokens × 4)"
     },
     "query.status.ms": {
-      "value": 0.09,
+      "value": 0.12,
       "unit": "ms",
       "kind": "time",
       "budget": 3500,
       "desc": "logcat_status {}, median of 5 (warm)"
     },
     "query.status_package.bytes": {
-      "value": 1674,
+      "value": 1778,
       "unit": "bytes",
       "kind": "info",
       "desc": "output size at scale (≈ tokens × 4)"
     },
     "query.status_package.ms": {
-      "value": 19.21,
+      "value": 18.2,
       "unit": "ms",
       "kind": "time",
       "budget": 3500,
@@ -739,123 +739,123 @@
       "desc": "stored records (multi-line messages merged)"
     },
     "scan.filtered_records_per_sec_cold": {
-      "value": 767764,
+      "value": 869409,
       "unit": "records/s",
       "kind": "rate",
       "desc": "cold scan plus filter evaluation (-tag:chatty -message:binder level:info)"
     },
     "scan.records_per_sec_cold": {
-      "value": 843673,
+      "value": 799082,
       "unit": "records/s",
       "kind": "rate",
       "desc": "Store.Scan of all 515760 records newest first, history cache dropped (read + decode)"
     },
     "scan.records_per_sec_warm": {
-      "value": 1250804,
+      "value": 1218289,
       "unit": "records/s",
       "kind": "rate",
       "desc": "the same scan right after (blocks still cached up to the 32 MiB limit)"
     },
     "startup.service_spawn_ms": {
-      "value": 64.24,
+      "value": 64.25,
       "unit": "ms",
       "kind": "time",
       "desc": "cold − warm: copying the binary to \u003croot\u003e/bin, starting the service, waiting for its socket"
     },
     "startup.tools_list_cold_ms": {
-      "value": 69.8,
+      "value": 70.87,
       "unit": "ms",
       "kind": "time",
       "budget": 3000,
       "desc": "MCP process start → initialize + tools/list answered, no service running (spawns it); median of 3"
     },
     "startup.tools_list_warm_ms": {
-      "value": 5.55,
+      "value": 6.62,
       "unit": "ms",
       "kind": "time",
       "budget": 1000,
       "desc": "MCP process start → initialize + tools/list answered, service already running; median of 5"
     },
     "time.call.crashes_default.ns_per_op": {
-      "value": 2547307,
+      "value": 2402784,
       "unit": "ns/op",
       "kind": "info",
       "desc": "logcat_crashes {} on the fixture, per call"
     },
     "time.call.launches_package.ns_per_op": {
-      "value": 480968,
+      "value": 509058,
       "unit": "ns/op",
       "kind": "info",
       "desc": "logcat_app_launches {\"package\":\"com.example.logtest\",\"from\":\"2026-10-10 02:50:00\"} on the fixture, per call"
     },
     "time.call.search_default.ns_per_op": {
-      "value": 645694,
+      "value": 718679,
       "unit": "ns/op",
       "kind": "info",
       "desc": "logcat_search {} on the fixture, per call"
     },
     "time.call.search_package_errors.ns_per_op": {
-      "value": 478953,
+      "value": 534907,
       "unit": "ns/op",
       "kind": "info",
       "desc": "logcat_search {\"package\":\"com.example.logtest\",\"min_level\":\"warn\"} on the fixture, per call"
     },
     "time.call.search_regex.ns_per_op": {
-      "value": 553613,
+      "value": 566438,
       "unit": "ns/op",
       "kind": "info",
       "desc": "logcat_search {\"filter\":\"message~:\\\"Displayed .*MainActivity\\\"\"} on the fixture, per call"
     },
     "time.call.search_summary.ns_per_op": {
-      "value": 4236840,
+      "value": 4677843,
       "unit": "ns/op",
       "kind": "info",
       "desc": "logcat_search {\"view\":\"summary\"} on the fixture, per call"
     },
     "time.call.status.ns_per_op": {
-      "value": 74678,
+      "value": 69964,
       "unit": "ns/op",
       "kind": "info",
       "desc": "logcat_status {} on the fixture, per call"
     },
     "time.filter_match.bare_word.ns_per_op": {
-      "value": 371,
+      "value": 387,
       "unit": "ns/op",
       "kind": "info",
       "desc": "filter evaluation per record: logtest"
     },
     "time.filter_match.negation.ns_per_op": {
-      "value": 291,
+      "value": 275,
       "unit": "ns/op",
       "kind": "info",
       "desc": "filter evaluation per record: -tag:chatty -message:binder level:info"
     },
     "time.filter_match.regex.ns_per_op": {
-      "value": 58,
+      "value": 68,
       "unit": "ns/op",
       "kind": "info",
       "desc": "filter evaluation per record: message~:\"Displayed .*MainActivity\""
     },
     "time.filter_match.tag_level.ns_per_op": {
-      "value": 48,
+      "value": 53,
       "unit": "ns/op",
       "kind": "info",
       "desc": "filter evaluation per record: tag:ActivityManager level:warn"
     },
     "time.filter_parse.ns_per_op": {
-      "value": 23819,
+      "value": 26368,
       "unit": "ns/op",
       "kind": "info",
       "desc": "filter.Parse of a typical 6-term filter"
     },
     "time.ingest_line.ns_per_op": {
-      "value": 3837.6,
+      "value": 3364.9,
       "unit": "ns/op",
       "kind": "info",
       "desc": "parse + assemble + pipeline + store append, per physical line"
     },
     "time.parse_line.ns_per_op": {
-      "value": 342,
+      "value": 389,
       "unit": "ns/op",
       "kind": "info",
       "desc": "logcat.ParseLine, per physical line"
