@@ -136,6 +136,24 @@ func newRepairClient(ctrl Control) *Client {
 	return NewClient(ClientOptions{Control: ctrl, Version: "0.5.0", Role: "mcp", StartTimeout: 3 * time.Second, NoDetach: true, Repair: fastRepair()})
 }
 
+// logTail is the service log (the client's repair messages go there) for a
+// failure message: an unexplained slow replacement (#103) shows which step
+// ate the time.
+func logTail(ctrl Control) string {
+	root, err := ConfiguredRoot(ctrl)
+	if err != nil {
+		return "(no service log: " + err.Error() + ")"
+	}
+	b, err := os.ReadFile(filepath.Join(LogDir(root), "service.log"))
+	if err != nil {
+		return "(no service log: " + err.Error() + ")"
+	}
+	if len(b) > 4000 {
+		b = b[len(b)-4000:]
+	}
+	return string(b)
+}
+
 func TestSilentHolderIsReplaced(t *testing.T) {
 	for _, mode := range []string{"silent", "silent,ignoreterm", "nolistener"} {
 		t.Run(mode, func(t *testing.T) {
@@ -148,13 +166,17 @@ func TestSilentHolderIsReplaced(t *testing.T) {
 			defer cancel()
 			hello, err := c.Connect(ctx)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("%v (after %s)\nservice log:\n%s", err, time.Since(t0), logTail(ctrl))
 			}
-			if el := time.Since(t0); el > 20*time.Second {
-				t.Fatalf("took %s", el)
+			// Nominal 4-7 s (SilentFor, TermWait, KillWait are fixed waits);
+			// a -race -parallel stress run needs 3x that (20.25 s seen, #103).
+			// Only a hang is a failure here, so the bound is far above it
+			// and below the 40 s context.
+			if el := time.Since(t0); el > 30*time.Second {
+				t.Fatalf("took %s\nservice log:\n%s", el, logTail(ctrl))
 			}
 			if !h.waitDead(10 * time.Second) {
-				t.Fatal("the silent holder is still running")
+				t.Fatalf("the silent holder is still running\nservice log:\n%s", logTail(ctrl))
 			}
 			if hello.PID != os.Getpid() {
 				t.Fatalf("connected to pid %d, want the new in-process service", hello.PID)
