@@ -9,7 +9,7 @@ func TestRenderStatusHead(t *testing.T) {
 	t.Parallel()
 	lines := func(staying string) []StatusLine {
 		return []StatusLine{
-			{Text: "service: background service pid 1"},
+			{Text: "service: service process pid 1"},
 			{Text: "root: /r", Label: "root", Static: true},
 			{Text: "recording: idle"},
 			{Text: "lifetime: exits 30s after …" + staying, Label: "lifetime", Static: true, Key: "lifetime: exits 30s after …"},
@@ -22,27 +22,27 @@ func TestRenderStatusHead(t *testing.T) {
 		renderStatusHead(&b, ls, m, verbose)
 		return b.String()
 	}
-	all := "service: background service pid 1\nroot: /r\nrecording: idle\nlifetime: exits 30s after …; staying: 1 client(s) connected\nadb: ok (/adb, version 1)\nstore: /r (data in v1/<device-id>)\n"
-	short := "service: background service pid 1\nunchanged since=earlier_in_session lines=root,lifetime,adb,store next: verbose=true\nrecording: idle\n"
+	all := "service: service process pid 1\nroot: /r\nrecording: idle\nlifetime: exits 30s after …; staying: 1 MCP/CLI process(es) connected\nadb: ok (/adb, version 1)\nstore: /r (data in v1/<device-id>)\n"
+	short := "service: service process pid 1\nunchanged since=earlier_in_session lines=root,lifetime,adb,store next: verbose=true\nrecording: idle\n"
 
 	// no memo (in-process --offline, tests): always everything
 	for i := 0; i < 2; i++ {
-		if got := render(lines("; staying: 1 client(s) connected"), nil, false); got != all {
+		if got := render(lines("; staying: 1 MCP/CLI process(es) connected"), nil, false); got != all {
 			t.Fatalf("no memo, call %d:\n%s", i, got)
 		}
 	}
 	m := &StatusMemo{}
-	if got := render(lines("; staying: 1 client(s) connected"), m, false); got != all {
+	if got := render(lines("; staying: 1 MCP/CLI process(es) connected"), m, false); got != all {
 		t.Fatalf("first:\n%s", got)
 	}
 	// only the key counts: the lifetime's current state is not a change
-	if got := render(lines("; staying: 3 client(s) connected"), m, false); got != short {
+	if got := render(lines("; staying: 3 MCP/CLI process(es) connected"), m, false); got != short {
 		t.Fatalf("second:\n%s", got)
 	}
-	if got := render(lines("; staying: 1 client(s) connected"), m, true); got != all {
+	if got := render(lines("; staying: 1 MCP/CLI process(es) connected"), m, true); got != all {
 		t.Fatalf("verbose:\n%s", got)
 	}
-	changed := lines("; staying: 1 client(s) connected")
+	changed := lines("; staying: 1 MCP/CLI process(es) connected")
 	changed[4].Text = "adb: ok (/adb, version 2)"
 	if got := render(changed, m, false); !strings.Contains(got, "adb: ok (/adb, version 2)\n") || strings.Contains(got, "unchanged") {
 		t.Fatalf("changed:\n%s", got)

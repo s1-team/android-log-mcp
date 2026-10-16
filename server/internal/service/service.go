@@ -168,12 +168,12 @@ func (i Info) Text() string {
 // (root, linger, lifetime, service log) are marked Static: logcat_status shows
 // them on the first call of a connection and again when they change (#23).
 func (i Info) Lines() []mcpserver.StatusLine {
-	mode := "background service"
+	mode := "service process"
 	if i.Embedded != "" {
 		mode = "in-process service (" + i.Embedded + ")"
 	}
 	out := []mcpserver.StatusLine{
-		{Text: fmt.Sprintf("service: %s pid %d, version %s, protocol %d, up %s, clients %d", mode, i.PID, i.Version, i.Proto, time.Since(i.Started).Round(time.Second), i.Clients)},
+		{Text: fmt.Sprintf("service: %s pid %d, version %s, protocol %d, up %s, connected %d", mode, i.PID, i.Version, i.Proto, time.Since(i.Started).Round(time.Second), i.Clients)},
 		{Text: "root: " + i.Root, Label: "root", Static: true},
 	}
 	if i.Recording != "" {
@@ -443,9 +443,9 @@ func (s *Service) handle(ctx context.Context, c *ipc.Conn, op string, body json.
 		return "stopping", nil
 	case "handoff":
 		if CompareVersions(h.Version, s.opt.Version) <= 0 {
-			return nil, fmt.Errorf("handoff refused: the client (version %s) is not newer than this service (version %s)", h.Version, s.opt.Version)
+			return nil, fmt.Errorf("handoff refused: the MCP or CLI process (version %s) is not newer than this service (version %s)", h.Version, s.opt.Version)
 		}
-		go s.Stop(fmt.Sprintf("replaced by a newer client (pid %d, version %s)", h.PID, h.Version))
+		go s.Stop(fmt.Sprintf("replaced by a newer MCP or CLI process (pid %d, version %s)", h.PID, h.Version))
 		return "stopping", nil
 	}
 	if f := extraOps[op]; f != nil {

@@ -19,8 +19,8 @@ import (
 const recordUsage = `usage:
   android-log-mcp record [--device X]... --for DURATION [--json]
         keep recording the device(s) until now + DURATION (e.g. 30m, 2h, 1h30m; max 24h),
-        independent of tool calls and clients; the deadline never shortens. Starts the
-        background service detached if none runs. Returns without waiting for the backfill.
+        independent of tool calls and MCP/CLI processes; the deadline never shortens. Starts the
+        service process detached if none runs. Returns without waiting for the backfill.
   android-log-mcp record --stop [--device X]... [--json]
         stop recording the device(s) now and remove their pins
   android-log-mcp record [--json]

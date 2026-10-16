@@ -8,17 +8,17 @@ go build -o android-log-mcp ./cmd/android-log-mcp      # 本机构建
 go build -ldflags "-X main.version=0.7.0" ./cmd/android-log-mcp   # 写入版本号（release 构建就是这样做的）
 REPLAY_DUMP=1 go test ./internal/mcpserver -run ReplayExplore -v  # 打印 fixture 回放后各工具的完整输出
 ../scripts/e2e-report.sh emulator-5556 [证据目录]          # 真机 / 模拟器上的 report 打码端到端检查（需要 adb）
-../scripts/service-e2e.sh emulator-5556                  # live check of the background service through the npm launcher
+../scripts/service-e2e.sh emulator-5556                  # live check of the service process through the npm launcher
 ../scripts/perf.sh [--check|--update|--run]              # performance metrics vs perf/baseline.json (docs/performance.md)
 go test -run '^$' -bench . ./internal/perf               # ad-hoc micro-benchmarks (parser, ingest, filter, tool calls)
 ```
 
 | 包 | 职责 |
 |---|---|
-| `cmd/android-log-mcp` | 入口：MCP stdio thin client of the background service, `service [status|stop]`, `call`, `report`, `root`, `set-root`, `compat`, `--offline <dir>`（只读打开数据集：不用 adb，不录制、不清理、不创建文件；in-process） |
+| `cmd/android-log-mcp` | 入口：MCP stdio process that forwards calls to the service process, `service [status|stop]`, `call`, `report`, `root`, `set-root`, `compat`, `--offline <dir>`（只读打开数据集：不用 adb，不录制、不清理、不创建文件；in-process） |
 | `internal/ipc` | AF_UNIX transport for the service: JSON-lines frames, request ids/cancel, user-only socket dir (0700/0600, Windows DACL), same-user peer check, socket path fallback |
 | `internal/procattr` | `Hide`: every child process starts without a console window on Windows (`CREATE_NO_WINDOW`); a source scan test enforces it for every `exec.Command` |
-| `internal/service` | The background service (one per user: `service.lock`, `service.json`, ops hello/call/status/stop/handoff/report/set-root, linger, service log), the client (start detached from `<root>/bin`, in-process fallback, reconnect/retry, version and protocol rules), `config.json` and set-root |
+| `internal/service` | The service process (one per user: `service.lock`, `service.json`, ops hello/call/status/stop/handoff/report/set-root, linger, service log), the connection code of MCP and CLI processes (start detached from `<root>/bin`, in-process fallback, reconnect/retry, version and protocol rules), `config.json` and set-root |
 | `internal/device` | 设备管理（adb track-devices；按稳定设备 ID 管理，`identity.go`）、录制、ingest pipeline（`Pipeline`，fixture 回放也走这里）、DropBox、adb children (`child*.go`), set-root carry-over (`carry.go`) |
 | `internal/logcat` | logcat 行解析、多行合并、`-v printable` 反转义 |
 | `internal/procs` | pid 到进程的生命周期表（am_proc_*、ps 快照、force-stop、重启） |

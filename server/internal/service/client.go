@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/s1crab/android-log-mcp/server/internal/ipc"
+	"github.com/s1crab/android-log-mcp/server/internal/mcpserver"
 	"github.com/s1crab/android-log-mcp/server/internal/procattr"
 	"github.com/s1crab/android-log-mcp/server/internal/store"
 )
@@ -70,8 +71,8 @@ func (r *RepairTiming) defaults() {
 type ErrIncompatible struct{ Client, Service HelloReply }
 
 func (e *ErrIncompatible) Error() string {
-	return fmt.Sprintf("the running android-log-mcp service (pid %d, version %s, protocol %d; supports protocols %d–%d) cannot serve this client (version %s, protocol %d). "+
-		"Upgrade this client, e.g. `npx -y android-log-mcp@latest`, or stop the service with `android-log-mcp service stop` if you really want this older version",
+	return fmt.Sprintf("the running android-log-mcp service (pid %d, version %s, protocol %d; supports protocols %d–%d) cannot serve this MCP or CLI process (version %s, protocol %d). "+
+		"Upgrade android-log-mcp (this MCP or CLI process is older than the service), e.g. `npx -y android-log-mcp@latest`, or stop the service with `android-log-mcp service stop` if you really want this older version",
 		e.Service.PID, e.Service.Version, e.Service.Proto, e.Service.MinProto, e.Service.Proto, e.Client.Version, e.Client.Proto)
 }
 
@@ -213,7 +214,7 @@ func (c *Client) ensure(ctx context.Context) (*Conn, error) {
 func (c *Client) checkVersion(ctx context.Context, conn *Conn) (bool, error) {
 	h := conn.Hello
 	if CompareVersions(c.opt.Version, h.Version) > 0 {
-		c.infof("the running service (pid %d, version %s) is older than this client (version %s): replacing it", h.PID, h.Version, c.opt.Version)
+		c.infof("the running service (pid %d, version %s) is older than this MCP or CLI process (version %s): replacing it", h.PID, h.Version, c.opt.Version)
 		err := conn.Do(ctx, "handoff", nil, nil)
 		conn.Close()
 		if err != nil {
@@ -229,7 +230,7 @@ func (c *Client) checkVersion(ctx context.Context, conn *Conn) (bool, error) {
 	}
 	c.lastNote = ""
 	if CompareVersions(c.opt.Version, h.Version) < 0 {
-		c.lastNote = fmt.Sprintf("client: version %s, protocol %d (older than the service; compatible)\n", c.opt.Version, Proto)
+		c.lastNote = mcpserver.KV("note", "code", "version_skew", "mcp_process", c.opt.Version, "service", h.Version, "protocol", Proto, "compatible", true) + "\n"
 	}
 	return true, nil
 }
@@ -258,14 +259,14 @@ func (c *Client) start(ctx context.Context) error {
 		}
 		if !logged {
 			logged = true
-			c.infof("waiting for the client that is restarting the service (%s)", ctrl.SpawnLockPath())
+			c.infof("waiting for the MCP or CLI process that is restarting the service (%s)", ctrl.SpawnLockPath())
 		}
 		if time.Now().After(deadline) {
-			return c.fail("another client has been starting or repairing the android-log-mcp service for more than %s (%s)", c.opt.Repair.WaiterWait, ctrl.SpawnLockPath())
+			return c.fail("another MCP or CLI process has been starting or repairing the android-log-mcp service for more than %s (%s)", c.opt.Repair.WaiterWait, ctrl.SpawnLockPath())
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("the android-log-mcp service is being started or repaired by another client; retry in a few seconds (%s): %w", c.logHintTail(), ctx.Err())
+			return fmt.Errorf("the android-log-mcp service is being started or repaired by another MCP or CLI process; retry in a few seconds (%s): %w", c.logHintTail(), ctx.Err())
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
@@ -295,9 +296,9 @@ func (c *Client) start(ctx context.Context) error {
 	case NoSpawn || c.opt.NoDetach:
 		reason = "detached start disabled"
 	case len(c.spawns) >= 3 && c.opt.NoEmbedded:
-		return c.fail("the background service stopped %d times within a minute", len(c.spawns))
+		return c.fail("the service process stopped %d times within a minute", len(c.spawns))
 	case len(c.spawns) >= 3:
-		reason = fmt.Sprintf("the background service stopped %d times within a minute", len(c.spawns))
+		reason = fmt.Sprintf("the service process stopped %d times within a minute", len(c.spawns))
 	default:
 		c.spawns = append(c.spawns, now)
 		pid, err := c.spawn(ctx)
@@ -410,7 +411,7 @@ func (c *Client) startEmbedded(reason string) error {
 	} else {
 		lf = nil
 	}
-	s, err := Start(Options{Control: c.opt.Control, Version: c.opt.Version, Root: root, Embedded: "inside MCP client pid " + fmt.Sprint(os.Getpid()) + ": " + reason, Cfg: c.opt.Cfg, Log: lf})
+	s, err := Start(Options{Control: c.opt.Control, Version: c.opt.Version, Root: root, Embedded: "inside MCP process pid " + fmt.Sprint(os.Getpid()) + ": " + reason, Cfg: c.opt.Cfg, Log: lf})
 	if errors.Is(err, ErrRunning) {
 		return nil // another client won the race
 	}
@@ -469,6 +470,6 @@ func (c *Client) Close() {
 		conn.Close()
 	}
 	if emb != nil {
-		emb.Stop("its MCP client process is exiting")
+		emb.Stop("its MCP process is exiting")
 	}
 }

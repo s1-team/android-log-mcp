@@ -221,17 +221,17 @@ func TestVersionHandoff(t *testing.T) {
 	p1, v1 := servicePID(t, out)
 	out, errOut, code = call("0.4.1")
 	p2, v2 := servicePID(t, out)
-	if code != 0 || p2 == p1 || v1 != "0.4.0" || v2 != "0.4.1" || !strings.Contains(serviceLog(env), "older than this client") || strings.Contains(errOut, "older than this client") {
+	if code != 0 || p2 == p1 || v1 != "0.4.0" || v2 != "0.4.1" || !strings.Contains(serviceLog(env), "older than this MCP or CLI process") || strings.Contains(errOut, "older than this MCP or CLI process") {
 		t.Fatalf("0.4.1: %d %d/%s %d/%s\n%s", code, p1, v1, p2, v2, errOut)
 	}
 	waitGone(t, p1)
 	out, _, code = call("0.4.0")
 	p3, v3 := servicePID(t, out)
-	if code != 0 || p3 != p2 || v3 != "0.4.1" || !strings.Contains(out, "older than the service; compatible") {
-		t.Fatalf("old client replaced the newer service or failed: %d %d %s\n%s", code, p3, v3, out)
+	if code != 0 || p3 != p2 || v3 != "0.4.1" || !strings.Contains(out, "code=version_skew") || !strings.Contains(out, "compatible=1") {
+		t.Fatalf("old MCP process replaced the newer service or failed: %d %d %s\n%s", code, p3, v3, out)
 	}
 	out, errOut, code = call("0.4.0", "ALM_TEST_PROTO=0")
-	if code == 0 || !strings.Contains(out+errOut, "Upgrade this client") {
+	if code == 0 || !strings.Contains(out+errOut, "Upgrade android-log-mcp") {
 		t.Fatalf("incompatible protocol: %d\n%s\n%s", code, out, errOut)
 	}
 	if pid := statePID(t, env); pid != p2 {

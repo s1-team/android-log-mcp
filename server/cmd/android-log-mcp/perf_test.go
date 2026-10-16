@@ -19,7 +19,7 @@ import (
 )
 
 // Process-level performance (issue #13; docs/performance.md): the real
-// binary, the background service it spawns and the scriptable fake adb, in
+// binary, the service process it spawns and the scriptable fake adb, in
 // an isolated cache dir. Runs only with ALM_PERF_OUT=<dir> (scripts/perf.sh)
 // and writes <dir>/process.json.
 
@@ -152,7 +152,7 @@ func TestPerfProcess(t *testing.T) {
 	r.Set(perf.CalibKey, perf.Metric{Value: perf.Calibrate(), Unit: "ms", Kind: perf.Info, Desc: "stdlib-only CPU calibration workload (median of 5)"})
 	bin := buildBinary(t)
 	if fi, err := os.Stat(bin); err == nil {
-		r.Set("binary.size_mib", perf.Metric{Value: float64(fi.Size()*10/(1<<20)) / 10, Unit: "MiB", Kind: perf.Mem, Desc: "size of the built CLI binary (copied to <root>/bin by the first client)"})
+		r.Set("binary.size_mib", perf.Metric{Value: float64(fi.Size()*10/(1<<20)) / 10, Unit: "MiB", Kind: perf.Mem, Desc: "size of the built CLI binary (copied to <root>/bin by the first MCP or CLI process)"})
 	}
 
 	// one fake device with an 8 MiB log buffer (≈ 2 MiB per buffer of
@@ -198,9 +198,9 @@ func TestPerfProcess(t *testing.T) {
 
 	time.Sleep(time.Second)
 	r.Set("mem.service_rss_idle_mib", perf.Metric{Value: rssMiB(svc), Unit: "MiB", Kind: perf.Mem, Budget: 64,
-		Desc: "service RSS with a client connected, nothing recorded yet"})
+		Desc: "service RSS with an MCP process connected, nothing recorded yet"})
 	r.Set("mem.client_rss_mib", perf.Metric{Value: rssMiB(p.cmd.Process.Pid), Unit: "MiB", Kind: perf.Mem, Budget: 64,
-		Desc: "RSS of one MCP stdio client process (thin proxy)"})
+		Desc: "RSS of one MCP process (forwards calls to the service process)"})
 
 	// first log-tool call: starts recording and waits for the backfill of
 	// the whole buffer
@@ -229,7 +229,7 @@ func TestPerfProcess(t *testing.T) {
 		warmQ = append(warmQ, el)
 	}
 	r.Set("e2e.search_default_ms", perf.Metric{Value: msOf(medianDur(warmQ)), Unit: "ms", Kind: perf.Time, Budget: 1000,
-		Desc: "logcat_search {} through MCP client + service, median of 5"})
+		Desc: "logcat_search {} through MCP process + service, median of 5"})
 	for _, q := range []struct {
 		name string
 		args map[string]any

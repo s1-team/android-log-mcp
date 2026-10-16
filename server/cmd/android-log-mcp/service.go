@@ -20,11 +20,11 @@ import (
 )
 
 const serviceUsage = `usage:
-  android-log-mcp service                run the background service in the foreground
-                                         (clients normally start it themselves, detached)
+  android-log-mcp service                run the service process in the foreground
+                                         (MCP and CLI processes normally start it themselves, detached)
   android-log-mcp service status [--json] [--verbose]
                                          show the running service (default: pid, version, root; --verbose: all)
-  android-log-mcp service stop [--force] stop it (clients restart it when they need it);
+  android-log-mcp service stop [--force] stop it (MCP and CLI processes restart it when they need it);
                                          --force also ends a service that holds the lock but
                                          does not answer (SIGTERM, then SIGKILL; Windows:
                                          TerminateProcess, so unflushed lines may be lost)
@@ -53,7 +53,7 @@ func runServiceCmd(args []string) int {
 	}
 	fs := flag.NewFlagSet("service", flag.ContinueOnError)
 	fs.Usage = func() { fmt.Fprint(os.Stderr, serviceUsage) }
-	detached := fs.Bool("detached", false, "started by a client (internal): log only to the service log")
+	detached := fs.Bool("detached", false, "started by an MCP or CLI process (internal): log only to the service log")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}

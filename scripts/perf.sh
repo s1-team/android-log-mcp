@@ -16,7 +16,7 @@
 # session-raw.log ≈ 600k lines), ALM_PERF_HOST (machine label in the results).
 #
 # Everything runs in isolated temp dirs (testhome / isoEnv): it never touches
-# the real data root, control dir or background service, and uses only the
+# the real data root, control dir or service process, and uses only the
 # fake adb (no device, no adb server).
 set -euo pipefail
 

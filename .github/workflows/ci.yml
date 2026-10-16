@@ -177,7 +177,7 @@ jobs:
         run: node ../npm/test/mcp_smoke.js npx android-log-mcp --offline "${{ runner.temp }}/alm-offline"
       # the MCP process starts the service process (detached, from a copy
       # under <root>/bin) and forwards the call to it (issue #3)
-      - name: MCP stdio handshake through the background service
+      - name: MCP stdio handshake through the service process
         working-directory: smoke
         env:
           ANDROID_LOG_MCP_ADB: ${{ runner.temp }}/no-adb   # never start the runner's adb
@@ -185,7 +185,7 @@ jobs:
           ALM_TEST_EXIT_GRACE: ${{ !matrix.real_grace && '2s' || '' }}   # '' = the real 30 s
         run: |
           node ../npm/test/mcp_smoke.js npx android-log-mcp | tee smoke.txt
-          grep -E "^service: background service pid [0-9]+, version [^,]+, protocol [0-9]+" smoke.txt
+          grep -E "^service: service process pid [0-9]+, version [^,]+, protocol [0-9]+" smoke.txt
           npx android-log-mcp root --json
           # the service process exits ALM_TEST_EXIT_GRACE after the last MCP
           # process with no pin and no recorded device (#11)
