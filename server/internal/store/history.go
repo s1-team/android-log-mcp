@@ -31,6 +31,11 @@ type block struct {
 	// first and last line. A line without a readable time makes the block
 	// unbounded (math.MinInt64 / math.MaxInt64).
 	minT, maxT int64
+	// classes: per-class counts (issue #37). Sorted by id. nil when the
+	// block is uncounted (> MaxBlockClasses distinct classes): such a block
+	// is decoded when counting so the result stays exact.
+	classes   []classCount
+	uncounted bool
 }
 
 // outside reports whether every record of b lies outside [fromNs, toNs)
@@ -136,29 +141,41 @@ func (s *Store) segIndexFor(path string) *segIndex {
 		s.idx[path] = ix
 	}
 	if st.Size() > ix.end {
-		extendIndex(path, ix, s.cfg.BlockBytes)
+		s.extendIndex(path, ix)
 	}
 	return ix
 }
 
 // extendIndex reads complete lines from ix.end on and appends them to the
 // index; a trailing block that is not yet full is reopened and continued.
-func extendIndex(path string, ix *segIndex, blockBytes int64) {
+// Class counts (issue #37) are built here from field bytes without a full
+// decode; the trailing partial block keeps its counts when reopened.
+func (s *Store) extendIndex(path string, ix *segIndex) {
+	blockBytes := s.cfg.BlockBytes
 	f, err := os.Open(path)
 	if err != nil {
 		return
 	}
 	defer f.Close()
 	var cur block
+	var counts map[uint32]uint32
 	if n := len(ix.blocks); n > 0 && ix.blocks[n-1].end-ix.blocks[n-1].off < blockBytes {
 		cur = ix.blocks[n-1]
 		ix.blocks = ix.blocks[:n-1]
+		counts = openCounts(cur)
 	} else {
 		cur = block{off: ix.end, end: ix.end}
+		counts = map[uint32]uint32{}
 	}
 	pos := ix.end
 	buf := make([]byte, 1<<20)
 	var carry []byte
+	seal := func() {
+		sealClasses(&cur, counts)
+		ix.blocks = append(ix.blocks, cur)
+		cur = block{off: cur.end, end: cur.end}
+		counts = map[uint32]uint32{}
+	}
 	for {
 		n, rerr := f.ReadAt(buf, pos)
 		pos += int64(n)
@@ -194,12 +211,17 @@ func extendIndex(path string, ix *segIndex, blockBytes int64) {
 					cur.minT, cur.maxT = min(cur.minT, t), max(cur.maxT, t)
 				}
 				cur.n++
+				if ck, cok := lineClass(line); cok {
+					counts = addClass(counts, s.classes.id(ck))
+				} else {
+					// unreadable class fields: the block cannot use counts
+					counts = nil
+				}
 			}
 			cur.end = lineEnd
 			ix.end = lineEnd
 			if cur.end-cur.off >= blockBytes {
-				ix.blocks = append(ix.blocks, cur)
-				cur = block{off: cur.end, end: cur.end}
+				seal()
 			}
 			data = data[i+1:]
 			start = lineEnd
@@ -210,6 +232,7 @@ func extendIndex(path string, ix *segIndex, blockBytes int64) {
 		}
 	}
 	if cur.end > cur.off && cur.n > 0 {
+		sealClasses(&cur, counts)
 		ix.blocks = append(ix.blocks, cur)
 	}
 }
@@ -384,4 +407,13 @@ func (s *Store) ReleaseCaches() int64 {
 	}
 	s.mu.Unlock()
 	return freed
+}
+
+// DropIndexes forgets every segment index and the class dictionary so
+// the next EnsureIndex rebuilds from scratch (perf measurement, issue #37).
+func (s *Store) DropIndexes() {
+	s.hmu.Lock()
+	defer s.hmu.Unlock()
+	s.idx = map[string]*segIndex{}
+	s.classes = classDict{}
 }
