@@ -241,8 +241,7 @@ straddle() { # name method target_epoch
   wait 2>/dev/null || true
   sleep 15
   caught || true
-  printf '%s %s
-' "$n" "$t0" >> "$OUT/straddles.txt"
+  echo "$n $t0" >> "$OUT/straddles.txt"
   log "straddle $n ($how) request ~$(fmt "$t0") -> $(fmt "$(devnow)")"
   call "$n.launch" logcat_app_launches "{$D,\"package\":\"$PKG\",\"from\":\"$(fmt $((t0 - 5)))\",\"to\":\"$(fmt $((t0 + 120)))\",\"limit\":10}" || true
   check "$n (#54) a launch of $PKG" has "$n.launch" "component=$PKG/"
