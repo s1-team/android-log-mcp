@@ -30,6 +30,8 @@ The same key repeated is OR (`tag:A tag:B` = A or B); different keys are AND. Un
 
 Precedence: `|` binds tighter than the space (implicit AND), so `tag:A level:error | tag:B` is `tag:A & (level:error | tag:B)`; write `(tag:A & level:error) | tag:B` to OR whole groups. `OR` / `AND` are not operators: a bare `OR` is a message keyword (use `|` and `&`). A value with spaces needs quotes: `message:'rate limit'` (single or double); unquoted, `message:rate limit` is `message:rate` AND a line containing `limit`.
 
+A query that parses but is probably a mistake (a bare `OR`/`AND`, an unquoted value with spaces after a text key, a top-level `|` mixed with a space) still runs as written and gets `note code=filter hint=… msg=… next: filter="…"` with the fixed filter (at most one note per kind, two per response).
+
 ## 中文摘要
 
 - **工具**：`logcat_status`、`logcat_search`（Android Studio 过滤语法，严格报错）、`logcat_crashes`（Java / native / ANR 按签名分组）、`logcat_app_launches`（冷 / 温 / 热启动时间线；设备时钟跳变后，跨跳变记录的步骤只给设备时间，标注 `duration: unreliable (device clock jumped)`，不给时长）。所有时间都是设备本地时区。
