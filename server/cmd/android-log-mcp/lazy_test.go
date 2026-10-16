@@ -134,9 +134,12 @@ func TestRecordForWithoutService(t *testing.T) {
 		t.Fatal("stopped before the pin ended")
 	}
 	waitGone(t, pid)
-	if e.LogcatRunning("FAKEA") {
-		t.Fatal("logcat outlived the service")
-	}
+	// The service waits only a bounded time for a killed adb child (Windows:
+	// TerminateProcess is asynchronous; killWait is 500 ms), so on a loaded
+	// runner the child can still be exiting when the service pid is gone.
+	// What matters is that the child ends, not that it is gone at the very
+	// instant the service is.
+	eventually(t, "logcat outlived the service", 20*time.Second, func() bool { return !e.LogcatRunning("FAKEA") })
 	out, _, _ = cliEnv(t, env, "record")
 	if !strings.Contains(out, "service: not running") || strings.Contains(out, "FAKEA") {
 		t.Fatalf("state after the pin:\n%s", out)
