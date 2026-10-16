@@ -12,9 +12,9 @@ const RemovedHomeEnv = "ANDROID_LOG_MCP_HOME"
 
 // ErrHomeRemoved explains the removal of ANDROID_LOG_MCP_HOME / --home.
 var ErrHomeRemoved = errors.New(RemovedHomeEnv + " and --home were removed in 0.4.0: the data root is " +
-	"<user cache dir>/android-log-mcp by default (see `android-log-mcp root`) and is moved for every client with " +
+	"<user cache dir>/android-log-mcp by default (see `android-log-mcp root`) and is moved for every MCP and CLI process with " +
 	"`android-log-mcp set-root <dir> --keep-old|--delete-old`. Unset " + RemovedHomeEnv +
-	" / drop --home from your MCP client configuration")
+	" / drop --home from your MCP host configuration")
 
 // CheckRemovedHome returns ErrHomeRemoved when the removed env var is set.
 func CheckRemovedHome() error {

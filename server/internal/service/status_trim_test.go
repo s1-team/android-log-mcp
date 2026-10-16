@@ -51,7 +51,7 @@ func TestStatusStaticLinesPerConnection(t *testing.T) {
 			}
 		}
 		for _, w := range []string{
-			"service: background service pid", // always: pid, version, up, clients
+			"service: service process pid", // always: pid, version, up, connected
 			"\nunchanged since=earlier_in_session lines=root,linger,lifetime,store next: verbose=true\n",
 			"\nhint code=adb_not_found", // a problem is never hidden
 			" devices=",
@@ -70,7 +70,7 @@ func TestStatusStaticLinesPerConnection(t *testing.T) {
 	trimmed("after verbose", status(a, `{}`))
 
 	// another connection is independent; its arrival changes "staying: N
-	// client(s)" and the clients count, which is not a change of the block
+	// MCP/CLI process(es)" and the connected count, which is not a change of the block
 	b := dial()
 	full("other connection, first call", status(b, `{}`))
 	trimmed("first connection again", status(a, `{}`))

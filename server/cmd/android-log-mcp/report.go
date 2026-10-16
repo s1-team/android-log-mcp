@@ -47,7 +47,7 @@ func parseSize(s string) (int64, error) {
 const reportUsage = `usage: android-log-mcp report [flags]
 
 Packs recorded logs and diagnostics into a zip for the maintainer, with
-sensitive values redacted (on by default). The background service builds
+sensitive values redacted (on by default). The service process builds
 it (it has the data and adb); when none runs, this command starts it
 detached. The service starts recording the requested devices and backfills
 their log buffers first (up to 10 s; otherwise the manifest says "backfill

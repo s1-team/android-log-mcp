@@ -21,13 +21,13 @@ The metric names in the baseline file start with the group names below. Kinds de
 | Group | Metrics | Kind | Why agents / users care |
 |---|---|---|---|
 | **Agent cost** `out.*` | Bytes of `initialize`, `tools/list` and the default output of every tool in 14 standard scenarios on the real API 29 fixture (`session-raw.log` + DropBox). Tokens ≈ bytes / 4. | exact | Every byte is context the model pays for, on every call. `tools/list` + `initialize` are paid once per session by every agent, whether it uses the tools or not. Claude Code warns above 10k tokens and spills results above 50,000 chars to a file (design-v3 §0). |
-| **Startup** `startup.*` | MCP process start → `initialize` + `tools/list` answered: cold (spawns the background service: binary copy to `<root>/bin`, start, socket) and warm (service running). | time | The agent's MCP client waits for this before any tool exists. Slow starts show up as "server failed to start" in clients with short timeouts. |
+| **Startup** `startup.*` | MCP process start → `initialize` + `tools/list` answered: cold (spawns the service process: binary copy to `<root>/bin`, start, socket) and warm (service running). | time | The MCP host waits for this before any tool exists. Slow starts show up as "server failed to start" in MCP hosts with short timeouts. |
 | **First call** `first_call.*` | First `logcat_search` against a fake device with an 8 MiB buffer (~53k real lines, ≈ 2 MiB per buffer): probe, logcat start, backfill into the store, then the answer. | time, rate | Since #11 recording starts on use, so the first call pays the backfill. The call waits at most 10 s, then answers with "backfill in progress". |
 | **Query latency** `query.*` | Every tool on a synthetic one-day history (80 back-to-back retimed copies of `session-raw.log`: 604k lines, 516k records), warm (median of 5) and, for history-bound queries, cold (history cache dropped): search default / package / tag / level / regex / negation / `age:` / old `from`–`to` window / full scan with no match, summary, crashes list and detail, launches (30 min and 24 h), status. | time | The design target is about 1 s per call (design-v3 §6). Codex's default tool timeout is 60 s. Agents call these tools in loops, so latency multiplies. |
-| **End to end** `e2e.*` | `logcat_search {}` through MCP client → socket → service and back. | time | The IPC overhead of the 0.4 service architecture. |
+| **End to end** `e2e.*` | `logcat_search {}` through MCP process → socket → service and back. | time | The IPC overhead of the 0.4 service architecture. |
 | **Ingest** `ingest.*`, `scan.*` | Lines/s through parse + assemble + process tracking + crash detection + JSONL append, over the whole synthetic history. Raw `Store.Scan` records/s over all history, cold, warm and with a filter. | rate | Ingest bounds how quickly a backlog (first call, reconnect) is caught up. The scan rate bounds how much history a search can cover within its 2.5 s scan budget. |
 | **Disk** `disk.*` | Segment bytes per input line and per stored record. | exact | With the default 512 MiB per device and 1-day retention, bytes/line decides how much history a user keeps. |
-| **Memory** `mem.*` | Service RSS idle, while recording (after the 8 MiB backfill), and after heavy queries; thin-client RSS; in-process heap and history cache after all scale queries and after the idle release; binary size. | mem | GOALS "Bounded": the service runs all day next to Android Studio and an emulator. The history cache must stay within its 32 MiB limit, which is a hard budget here. |
+| **Memory** `mem.*` | Service RSS idle, while recording (after the 8 MiB backfill), and after heavy queries; MCP process RSS; in-process heap and history cache after all scale queries and after the idle release; binary size. | mem | GOALS "Bounded": the service runs all day next to Android Studio and an emulator. The history cache must stay within its 32 MiB limit, which is a hard budget here. |
 | **Allocations** `allocs.*` | allocs/op and B/op of `logcat.ParseLine`, the ingest path per line (fresh store, and averaged over the one-day history), filter parsing and evaluation, and each tool call on the fixture. | allocs | These are nearly deterministic, so they catch hot-path regressions that timing noise would hide. Allocation also drives GC CPU and RSS. |
 | **Calibration** `calib.cpu_ms` | A fixed stdlib-only CPU workload: SHA-256, sort, JSON, regexp. | info | Used to scale timing baselines between machines. |
 
@@ -95,7 +95,7 @@ Recorded 2026-10-11 on the dev box: linux/amd64, Intel Xeon, 8 vCPUs shared with
 | First call, backfill of 8 MiB / 52,808 lines | 1.27 s (≈ 42k lines/s) |
 | `logcat_search {}` end to end through the service | 6.0 ms |
 | Service RSS: idle / recording / after queries | 10.6 / 57.0 / 58.1 MiB |
-| MCP client RSS | 10.9 MiB |
+| MCP process RSS | 10.9 MiB |
 | Heap after scale queries / after idle release; history cache | 26.9 / 2.4 MiB; 31 MiB (limit 32) |
 | Binary | 10.5 MiB |
 

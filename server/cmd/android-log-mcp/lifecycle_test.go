@@ -134,7 +134,7 @@ func TestServiceExitsAfterLastClient(t *testing.T) {
 	s.cs.Close()
 	waitGone(t, pid)
 	log, _ := os.ReadFile(filepath.Join(controlDirOf(env), "log", "service.log"))
-	if !strings.Contains(string(log), "no client, no pin and no recorded device for 1s") {
+	if !strings.Contains(string(log), "no MCP or CLI process, no pin and no recorded device for 1s") {
 		t.Fatalf("service log:\n%s", log)
 	}
 }

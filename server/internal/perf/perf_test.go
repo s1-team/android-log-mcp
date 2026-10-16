@@ -186,7 +186,7 @@ func outputMetrics(t *testing.T, r *Results) {
 		r.Set("out."+s.name+".bytes", Metric{Value: float64(len(out)), Unit: "bytes", Kind: Exact,
 			Desc: fmt.Sprintf("%s %s on the API 29 fixture (≈ %d tokens)", s.tool, s.args, len(out)/4)})
 	}
-	// the fixed per-session cost: what an MCP client loads into the
+	// the fixed per-session cost: what an MCP host loads into the
 	// model's context before any call (initialize instructions + tools/list)
 	init, list := handshakeBytes(t, tools)
 	r.Set("out.initialize.bytes", Metric{Value: float64(init), Unit: "bytes", Kind: Exact, Desc: "initialize result (server info + instructions)"})

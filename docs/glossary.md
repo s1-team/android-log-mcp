@@ -45,21 +45,14 @@ Rules: never write a bare "time" or "now" in tool descriptions, parameters, outp
 
 ## Old wording → new term (not renamed yet)
 
-Code identifiers and user-facing output were **not** changed with the glossary: renaming them is a separate decision. The list below maps what you will still see to the term to use in prose.
+User-facing output and docs use the terms above since #40. Only these old words remain; the list maps them to the term to use in prose.
 
 | Where | Current wording | Means |
 |---|---|---|
 | Go package / types | `internal/service`, `service.Client`, `ClientOptions`, `Info.Clients`, `ipc` role `cli` | service process; the connection code used by MCP and CLI processes; connected MCP and CLI processes |
-| JSON (`service.json`, `service status --json`) | `"clients"` | number of connected MCP and CLI processes |
-| `service status` / `logcat_status` text | `clients N`, `N client(s) connected`, `no client, no pin and no recorded device`, `exits … after there are no clients …` | connected MCP and CLI processes |
-| `logcat_status` / service log | `client: version …, protocol … (older than the service; compatible)`; `stops with its MCP client (in-process); the other clients then start a new one`; `inside MCP client pid N` | the MCP or CLI process; the MCP process that runs the embedded service |
-| Errors | `Upgrade this client …`, `cannot serve this client`, `handoff refused: the client …`, `another client has been starting the service …`, `replaced by a newer client …` | the MCP or CLI process |
-| `report` README / errors / `--home` error | `point an MCP client at …`, `the next MCP client starts the new version`, `drop --home from your MCP client configuration`, `moved for every client` | MCP host; MCP process; every MCP and CLI process |
-| `install` output | `MCP client config (run the binary directly)` | MCP host configuration |
-| Flag help | `service --detached`: `started by a client (internal)` | started by an MCP or CLI process |
-| CI step name | `MCP stdio handshake through the background service` | service process |
-| Other docs | "background service" in `server/README.md`, `docs/performance.md`, `validation/` | service process |
-| Released CHANGELOG sections | "MCP client", "background service", "thin client" | unchanged: released notes are history |
+| JSON (`service.json`, `service status --json`), `service status` `note code=more_fields` | `"clients"` / `clients=N` | number of connected MCP and CLI processes |
+| Perf baseline | metric key `mem.client_rss_mib` | RSS of one MCP process |
+| Released CHANGELOG sections, `validation/` | "MCP client", "background service", "thin client" | unchanged: released notes and recorded evidence are history |
 
 ## 中文摘要
 

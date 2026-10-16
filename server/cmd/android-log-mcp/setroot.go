@@ -16,8 +16,8 @@ import (
 
 const setRootUsage = `usage: android-log-mcp set-root DIR (--keep-old | --delete-old) [--timeout 60s] [--json]
 
-Moves the data root (where the background service records) to the absolute
-directory DIR, for every client. The running service stops recording,
+Moves the data root (where the service process records) to the absolute
+directory DIR, for every MCP and CLI process. The running service stops recording,
 carries each device's state over (the seqs, the resume point; history stays
 in the old root), commits the new root to config.json and resumes recording
 there; any failure before the commit is rolled back. With no service running
