@@ -42,7 +42,7 @@ Read [docs/GOALS.md](docs/GOALS.md) first, and check every change against its pr
 
 Release only after **explicit sign-off from the user or maintainer**.
 
-**Pre-release verification** ([#106](https://github.com/s1crab/android-log-mcp/issues/106)). CI alone is not enough: before the release PR is merged, run the checklist below: device checks on the emulator (API 29 and API 35, software emulation only, never KVM, §6), race tests by the `race-gate` workflow and copy the results into the release PR body (the [release PR template](.github/PULL_REQUEST_TEMPLATE/release.md) carries it). Keep run evidence under `validation/` (per API level and scenario).
+**Pre-release verification** ([#106](https://github.com/s1crab/android-log-mcp/issues/106)). CI alone is not enough: before the release PR is merged, run the checklist below: device checks on the emulator (API 29 and API 35, software emulation only, never KVM, §6), race tests by the `race-gate` workflow and copy the results into the release PR body (the [release PR template](.github/PULL_REQUEST_TEMPLATE/release.md) carries it). **Raw evidence stays out of the repository** (logs, zips, screenshots, run directories, one-off run scripts): pack the local evidence into one archive (`android-log-mcp-X.Y.Z-evidence.tar.gz`, with a `MANIFEST.txt` and a sha256) and upload it as an asset of the GitHub Release after tagging; CI logs stay as Actions artifacts. The repository holds only `validation/X.Y.Z/README.md`, a short summary with the results and the links to the archive, the Actions runs and the release PR, plus small baselines, fixtures and reusable tools. Do not rewrite history to remove evidence committed earlier.
 
 - [ ] CI green on all OSes for the release commit.
 - [ ] `scripts/service-e2e.sh` on API 29 and API 35.
@@ -125,7 +125,7 @@ Large restructuring of the `device` package is evaluated with these criteria and
 | `npm/` | npm launcher and package templates; `scripts/build-npm.sh [VERSION] [--pack]` cross-compiles and assembles all packages |
 | `scripts/` | `build-npm.sh`, `e2e-report.sh` (report redaction on a device), `service-e2e.sh` (service process on a device through the npm launcher), `compat-probe.sh`, `perf.sh` (performance check / baseline) |
 | `perf/` | `baseline.json`: the performance baseline guarded in CI; see [docs/performance.md](docs/performance.md) |
-| `validation/` | Evidence from the API 29 emulator: findings, trigger scripts, test app, actual tool output |
+| `validation/` | Findings and procedures from the API 29 emulator, trigger scripts, test app, small fixtures; per-release `validation/X.Y.Z/README.md` is a summary with links, raw run evidence goes to the release archive (§3) |
 | `docs/` | Goals (`GOALS.md`), terminology (`glossary.md`), user documentation (`tools.md`, `reference.md`, `compatibility.md`), research and design (`design-v3.md`), performance metrics and baseline (`performance.md`) |
 | `CHANGELOG.md` | Release history ([Keep a Changelog](https://keepachangelog.com/en/1.1.0/)) |
 | `AGENTS.md` | Workflow, release, versioning and safety rules for agents and contributors |

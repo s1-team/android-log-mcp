@@ -1,5 +1,0 @@
-### device 2026-10-16
-$ adb shell am broadcast -n com.example.logtest/.TriggerReceiver --es what remote_crash
-Broadcasting: Intent { flg=0x400000 cmp=com.example.logtest/.TriggerReceiver (has extras) }
-Broadcast completed: result=0
-### exit=0

@@ -8,7 +8,7 @@ Closes #
 
 ## Pre-release verification (AGENTS.md §3, #106)
 
-Emulator API 29 and API 35, software emulation only (never KVM). Link or paste the evidence (committed under `validation/`) for each item.
+Emulator API 29 and API 35, software emulation only (never KVM). Put the result of each item here with a link (Actions run, `validation/X.Y.Z/README.md`); raw logs are not committed: they go into the release evidence archive, uploaded as a Release asset after tagging (AGENTS.md §3).
 
 - [ ] CI green on all OSes for the release commit
 - [ ] `scripts/service-e2e.sh` on API 29 and API 35:
@@ -21,3 +21,5 @@ Emulator API 29 and API 35, software emulation only (never KVM). Link or paste t
 - [ ] Windows / macOS tested with a real or emulator-attached adb, or marked **unverified** in the release notes:
 
 Testing never blocks `main`; findings are fixed on a branch from the tag and released as a patch.
+
+- [ ] Raw evidence packed into one archive (`android-log-mcp-X.Y.Z-evidence.tar.gz`, `MANIFEST.txt`, sha256), path noted here; nothing raw committed under `validation/X.Y.Z/` (summary README only); upload it as a Release asset after tagging

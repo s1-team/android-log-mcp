@@ -1,3 +1,0 @@
-### device 2026-10-16
-$ adb shell input keyevent KEYCODE_HOME
-### exit=0
