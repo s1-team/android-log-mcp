@@ -1,3 +1,5 @@
+> **Note (0.8.0 rule, AGENTS.md §3):** per-release run evidence is no longer committed; `validation/X.Y.Z/` holds a summary README only and the raw evidence is a Release asset. This file and the other directories here are the 0.1–0.7 era evidence and stay as they are.
+
 # Android 模拟器测试床与 logcat MCP 实机验证（2026-10-10，Asia/Shanghai）
 
 > 所有时长都是 **TCG 软件模拟** 下测得，只能说明“流程/格式”，不能当作性能数据。

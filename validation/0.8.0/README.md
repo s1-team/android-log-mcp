@@ -2,7 +2,7 @@
 
 Build: `main` 3b9038f + the release commit (version 0.8.0), binary `0.8.0`. Local runs: API 29 emulator-5556 (software emulation / TCG, no KVM), scratch `XDG_CACHE_HOME` per run, 2026-10-16. API 35: run by the CI emulator jobs on GitHub KVM runners (not run locally: a second TCG emulator next to the first would perturb the timing checks). Windows / macOS: CI only, **unverified** with a real adb.
 
-| item | result | evidence |
+| item | result | evidence (in the archive) |
 |---|---|---|
 | service-e2e API 29 | 30 PASS, RESULT OK (rerun). First run: 28 PASS / 1 FAIL (`service status --json` had no `clients`; not reproduced on the rerun) | service-e2e-api29.txt, service-e2e-api29-first-run-1fail.txt |
 | e2e-report API 29 | PASS: 23 secrets of 16 kinds redacted, 29 LeakTest headers intact, offline load OK | e2e-report-api29.txt, e2e-report-api29/ |
@@ -23,3 +23,7 @@ Finding (not a regression proof, see the release PR): after the back-jump the de
 ## #152 fix verification (`clockjump080fix/`)
 
 `clockjump080fix.sh` = `clockjump080.sh` with the build of `fix/152-dropbox-body-time` (PR #153), a fresh store, DropBox already full of re-dated entries, and the fetch happening **while the clock is still set back** (the timing of the earlier `anr22`/`anr23`). Result (`crashes-all.txt`): no ANR is listed twice for one DropBox entry; the only pid that appears twice (5007, `anr5` 10:52 and `anr6` 10:57) are two real am_anr events from an earlier test, one DropBox entry, merged into `anr5`. Old pids 4814 … 9692 are no longer duplicated; entries without a logcat ANR (03:27–04:19 on 10-16) are single ANRs at their body time.
+
+## Where the raw evidence is
+
+Raw logs, run outputs, `logs-only*.zip`, the `anrdup`/`clockjump080*` stores' aux files and the one-off run scripts (`hung080.sh`, `upgrade080.sh`, `clockjump080.sh`, `anrdup.sh`) are **not in the repository** (AGENTS.md §3). They are in one archive, `android-log-mcp-0.8.0-evidence.tar.gz` (with `MANIFEST.txt` and a sha256), attached to the GitHub Release `v0.8.0` after tagging. Until then it is kept on the release box at `/workspace/release-evidence/`. CI logs stay as Actions artifacts: race gate and CI runs are linked from the release PR #151.

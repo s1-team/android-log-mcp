@@ -1,7 +1,0 @@
-ok view=lines device=avd-api29 matched=3 exact=1 shown=3 order=arrival range=2026-10-16T14:26:46.182+08:00/2026-10-16T14:26:46.518+08:00 dev_now=2026-10-16T14:32:40+08:00 clock=estimated offset_s=-78.9 clock_age_s=40 fmt=1
-filter parsed="tag contains \"ALMCI_MARK\" AND message contains \"ALMCI1792131987\" AND device time in [2026-10-16 00:00:00, ...)"
-14:26:46.182 I 9380/9380 uid:shell ALMCI_MARK: ALMCI1792131987 hello
-14:26:46.363 E 9381/9381 uid:shell ALMCI_MARK: ALMCI1792131987 error mark
-14:26:46.518 I 9382/9382 uid:shell ALMCI_MARK: ALMCI1792131987 printable: café ✓ 中文
-newer: after="c1.YXZkLWFwaTI5.4ae92773.22400"
-

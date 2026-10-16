@@ -1,9 +1,0 @@
-### device 2026-10-16
-$ adb shell am start -W -n com.example.logtest/.MainActivity
-Starting: Intent { cmp=com.example.logtest/.MainActivity }
-Status: timeout
-LaunchState: UNKNOWN (-1)
-Activity: com.example.logtest/.MainActivity
-WaitTime: 15131
-Complete
-### exit=0
