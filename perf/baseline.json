@@ -149,13 +149,13 @@
       "desc": "filter evaluation per record: tag:ActivityManager level:warn"
     },
     "allocs.filter_parse.allocs_per_op": {
-      "value": 89,
+      "value": 125,
       "unit": "allocs/op",
       "kind": "allocs",
       "desc": "filter.Parse of a typical 6-term filter"
     },
     "allocs.filter_parse.bytes_per_op": {
-      "value": 7962,
+      "value": 9531,
       "unit": "B/op",
       "kind": "allocs",
       "desc": "filter.Parse of a typical 6-term filter"

@@ -215,6 +215,13 @@ func (t *Tools) buildQuery(d *device.Device, a commonArgs) (*query, error) {
 		for _, n := range p.Notes {
 			q.notes = append(q.notes, hdr("note", "code", "filter", "msg", n))
 		}
+		for _, h := range p.Hints {
+			line := hdr("note", "code", "filter", "hint", h.Kind, "msg", h.Msg)
+			if h.Fix != "" {
+				line += nextClause(param("filter", h.Fix))
+			}
+			q.notes = append(q.notes, line)
+		}
 	}
 	if a.minLevel != "" {
 		lv, ok := filter.ParseLevel(a.minLevel)
