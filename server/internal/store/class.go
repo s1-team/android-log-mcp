@@ -391,7 +391,7 @@ func (s *Store) AggClasses(after, before uint64, fromNs, toNs int64, ids map[uin
 			continue
 		}
 		for _, b := range ix.blocks {
-			if b.n == 0 || b.first >= hi || b.last < lo {
+			if b.n == 0 || b.first >= hi || b.last < lo || b.outside(fromNs, toNs) {
 				continue
 			}
 			whollySeq := b.first >= lo && b.last < hi

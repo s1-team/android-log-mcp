@@ -47,13 +47,13 @@
       "desc": "logcat_search {} on the fixture, per call"
     },
     "allocs.call.search_package_errors.allocs_per_op": {
-      "value": 1691,
+      "value": 2241,
       "unit": "allocs/op",
       "kind": "allocs",
       "desc": "logcat_search {\"package\":\"com.example.logtest\",\"min_level\":\"warn\"} on the fixture, per call"
     },
     "allocs.call.search_package_errors.bytes_per_op": {
-      "value": 189593,
+      "value": 276910,
       "unit": "B/op",
       "kind": "allocs",
       "desc": "logcat_search {\"package\":\"com.example.logtest\",\"min_level\":\"warn\"} on the fixture, per call"
@@ -580,7 +580,7 @@
       "desc": "1: the match count is exact; 0: a lower bound (count stopped 100 ms after the page was full); must be exact for countable filters (issue #37)"
     },
     "query.search_level_error.ms": {
-      "value": 2.17,
+      "value": 1.92,
       "unit": "ms",
       "kind": "time",
       "budget": 3500,
@@ -612,7 +612,7 @@
       "desc": "output size at scale (\u2248 tokens \u00d7 4)"
     },
     "query.search_old_range.cold_ms": {
-      "value": 23.78,
+      "value": 30.77,
       "unit": "ms",
       "kind": "time",
       "budget": 4000,
@@ -625,7 +625,7 @@
       "desc": "1: the match count is exact; 0: a lower bound (count stopped 100 ms after the page was full)"
     },
     "query.search_old_range.ms": {
-      "value": 0.78,
+      "value": 1.15,
       "unit": "ms",
       "kind": "time",
       "budget": 3500,
@@ -645,7 +645,7 @@
       "desc": "1: the match count is exact; 0: a lower bound (count stopped 100 ms after the page was full); must be exact for countable filters (issue #37)"
     },
     "query.search_package.ms": {
-      "value": 5.64,
+      "value": 4.67,
       "unit": "ms",
       "kind": "time",
       "budget": 3500,
@@ -677,7 +677,7 @@
       "desc": "output size at scale (\u2248 tokens \u00d7 4)"
     },
     "query.search_summary_1h.ms": {
-      "value": 17.22,
+      "value": 17.38,
       "unit": "ms",
       "kind": "time",
       "budget": 3500,
@@ -697,7 +697,7 @@
       "desc": "1: the match count is exact; 0: a lower bound (count stopped 100 ms after the page was full); must be exact for countable filters (issue #37)"
     },
     "query.search_tag.ms": {
-      "value": 2.37,
+      "value": 1.64,
       "unit": "ms",
       "kind": "time",
       "budget": 3500,
@@ -798,7 +798,7 @@
       "desc": "logcat_search {} on the fixture, per call"
     },
     "time.call.search_package_errors.ns_per_op": {
-      "value": 483577,
+      "value": 866363,
       "unit": "ns/op",
       "kind": "info",
       "desc": "logcat_search {\"package\":\"com.example.logtest\",\"min_level\":\"warn\"} on the fixture, per call"
@@ -864,7 +864,7 @@
       "desc": "logcat.ParseLine, per physical line"
     },
     "index.build_ms": {
-      "value": 170.42,
+      "value": 153.22,
       "unit": "ms",
       "kind": "time",
       "desc": "cold EnsureIndex over all segments (block minT/maxT + class counts)"
