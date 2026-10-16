@@ -1,0 +1,19 @@
+ok view=status devices=1 device=avd-api29 caught_up=1 cursor=c1.YXZkLWFwaTI5.4ae92773.30329 dev_now=2026-10-16T15:52:19+08:00 clock=observed offset_s=-80.8 clock_age_s=7 fmt=1
+service: service process pid 2241564, version 0.7.0, protocol 2, up 6m9s, connected 1
+root: /workspace/scratch/r080k/android-log-mcp
+recording: 1 device(s): avd-api29
+  avd-api29: recording; caught up; no idle stop
+linger: per device, after its last log tool call: max(10m0s, 2 × the device's log buffer span), at most 1h0m0s (default; each recording device shows its own)
+lifetime: exits 30s after there is no MCP or CLI process, no active pin and no recorded device; staying: 1 MCP/CLI process(es) connected
+service log: /workspace/scratch/r080k/android-log-mcp/log/service.log
+adb state=ok path=/home/box/android-sdk/platform-tools/adb version=1.0.41
+store path=/workspace/scratch/r080k/android-log-mcp
+device id=avd-api29 via=emulator-5556 state=device model=Android_SDK_built_for_x86_64 android=10 sdk=29 tz=Asia/Kuching tz_offset=+08:00
+  recording state=recording caught_up=1 idle_stop=never
+  note code=rollback msg="device clock jump among the stored lines that may still be in the device buffer: read the whole buffer without -T and dropped lines already stored; skipped 29989 already stored lines"
+  clock auto_time=1 source="live line"
+  clock_jumps stored=17 last_seq=30280 next: query="*"
+  window recording_since=2026-10-16T15:47:33+08:00 oldest=2026-10-16T10:10:21 newest=2026-10-16T15:52:12
+  stored lines=30329 bytes=7592187 retention=1d max_mib=512
+  memory window_lines=20318 window_bytes=10242763 cache_bytes=5093129
+
