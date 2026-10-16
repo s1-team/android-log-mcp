@@ -74,7 +74,7 @@ func randString(rng *rand.Rand) string {
 // path and decodes equal to encoding/json.
 func TestDecodeRecordMarshalled(t *testing.T) {
 	rng := rand.New(rand.NewSource(22))
-	for n := 0; n < 200000; n++ {
+	for n := 0; n < decodeIters; n++ {
 		r := model.Record{Seq: rng.Uint64() >> uint(rng.Intn(64)), Boot: randString(rng), TimeNs: rng.Int63() - rng.Int63() - int64(rng.Intn(2)),
 			UID: rng.Intn(1 << 20), PID: rng.Intn(1<<16) - 10, TID: rng.Intn(1 << 16), Level: model.Level(rng.Intn(256)),
 			Tag: randString(rng), Msg: randString(rng)}
