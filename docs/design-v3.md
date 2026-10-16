@@ -644,6 +644,8 @@ Only known file names are deleted. The sweep never runs with `--offline`.
 
 Any failure before step 5 rolls back: carried state removed or restored from a backup, a target created by this switch removed, recording restarted in the old root, `config.json` untouched. Tests: `cmd/android-log-mcp/setroot_test.go` (no-service and service paths, keep/delete, validation, rollback injected at carry and commit, config-lock timeout, concurrent set-roots, deleting the default root keeps `run/` and `config.json`), `store/continue_test.go`, `device/carry_test.go`, `layout/setroot_test.go`; live in `scripts/service-e2e.sh` with markers around both switches.
 
+History is not moved: when the root is switched back, lines logged while the other root was active that are still in the device buffer are read again into it, once each and without duplicates inside the root (step 4 carries only the newest stored hashes, and a stored clock jump makes the service re-read the whole buffer; #115).
+
 ## 11. Service process (issue #3)
 
 One long-lived service process per user records the devices in use (issue #11) and answers every tool call; MCP processes only forward between stdio and the service process. GOALS "local only" holds: AF_UNIX only, no TCP fallback, no token.
