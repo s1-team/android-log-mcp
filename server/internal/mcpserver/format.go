@@ -247,6 +247,36 @@ func template(r *model.Record) string {
 	return r.Tag + ": " + collapseDigits(first)
 }
 
+// appendTemplate appends template(r) to b without allocating (the digest of
+// a wide search runs it for up to headSample matches per call).
+func appendTemplate(b []byte, r *model.Record) []byte {
+	first := r.Msg
+	if i := strings.IndexByte(first, '\n'); i >= 0 {
+		first = first[:i]
+	}
+	cut := false
+	if len(first) > 160 {
+		first, cut = first[:cutAt(first, 160)], true
+	}
+	b = append(b, r.Tag...)
+	b = append(b, ':', ' ')
+	for i := 0; i < len(first); {
+		if c := first[i]; c >= '0' && c <= '9' {
+			b = append(b, '#')
+			for i < len(first) && first[i] >= '0' && first[i] <= '9' {
+				i++
+			}
+			continue
+		}
+		b = append(b, first[i])
+		i++
+	}
+	if cut {
+		b = append(b, "..."...)
+	}
+	return b
+}
+
 // ---- shared response grammar (#85, docs/GOALS.md "Agent-first") ----------
 //
 // Every tool response starts with one header line "ok|empty|error k=v ...".

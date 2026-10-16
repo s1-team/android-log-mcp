@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/s1crab/android-log-mcp/server/internal/device"
 	"github.com/s1crab/android-log-mcp/server/internal/model"
@@ -83,7 +84,7 @@ func TestSearchExactTotalWithoutFilter(t *testing.T) {
 	withCountBudget(t, time.Nanosecond)
 	tl, _ := bigFixture(t, 30000)
 	out, e := call(t, tl, "logcat_search", `{"limit":50}`)
-	must(t, out, e, "matched=30000 exact=1 shown=50 ", "\nsummary of=")
+	must(t, out, e, "matched=30000 exact=1 shown=50 ", "\nsummary sampled=")
 	if total, exact, key, _ := parseCount(t, out); total != "30000" || !exact || key != "" {
 		t.Fatalf("count line: %s %v %s\n%s", total, exact, key, out)
 	}
@@ -103,7 +104,7 @@ func TestSearchPartialCount(t *testing.T) {
 	withCountBudget(t, time.Nanosecond)
 	tl, _ := bigFixture(t, 30000)
 	out, e := call(t, tl, "logcat_search", `{"filter":"tag=:Ten","limit":20}`)
-	must(t, out, e, " exact=0 counted_from=", " shown=20 ", "\ntruncated older=", " exact=0 ", "\nsummary of=")
+	must(t, out, e, " exact=0 counted_from=", " shown=20 ", "\ntruncated older=", " exact=0 ", "\nsummary sampled=")
 	total, exact, key, at := parseCount(t, out)
 	if exact || key != "counted_from" || at == "" || total == "3000" {
 		t.Fatalf("count line: %s %v %s %s\n%s", total, exact, key, at, out)
@@ -111,7 +112,7 @@ func TestSearchPartialCount(t *testing.T) {
 	// a budget long enough for the whole range: exact, as before
 	withCountBudget(t, time.Minute)
 	out, e = call(t, tl, "logcat_search", `{"filter":"tag=:Ten","limit":20}`)
-	must(t, out, e, "matched=3000 exact=1 shown=20 ", "\nsummary of=2000 tags=Ten:100% msgs=2000x\"Ten: line #\"")
+	must(t, out, e, "matched=3000 exact=1 shown=20 ", "\nsummary sampled=2000 top3_share=~100% tags=Ten:~100% msgs=2000x\"Ten: line #\"")
 }
 
 // Fewer matches than the limit: the whole range is scanned (exact), as
@@ -123,5 +124,27 @@ func TestSearchFewMatchesExact(t *testing.T) {
 	out, e := call(t, tl, "logcat_search", `{"filter":"message:\"line 7\" tag=:Other","limit":1000}`)
 	must(t, out, e, " exact=1 ")
 	out, e = call(t, tl, "logcat_search", `{"filter":"message:zz-none"}`)
-	must(t, out, e, "empty view=lines ", " matched=0 exact=1 scanned=")
+	must(t, out, e, "empty view=lines ", " matched=0 scanned=")
+}
+
+// summaryHead never splits a multibyte character when even one tag does
+// not fit the cap.
+func TestSummaryHeadMultibyteCut(t *testing.T) {
+	t.Parallel()
+	tag := strings.Repeat("日本語", 200) // 1800 bytes
+	res := &scanResult{tagCount: map[string]int{tag: 5}, tmplIdx: map[string]int{}, tagN: 5, total: 5}
+	head := summaryHead(res)
+	if !utf8.ValidString(head) || len(head) > headCap+1 || !strings.HasPrefix(head, "summary sampled=5 top3_share=100% tags=") {
+		t.Fatalf("head (%d bytes, valid=%v): %q", len(head), utf8.ValidString(head), head)
+	}
+}
+
+func TestAppendTemplateMatchesTemplate(t *testing.T) {
+	t.Parallel()
+	for _, msg := range []string{"", "no digits", "pid 123 took 45ms", "a\nsecond 99", strings.Repeat("x1", 90), "日本語12" + strings.Repeat("é", 100)} {
+		r := &model.Record{Tag: "T", Msg: msg}
+		if got, want := string(appendTemplate(nil, r)), template(r); got != want {
+			t.Errorf("%q: %q != %q", msg, got, want)
+		}
+	}
 }

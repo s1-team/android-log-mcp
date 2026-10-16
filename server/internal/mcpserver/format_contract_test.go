@@ -207,7 +207,7 @@ func TestFormatSummaryHead(t *testing.T) {
 	if len(head) > headCap {
 		t.Errorf("head is %d chars > %d", len(head), headCap)
 	}
-	if !regexp.MustCompile(`^summary of=\d+ tags=\S+:(\d+|<1)%`).MatchString(head) {
+	if !regexp.MustCompile(`^summary sampled=\d+ top3_share=~?\d+% tags=\S+:~?(\d+|<1)%`).MatchString(head) {
 		t.Errorf("head shape: %q", head)
 	}
 	if i := strings.Index(head, " msgs="); i > 0 { // templates: every digit run is one #

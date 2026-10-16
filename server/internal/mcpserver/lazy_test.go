@@ -158,6 +158,9 @@ func TestStatusNoCursorDuringBackfill(t *testing.T) {
 	if !strings.Contains(out, "\nnote code=backfill msg=\"backfill in progress (") || !strings.Contains(out, "results may be incomplete, call again") || !(strings.HasPrefix(out, "ok ") || strings.HasPrefix(out, "empty ")) {
 		t.Fatalf("search during backfill:\n%s", out)
 	}
+	if strings.HasPrefix(out, "empty ") && (!strings.Contains(out, " matched=0 scanned=") || !strings.Contains(out, "next:")) {
+		t.Fatalf("empty search during backfill lacks matched=0 scanned= or next:\n%s", out)
+	}
 	deadline := time.Now().Add(20 * time.Second)
 	for {
 		out, _ = l.call(t, "logcat_status", `{}`)
@@ -170,6 +173,9 @@ func TestStatusNoCursorDuringBackfill(t *testing.T) {
 	}
 	if !strings.Contains(out, "caught up") {
 		t.Fatalf("status:\n%s", out)
+	}
+	if out, _ = l.call(t, "logcat_search", `{}`); !strings.HasPrefix(out, "ok ") {
+		t.Fatalf("search after the backfill:\n%s", out)
 	}
 }
 
