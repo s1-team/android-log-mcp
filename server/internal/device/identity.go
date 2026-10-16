@@ -93,6 +93,20 @@ func (p *Probe) Clock() (dev time.Time, coarse bool, mid time.Time, ok bool) {
 	return dev, coarse, p.T0.Add(rtt / 2), true
 }
 
+// probeDeviceNow is the device time the probe stands for: its device clock
+// reading, aged by the time since the probe when it was saved for reuse.
+// Without a device clock reading it falls back to host now.
+func probeDeviceNow(p *Probe, reused bool) time.Time {
+	now, _, mid, ok := p.Clock()
+	if !ok {
+		return time.Now()
+	}
+	if reused {
+		now = now.Add(time.Since(mid))
+	}
+	return now
+}
+
 // ParseIdentityProps parses the key=value output of the identity probe.
 func ParseIdentityProps(out string) map[string]string {
 	props := map[string]string{}
