@@ -70,7 +70,7 @@ func dropboxCounts(e fakeadb.Env) map[string]int {
 // process table is seeded and each DropBox tag is fetched exactly once
 // (the crash tags found in the backfill merged with the new-boot history).
 func TestNoSideWorkDuringBackfill(t *testing.T) {
-	// serial: swaps the package-wide log output or session hook
+	t.Parallel() // the DropBox delay is per test (testTiming), nothing package-wide is touched
 	shortDropbox(t)
 	e := fakeEnv(t)
 	slowBackfill(t, e, 40, 40*time.Millisecond) // ~1.6 s
@@ -115,7 +115,7 @@ func TestNoSideWorkDuringBackfill(t *testing.T) {
 // A crash found by a resumed (same boot) backfill asks for its tag only
 // after catch-up, and not at all when the tag was fetched recently.
 func TestDropboxAfterResume(t *testing.T) {
-	// serial: swaps the package-wide log output or session hook
+	t.Parallel() // the DropBox delay is per test (testTiming), nothing package-wide is touched
 	shortDropbox(t)
 	e := fakeEnv(t)
 	slowBackfill(t, e, 10, 0)
