@@ -3,7 +3,8 @@ name: emulator
 # Nightly emulator validation (issue #27): hardware-accelerated emulators on
 # GitHub-hosted ubuntu-latest runners (KVM). Never run this on a self-hosted
 # runner or the dev box: nested KVM crashes that host (AGENTS.md §6).
-# Not a required check. Steps and evidence: scripts/emulator-ci.sh.
+# Not a required check. Steps and evidence: scripts/emulator-ci.sh
+# (compat, service-e2e, report-e2e, app-e2e, clock-e2e, fixtures).
 on:
   schedule:
     - cron: "41 20 * * *"   # nightly, 04:41 Asia/Shanghai (after the perf nightly in ci.yml)
@@ -18,6 +19,7 @@ on:
       - .github/workflows/emulator.yml
       - scripts/emulator-ci.sh
       - scripts/app-e2e.sh
+      - scripts/clock-e2e.sh
       - scripts/service-e2e.*
       - scripts/e2e-report.sh
       - scripts/compat-probe.sh
@@ -53,7 +55,7 @@ jobs:
   emulator:
     needs: plan
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
@@ -124,7 +126,7 @@ jobs:
       - name: Run the validation
         id: run1
         continue-on-error: true
-        timeout-minutes: 18
+        timeout-minutes: 28
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api }}
@@ -141,7 +143,7 @@ jobs:
           pkill -9 -f qemu-system 2>/dev/null || true
       - name: Run the validation (emulator retry, cold boot)
         if: steps.run1.outcome != 'success'
-        timeout-minutes: 18
+        timeout-minutes: 28
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api }}
@@ -166,6 +168,7 @@ jobs:
             ${{ env.OUT }}
             !${{ env.OUT }}/scratch
             !${{ env.OUT }}/app/calls/android-log-mcp
+            !${{ env.OUT }}/clock/android-log-mcp
           retention-days: 14
           if-no-files-found: warn
 

@@ -7,7 +7,8 @@
 #   scripts/emulator-ci.sh SERIAL OUT_DIR
 #
 # Meant for a throwaway CI emulator: it clears the device log buffers and
-# installs the test app (validation/logtest-app/build/logtest.apk). Every
+# installs the test app (validation/logtest-app/build/logtest.apk). Includes
+# the backward-clock matrix (scripts/clock-e2e.sh). Every
 # android-log-mcp process runs with XDG_CACHE_HOME under OUT_DIR/scratch,
 # never the real per-user control dir.
 #   env ANDROID_LOG_MCP_BIN: the binary (default server/android-log-mcp)
@@ -21,7 +22,7 @@ export ANDROID_LOG_MCP_BIN="${ANDROID_LOG_MCP_BIN:-$ROOT/server/android-log-mcp}
 ADB="$(command -v adb || echo adb)"
 APK="$ROOT/validation/logtest-app/build/logtest.apk"
 SCRATCH="$OUT/scratch"
-mkdir -p "$SCRATCH/svc" "$SCRATCH/app"
+mkdir -p "$SCRATCH/svc" "$SCRATCH/app" "$SCRATCH/clock"
 : > "$OUT/results.tsv"
 FAILED=0
 cd "$ROOT"
@@ -85,6 +86,10 @@ app_e2e() {
   XDG_CACHE_HOME="$SCRATCH/app" scripts/app-e2e.sh "$SERIAL" "$OUT/app/calls"
 }
 
+clock_e2e() {
+  XDG_CACHE_HOME="$SCRATCH/clock" scripts/clock-e2e.sh "$SERIAL" "$OUT/clock"
+}
+
 # fixture candidates (artifacts, not committed) and the tag inventory
 # against the committed API 29 fixtures: summary only
 fixtures() {
@@ -102,7 +107,7 @@ fixtures() {
 
 stop_services() {
   local x
-  for x in svc app; do XDG_CACHE_HOME="$SCRATCH/$x" "$ANDROID_LOG_MCP_BIN" service stop || true; done
+  for x in svc app clock; do XDG_CACHE_HOME="$SCRATCH/$x" "$ANDROID_LOG_MCP_BIN" service stop || true; done
   # the service logs are evidence
   find "$SCRATCH" -name '*.log' -path '*android-log-mcp*' | while read -r f; do
     cp "$f" "$OUT/service-logs/$(printf '%s' "${f#"$SCRATCH"/}" | tr / _)"
@@ -115,6 +120,7 @@ step compat compat
 step service-e2e service_e2e
 step report-e2e report_e2e
 step app-e2e app_e2e
+step clock-e2e clock_e2e
 step fixtures fixtures
 stop_services > "$OUT/service-logs/stop.txt" 2>&1
 column -t -s $'\t' "$OUT/results.tsv" || cat "$OUT/results.tsv"
