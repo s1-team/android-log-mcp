@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -43,24 +44,25 @@ func runSetRoot(ctx context.Context, args []string) int {
 	var dir string
 	rest := args
 	for {
-		if code, ok := parseFlags(fs, rest, "android-log-mcp set-root DIR --keep-old"); !ok {
+		if code, ok := parseFlags(fs, rest, "android-log-mcp set-root --help"); !ok {
 			return code
 		}
 		if fs.NArg() == 0 {
 			break
 		}
 		if dir != "" {
-			fmt.Fprintln(os.Stderr, mcpserver.CLIError("usage", "android-log-mcp set-root DIR --keep-old", "value", fs.Arg(0), "msg", "unexpected_argument"))
+			fmt.Fprintln(os.Stderr, mcpserver.CLIError("usage", "android-log-mcp set-root "+shellQuote(dir)+" --keep-old", "value", fs.Arg(0), "msg", "unexpected_argument"))
 			return 2
 		}
 		dir, rest = fs.Arg(0), fs.Args()[1:]
 	}
 	if dir == "" || *keep == *del {
-		msg := "missing_dir"
+		msg, next := "missing_dir", "android-log-mcp root" // prints the current root; pass the new one to set-root
 		if dir != "" {
 			msg = "exactly_one_of_keep_old_delete_old"
+			next = "android-log-mcp set-root " + shellQuote(dir) + " --keep-old | android-log-mcp set-root " + shellQuote(dir) + " --delete-old"
 		}
-		fmt.Fprintln(os.Stderr, mcpserver.CLIError("usage", "android-log-mcp set-root DIR --keep-old | --delete-old", "msg", msg))
+		fmt.Fprintln(os.Stderr, mcpserver.CLIError("usage", next, "msg", msg))
 		return 2
 	}
 	res, err := service.SetRoot(ctx, service.DefaultControl(), mcpserver.Version, service.SetRootArgs{Target: dir, DeleteOld: *del, Timeout: *timeout})
@@ -82,7 +84,10 @@ func runSetRoot(ctx context.Context, args []string) int {
 		fmt.Println(mcpserver.KV("note", "code", "recording_continues", "devices", strings.Join(res.Devices, ",")))
 	}
 	if len(res.Remained) > 0 {
-		fmt.Println(mcpserver.KV("warning", "code", "old_root_remains", "paths", strings.Join(res.Remained, ","), "msg", fmt.Sprint(res.Errors)) + " next: remove those paths by hand (the service retries when it next starts)")
+		fmt.Println(mcpserver.KV("warning", "code", "old_root_remains", "count", len(res.Remained), "msg", fmt.Sprint(res.Errors)))
+		for _, p := range res.Remained { // one line per path: a path can contain spaces and commas
+			fmt.Println(mcpserver.KV("remains", "path", p) + " next: " + removeCmd(runtime.GOOS, p))
+		}
 	}
 	return code
 }

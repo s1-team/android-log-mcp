@@ -21,6 +21,10 @@ func (m *multiFlag) String() string     { return strings.Join(*m, ",") }
 func (m *multiFlag) Set(v string) error { *m = append(*m, v); return nil }
 
 // parseSize accepts 52428800, 50MB, 50M, 50MiB, 512k …
+// defaultMaxSize is the --max-size default (also the value a bad one is
+// advised to use).
+const defaultMaxSize = "50MB"
+
 func parseSize(s string) (int64, error) {
 	t := strings.ToUpper(strings.TrimSpace(s))
 	mult := int64(1)
@@ -66,7 +70,7 @@ func runReport(ctx context.Context, offlineDir string, args []string) int {
 	from := fs.String("from", "", `window start, device-local ("2026-10-10 14:00", "14:00", ISO-8601, or "30m" = now minus)`)
 	to := fs.String("to", "", "window end (default: up to the newest record)")
 	pkg := fs.String("package", "", "keep only this app's lines (and system lines that name it), its crashes, processes and DropBox entries")
-	maxSize := fs.String("max-size", "50MB", "cap on uncompressed log data; the oldest records are dropped first (noted in manifest.json)")
+	maxSize := fs.String("max-size", defaultMaxSize, "cap on uncompressed log data; the oldest records are dropped first (noted in manifest.json)")
 	note := fs.String("note", "", "problem description / repro steps to include (@FILE reads a file)")
 	amStart := fs.String("am-start", "", "`PKG/ACTIVITY`: run \"am start -W -n\" and include its output (LAUNCHES THE APP; only when you ask for it)")
 	fs.Var(&extra, "redact-extra", "additional redaction regex (RE2; repeatable; group 1 if present, else the whole match)")
@@ -99,14 +103,14 @@ func runReport(ctx context.Context, offlineDir string, args []string) int {
 	}
 	var err error
 	if a.MaxBytes, err = parseSize(*maxSize); err != nil {
-		fmt.Fprintln(os.Stderr, mcpserver.CLIError("bad_param", "android-log-mcp report --max-size 50MB", "param", "--max-size", "value", *maxSize, "msg", err.Error()))
+		fmt.Fprintln(os.Stderr, mcpserver.CLIError("bad_param", "android-log-mcp report --max-size "+defaultMaxSize, "param", "--max-size", "value", *maxSize, "msg", err.Error()))
 		return 2
 	}
 	a.Note = *note
 	if strings.HasPrefix(a.Note, "@") {
 		b, err := os.ReadFile(a.Note[1:])
 		if err != nil {
-			fmt.Fprintln(os.Stderr, mcpserver.CLIError("bad_param", "android-log-mcp report --note TEXT", "param", "--note", "msg", err.Error()))
+			fmt.Fprintln(os.Stderr, mcpserver.CLIError("bad_param", "android-log-mcp report", "param", "--note", "value", *note, "msg", err.Error()))
 			return 2
 		}
 		a.Note = string(b)

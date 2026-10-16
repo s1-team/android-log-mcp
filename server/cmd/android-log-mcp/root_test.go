@@ -58,9 +58,17 @@ func TestRootCommand(t *testing.T) {
 		t.Fatalf("root --json: %d %q", code, out)
 	}
 	// set-root needs exactly one of --keep-old / --delete-old (no prompts)
-	for _, a := range [][]string{{"set-root", t.TempDir()}, {"set-root", t.TempDir(), "--keep-old", "--delete-old"}, {"set-root", "--keep-old"}} {
-		if _, errOut, code := cli(t, nil, a...); code != 2 || !strings.HasPrefix(errOut, "error code=usage ") || !strings.Contains(errOut, "next: android-log-mcp set-root DIR") {
-			t.Fatalf("%v: exit %d\n%s", a, code, errOut)
+	d1, d2 := t.TempDir(), t.TempDir()
+	for _, c := range []struct {
+		args []string
+		next string
+	}{
+		{[]string{"set-root", d1}, "next: android-log-mcp set-root " + shellQuote(d1) + " --keep-old | "},
+		{[]string{"set-root", d2, "--keep-old", "--delete-old"}, "next: android-log-mcp set-root " + shellQuote(d2) + " --keep-old | "},
+		{[]string{"set-root", "--keep-old"}, "next: android-log-mcp root"},
+	} {
+		if _, errOut, code := cli(t, nil, c.args...); code != 2 || !strings.HasPrefix(errOut, "error code=usage ") || !strings.Contains(errOut, c.next) {
+			t.Fatalf("%v: exit %d\n%s", c.args, code, errOut)
 		}
 	}
 }
