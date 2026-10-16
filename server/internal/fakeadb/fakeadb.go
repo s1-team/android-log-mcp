@@ -287,7 +287,7 @@ func appendLine(p, s string) {
 // Main runs the fake adb with args (os.Args[1:]); returns the exit code.
 func Main(args []string) int {
 	e := Env{Dir: stateDir()}
-	appendLine(filepath.Join(e.Dir, "pids"), strconv.Itoa(os.Getpid()))
+	appendLine(filepath.Join(e.Dir, "pids"), pidLine(os.Getpid()))
 	if strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe") == helperName {
 		return helperMain(e)
 	}
@@ -570,8 +570,9 @@ func (e Env) Running() []int {
 	b, _ := os.ReadFile(filepath.Join(e.Dir, "pids"))
 	var out []int
 	for _, l := range strings.Fields(string(b)) {
-		if pid, _ := strconv.Atoi(l); pid > 0 && pid != os.Getpid() && Alive(pid) {
-			out = append(out, pid)
+		pid, id, _ := strings.Cut(l, ":")
+		if n, _ := strconv.Atoi(pid); n > 0 && n != os.Getpid() && Alive(n) && sameProcess(n, id) {
+			out = append(out, n)
 		}
 	}
 	return out
@@ -593,6 +594,13 @@ func (e Env) RunningSettled(max time.Duration) []int {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
+}
+
+// CallsTail is the last n lines of the invocation log, for failure messages.
+func (e Env) CallsTail(n int) string {
+	b, _ := os.ReadFile(filepath.Join(e.Dir, "calls.log"))
+	l := strings.Split(strings.TrimSpace(string(b)), "\n")
+	return strings.Join(l[max(0, len(l)-n):], "\n")
 }
 
 // Hanging reports whether a hang grandchild was started.
