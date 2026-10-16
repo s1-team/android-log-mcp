@@ -437,10 +437,10 @@ func TestReplayProcesses(t *testing.T) {
 	e := replayWithSnapshots(t)
 	out := e.ok("logcat_status", `{"package":"com.example.logtest"}`,
 		"running=2 device_connected=0 running_as_of=last_seen",
-		"proc pid=8076 name=com.example.logtest:remote state=running since=2026-10-10T03:07:42.339+08:00",
-		"proc pid=7815 name=com.example.logtest state=running since=2026-10-10T03:03:44.038+08:00",
-		"proc pid=6713 name=com.example.logtest state=ended start=2026-10-10T02:56:33.079+08:00 end=2026-10-10T02:57:57.754+08:00 reason=force-stopped scope=this_boot",
-		"proc pid=7182 name=com.example.logtest state=ended start=2026-10-10T02:59:15.577+08:00 end=2026-10-10T03:01:33.905+08:00 reason=died crash=cr2")
+		"proc pid=8076 name=com.example.logtest:remote state=running since=2026-10-10T03:07:42",
+		"proc pid=7815 name=com.example.logtest state=running since=2026-10-10T03:03:44",
+		"proc pid=6713 name=com.example.logtest state=ended start=2026-10-10T02:56:33 end=2026-10-10T02:57:57 reason=force-stopped",
+		"proc pid=7182 name=com.example.logtest state=ended start=2026-10-10T02:59:15 end=2026-10-10T03:01:33 reason=died crash=cr2")
 	dump(t, out)
 	// 7765 = debuggerd's short-lived fork of the crashing 7736 (same name, no am_proc_start)
 	// pid N (not a bare number: the store path names a random temp dir)
@@ -456,8 +456,8 @@ func TestReplayProcessesReboot(t *testing.T) {
 	e.newSession(fxBoot2) // reboot (boot bf71fe22)
 	e.file("session2-raw.log")
 	out := e.ok("logcat_status", `{"package":"com.example.logtest"}`, "installed=1 uid=10146",
-		"running=0", "proc pid=8076 name=com.example.logtest:remote state=ended start=2026-10-10T03:07:42.339+08:00 end=2026-10-10T03:10:33.487+08:00 reason=device_rebooted crash=cr5 scope=before_reboot boot=07a6d2d3",
-		"proc pid=7815 name=com.example.logtest state=ended start=2026-10-10T03:03:44.038+08:00 end=2026-10-10T03:10:33.487+08:00 reason=device_rebooted anr=anr3 scope=before_reboot")
+		"running=0", "proc pid=8076 name=com.example.logtest:remote state=ended start=2026-10-10T03:07:42 end=2026-10-10T03:10:33 reason=device_rebooted crash=cr5 scope=before_reboot boot=07a6d2d3",
+		"proc pid=7815 name=com.example.logtest state=ended start=2026-10-10T03:03:44 end=2026-10-10T03:10:33 reason=device_rebooted anr=anr3 scope=before_reboot")
 	dump(t, out)
 	notContains(t, out, "<pre-initialized>", "pid reused", "crash_dump64", "state=running")
 }
@@ -469,8 +469,8 @@ func TestReplayProcessesNoReboot(t *testing.T) {
 	e.file("session-raw.log")
 	e.pipe.SeedPS(psRows(" 7815 10146 com.example.logtest", " 8076 10146 com.example.logtest:remote"), sec(1791573033))
 	out := e.ok("logcat_status", `{"package":"com.example.logtest"}`,
-		"proc pid=8076 name=com.example.logtest:remote state=running since=2026-10-10T03:07:42.339+08:00", "proc pid=7815 name=com.example.logtest state=running since=2026-10-10T03:03:44.038+08:00",
-		"proc pid=8029 name=com.example.logtest:remote state=ended start=2026-10-10T03:07:04.999+08:00 end=2026-10-10T03:07:40.234+08:00 reason=died crash=cr4")
+		"proc pid=8076 name=com.example.logtest:remote state=running since=2026-10-10T03:07:42", "proc pid=7815 name=com.example.logtest state=running since=2026-10-10T03:03:44",
+		"proc pid=8029 name=com.example.logtest:remote state=ended start=2026-10-10T03:07:04 end=2026-10-10T03:07:40 reason=died crash=cr4")
 	notContains(t, out, "pid reused", "<pre-initialized>")
 }
 

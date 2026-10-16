@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -103,12 +103,16 @@ func (t *Tools) noDeviceHint() string {
 	}
 	msg := "No device connected. Connect a device with USB debugging enabled or start an emulator; logcat_status shows the state."
 	var prev []string
+	first := ""
 	for _, d := range t.M.Devices() {
+		if first == "" {
+			first = d.Serial
+		}
 		m := d.Store.Meta()
 		prev = append(prev, fmt.Sprintf("%s (last seen at host time %s)", d.Serial, hostTime(time.Unix(0, m.LastSeenHostNs))))
 	}
 	if len(prev) > 0 {
-		msg += " Previously recorded devices: " + strings.Join(prev, ", ") + " — pass device=\"<serial>\" to query stored logs."
+		msg += " Previously recorded devices: " + strings.Join(prev, ", ") + " — pass device=" + strconv.Quote(first) + " to query stored logs."
 	}
 	return msg
 }
@@ -232,7 +236,7 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 		}
 		devs = []*device.Device{d}
 	}
-	head = append(head, StatusLine{Text: hdr("store", "path", t.M.Base, "data", filepath.Base(store.DataDir(t.M.Base))+"/<device-id>"), Label: "store", Static: true})
+	head = append(head, StatusLine{Text: hdr("store", "path", t.M.Base), Label: "store", Static: true})
 	if t.M.NoADB {
 		head = append(head, StatusLine{Text: hdr("mode", "offline", 1, "read_only", 1)})
 	}
@@ -292,7 +296,7 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 			wk = append(wk, "recording_since", isoSec(time.Unix(0, m.RecordingSince).Local()))
 		}
 		if stats.OldestNs != 0 {
-			wk = append(wk, "oldest", isoNs(stats.OldestNs, loc), "newest", isoNs(stats.NewestNs, loc))
+			wk = append(wk, "oldest", isoLocalSec(stats.OldestNs, loc), "newest", isoLocalSec(stats.NewestNs, loc))
 		}
 		if len(wk) > 0 {
 			fmt.Fprintf(&body, "  %s\n", hdr("window", wk...))
@@ -562,7 +566,7 @@ func (t *Tools) packageStatus(d *device.Device, pkg string, verbose bool) string
 	}
 	kv = append(kv, "running", len(alive))
 	if len(alive) == 0 && len(dead) > 0 {
-		kv = append(kv, "last_pid", dead[0].PID, "ended", isoNs(dead[0].EndNs, loc))
+		kv = append(kv, "last_pid", dead[0].PID, "ended", isoLocalSec(dead[0].EndNs, loc))
 	}
 	if !connected && len(alive) > 0 {
 		kv = append(kv, "device_connected", 0, "running_as_of", "last_seen")
@@ -609,9 +613,9 @@ func (t *Tools) packageStatus(d *device.Device, pkg string, verbose bool) string
 		k := []any{"pid", p.PID, "name", procLabelName(p.Name), "state", "running"}
 		switch {
 		case p.StartNs > 0:
-			k = append(k, "since", isoNs(p.StartNs, loc))
+			k = append(k, "since", isoLocalSec(p.StartNs, loc))
 		case p.SeenNs > 0:
-			k = append(k, "since_at_least", isoNs(p.SeenNs, loc))
+			k = append(k, "since_at_least", isoLocalSec(p.SeenNs, loc))
 		default:
 			k = append(k, "since", "before_recording")
 		}
@@ -621,20 +625,23 @@ func (t *Tools) packageStatus(d *device.Device, pkg string, verbose bool) string
 		k := []any{"pid", p.PID, "name", procLabelName(p.Name), "state", "ended"}
 		switch {
 		case p.StartNs > 0:
-			k = append(k, "start", isoNs(p.StartNs, loc))
+			k = append(k, "start", isoLocalSec(p.StartNs, loc))
 		case p.SeenNs > 0:
-			k = append(k, "start_at_most", isoNs(p.SeenNs, loc))
+			k = append(k, "start_at_most", isoLocalSec(p.SeenNs, loc))
 		default:
 			k = append(k, "start", "before_recording")
 		}
 		if p.EndNs > 0 {
-			k = append(k, "end", isoNs(p.EndNs, loc))
+			k = append(k, "end", isoLocalSec(p.EndNs, loc))
 		} else {
 			k = append(k, "end", "?")
 		}
 		k = append(k, "reason", noSpace(orStr(p.EndReason, "ended")))
 		k = append(k, crashOf(p)...)
-		return append(k, "scope", scope)
+		if scope != "this_boot" { // the default scope is not repeated on every line
+			k = append(k, "scope", scope)
+		}
+		return k
 	}
 	capN := 6
 	if verbose {
@@ -726,3 +733,9 @@ func procLabelName(n string) string {
 
 // statusClock: device now, host now, clock offset, auto_time and the
 // clock jumps stored (issue #48 D4).
+
+// isoLocalSec is a device-local time to the second without offset (the device
+// line carries tz and tz_offset): the compact form of per-process times.
+func isoLocalSec(ns int64, loc *time.Location) string {
+	return time.Unix(0, ns).In(loc).Format("2006-01-02T15:04:05")
+}

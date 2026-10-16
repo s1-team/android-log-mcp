@@ -57,59 +57,59 @@ func toolDefs() []toolDef {
 			name:  "logcat_status",
 			title: "Logcat recorder status",
 			desc: "Starts recording the device, or extends it with record_for (max 24h; \"0\" stops). " +
-				"Then reports adb/device/recording state and a `cursor` marking the newest stored line (pass it as `after` to logcat_search to see only what happens next, e.g. while the user reproduces a bug); call it first if unsure which device is connected.\n" +
-				"Recording starts on use: the first log tool call for a device backfills what is still in its log buffer, waiting up to 10 s. If the response says backfill in progress, call logcat_status again before using a cursor (no cursor is returned until the backfill has caught up).\n" +
-				"Each device stops recording after a while without log tool calls (shown in the response); record_for keeps it recording until a deadline regardless of calls.\n" +
+				"Then reports adb/device/recording state and a `cursor` for the newest stored line (pass it as `after` to logcat_search to see only what happens next); call it first if unsure which device is connected.\n" +
+				"Recording starts on use: the first log tool call for a device backfills its log buffer (up to 10 s). If the response says backfill in progress, call logcat_status again before using a cursor (none is returned until it has caught up).\n" +
+				"A device stops recording after a while without log tool calls; record_for keeps it recording until a deadline.\n" +
 				"With several connected devices and no `device`, nothing is started: pass device=<id>.\n" +
-				"With `package`, also reports install state and live/recently-dead processes (pid, process name, start/end time), including multi-process names like com.foo:remote.\n" +
-				"Response format (fmt=1): line 1 is `ok` or `empty` then key=value fields (view=status, devices, device=<target>, caught_up=0|1, cursor=<cursor>|none, dev_now, clock, offset_s, fmt). Then one line per fact: `adb`, `store`, `device id=... state=... model=... tz=...` followed by indented `recording state=...`, `window`, `stored`, `memory`, `clock_jumps`, and `note code=...` / `hint code=... next: ...` lines. With `package`: `package id=... installed=1|0|unknown uid=N running=N` and one `proc pid=N name=... state=running|ended since=<ISO> | start= end= reason= [crash=cr3|anr=anr1] scope=this_boot|before_reboot` per process (ended ones capped at 6, then `truncated procs_ended=N exact=1 next: verbose=true`). Times are device time in ISO-8601; verbose=true adds host_now, tz and the rarely-changing lines.",
+				"With `package`, also reports install state and live/recently-dead processes (pid, name, start/end), including com.foo:remote.\n" +
+				"Response (fmt=1): `ok`/`empty` + key=value header, then `key k=v` fact lines (adb, store, device, recording, window, ...) and `note`/`hint ... next:`. With `package`: `package` and `proc pid= name= state=` lines (ended capped at 6). See docs/reference.md.",
 			schema: `{"type":"object","properties":{
 "device":{"type":"string","description":"adb serial or device ID. Omit when only one device is connected."},
-"record_for":{"type":"string","description":"Keep recording this device for this long, independent of calls: a duration with a unit like 30m, 2h or 1h30m (max 24h; the deadline never shortens). \"0\" stops recording the device now and removes the pin."},
+"record_for":{"type":"string","description":"Keep recording this long, independent of calls: a duration like 30m, 2h, 1h30m (max 24h; never shortens). \"0\" stops recording now and removes the pin."},
 "package":{"type":"string","description":"Exact application id, e.g. com.example.app. Optional."},
-"verbose":{"type":"boolean","default":false,"description":"Always show the lines that rarely change (root, linger, lifetime, service log, adb, store). By default they are shown on the first call of a session and again when they change."}
+"verbose":{"type":"boolean","default":false,"description":"Always show the rarely changing lines (root, linger, lifetime, service log, adb, store); by default only on the first call of a session and when they change."}
 },"additionalProperties":false}`,
 		},
 		{
 			name:  "logcat_search",
 			title: "Search recorded logcat",
 			desc: "Search recorded logcat lines (buffers main, system, crash, events) of one device. Returns matching lines oldest to newest in a compact format; by default the NEWEST `limit` matches.\n" +
-				"Filtering = `filter` (Android Studio Logcat query syntax) AND the structured params (package, tags, min_level, from, to). All parts are ANDed.\n" +
-				"Filter syntax (Android Studio): key:value contains (case-insensitive), key=:value exact, key~:regex (RE2, case-sensitive), -key:value negates. Keys: tag message package process line level age is, plus extensions pid tid buffer (main|system|crash|events). level:error = error and above (also accepts V D I W E F). age:5m. is:crash, is:stacktrace. Bare words search the whole line.\n" +
-				"Combining: `&` AND, `|` OR (put spaces around them), parentheses group. Space-separated terms are ANDed, EXCEPT repeated positive terms on the same key, which are ORed: `tag:A tag:B` = A OR B; use `message:foo & message:bar` for AND. Quote values with spaces or colons: message:\"Start proc\".\n" +
-				"Examples:\n  tag=:OkHttp tag=:MyRepo level:debug\n  is:crash | tag~:\"^am_(anr|crash)$\"\n  message~:\"Displayed com\\.foo\" -tag:chatty\n" +
-				"The `package` param is an EXACT application id covering all its processes (filter's package: is a substring match).\n" +
-				"Response (fmt=1): line 1 is `ok`, `empty` or `error` plus key=value fields (matched, exact, shown, range, dev_now, clock, fmt); rows are `HH:MM:SS.mmm L pid/tid process tag: message` (`| ` continues a message, `^ rep=N` repeats it). Every cut is a `truncated ... next: <params>` line and `hint`/`error` lines end in `next:` too; next is directly executable. verbose=true adds host_now, tz and a column legend. Full format: docs/reference.md.\n" +
+				"`filter` (Android Studio Logcat query) and the structured params (package, tags, min_level, from, to) are ANDed.\n" +
+				"Filter syntax: key:value contains (case-insensitive), key=:value exact, key~:regex (RE2), -key:value negates. Keys: tag message package process line level age is, plus pid tid buffer. level:error = error and above. age:5m. is:crash, is:stacktrace. Bare words search the whole line.\n" +
+				"`&` AND, `|` OR (spaces around them), parentheses group. Space-separated terms are ANDed, except repeated positive terms on one key are ORed (`tag:A tag:B` = A OR B). Quote values with spaces or colons: message:\"Start proc\".\n" +
+				"Examples:\n  tag=:OkHttp tag=:MyRepo level:debug\n  is:crash | tag~:\"^am_(anr|crash)$\"\n" +
+				"`package` is an EXACT application id covering all its processes (the filter's package: is a substring match).\n" +
+				"Response (fmt=1): `ok`/`empty`/`error` + key=value header (matched, exact, shown, range, ...); rows `HH:MM:SS.mmm L pid/tid process tag: message` (`| ` continues, `^ rep=N` repeats). Every cut is `truncated ... next: <params>`; `hint`/`error` lines end in `next:`, directly executable. See docs/reference.md.\n" +
 				"Paging: `newer: after=...` and (when cut) `next: before=...`. To wait for new lines, pass `after` plus `wait_ms` (max 25000).\n" +
 				"The first call for a device starts recording and backfills its buffer (waits up to 10 s); `note code=backfill` means results may be incomplete: call again.\n" +
 				"Java stacks keep their first 3 frames; stack=\"full\" shows every frame.\n" +
-				"Use view=\"summary\" first for broad or unknown ranges (counts by level/tag/process, top repeated messages).\n" +
-				"Clocks: times in params and lines are device time. After a device clock jump a `clock_jumps=N splitting=S ... next: after=...` line appears when it splits the matches; the default (no from/to) shows the newest lines by arrival.",
+				"Use view=\"summary\" first for broad or unknown ranges.\n" +
+				"Times are device time. After a device clock jump, a `clock_jumps=N splitting=S ... next: after=...` line appears when it splits the matches; with no from/to the newest lines by arrival are shown.",
 			schema: `{"type":"object","properties":{
 "device":{"type":"string","description":"adb serial. Omit when only one device has logs."},
 "filter":{"type":"string","description":"Android Studio Logcat query, e.g. ` + "`tag=:OkHttp level:warn -message:heartbeat`" + `. Optional."},
-"package":{"type":"string","description":"Exact application id; matches lines from ALL its processes (com.foo, com.foo:remote), including processes that have since died."},
+"package":{"type":"string","description":"Exact application id; matches ALL its processes (com.foo, com.foo:remote), including dead ones."},
 "tags":{"type":"array","items":{"type":"string"},"maxItems":20,"description":"Exact tag names, ORed together, e.g. [\"OkHttp\",\"MyRepo\"]."},
 "min_level":{"type":"string","enum":["verbose","debug","info","warn","error","fatal"],"description":"Minimum priority."},
 "from":{"type":"string","description":"Start, inclusive, device time: ` + "`2026-10-10 01:20:00`" + `, ` + "`01:20:00`" + ` (device today), ISO-8601 with offset, or relative ` + "`30m`, `2h`" + ` (device now minus that; the window ends at device now + 2 s). Host time is not supported."},
 "to":{"type":"string","description":"End, exclusive, in device time. Same formats as ` + "`from`" + `. Default: no end (relative from: device now + 2 s)."},
 "view":{"type":"string","enum":["lines","summary"],"default":"lines"},
-"limit":{"type":"integer","minimum":1,"maximum":1000,"default":50,"description":"Max matching lines to return (output is also capped at ~30k chars). For an overview of a range, view=\"summary\" is about 2k chars."},
-"stack":{"type":"string","enum":["short","full"],"default":"short","description":"How Java stacks inside a line are shown: short = each exception and Caused by with its first 3 frames, a repeated stack shown once, at most 2,000 chars per line; full = every frame (up to 8,000 chars per line)."},
-"context":{"type":"integer","minimum":0,"maximum":20,"default":0,"description":"Also show N lines before/after each match from the same process (like grep -C)."},
+"limit":{"type":"integer","minimum":1,"maximum":1000,"default":50,"description":"Max matching lines (output is also capped at ~30k chars); view=\"summary\" gives an overview in ~2k chars."},
+"stack":{"type":"string","enum":["short","full"],"default":"short","description":"Java stacks in lines: short = first 3 frames per exception/Caused by, a repeated stack once (max 2,000 chars per line); full = every frame (max 8,000)."},
+"context":{"type":"integer","minimum":0,"maximum":20,"default":0,"description":"Also show N lines before/after each match from the same process (grep -C)."},
 "before":{"type":"string","description":"Cursor: return matches older than this (from a previous response)."},
 "after":{"type":"string","description":"Cursor: return matches newer than this (from a previous response or logcat_status)."},
 "wait_ms":{"type":"integer","minimum":0,"maximum":25000,"default":0,"description":"With ` + "`after`" + `: block up to this long until at least one new match arrives."},
-"verbose":{"type":"boolean","default":false,"description":"Also print host_now, tz, the column legend, every clock jump in detail and the shared-uid package list."}
+"verbose":{"type":"boolean","default":false,"description":"Also print host_now, tz, the column legend, all clock jumps, shared-uid packages."}
 },"additionalProperties":false}`,
 		},
 		{
 			name:  "logcat_crashes",
 			title: "Crashes and ANRs",
 			desc: "List Java crashes, native crashes (tombstones) and ANRs, newest first, already parsed and grouped — use this instead of searching for \"FATAL EXCEPTION\" yourself.\n" +
-				"Sources: crash/system/events log buffers (AndroidRuntime FATAL EXCEPTION, libc \"Fatal signal\" + DEBUG tombstone lines attributed to the crashed pid, am_anr + \"ANR in\" block) plus the device DropBox (data_app_crash / data_app_native_crash / data_app_anr), which also covers crashes from before recording started and ANR thread dumps.\n" +
-				"Pass `id` (e.g. \"cr3\") for full detail: complete stack / Caused-by chain, the crashed process's last `before_lines` (default 20, max 100) log lines before the crash, and for ANRs the reason plus main-thread trace (or why traces are unavailable). If only one crash matches, detail is returned automatically.\n" +
-				"Response format (fmt=1): line 1 is `ok`, `empty` or `error` then key=value fields (view=list|detail, device, groups, events, shown, order=newest_first|arrival, history_from, dropbox=<only sources that are not ok>, dev_now, clock, offset_s, fmt). List entries start with `crash id=cr3 time=<ISO> kind=java pid=N process=P`; `same_signature same_sig=N ids=... next: id=...` names the other events of a group. Every cut is `truncated ... next: param=value`. The lines before the crash have no process column (the header names the process): `time level pid/tid tag: message`, in arrival order. Errors: `error code=... next: ...`. verbose=true adds host_now, tz, the ANR CPU block and the shared-uid package list.",
+				"Sources: crash/system/events buffers (FATAL EXCEPTION, native tombstones attributed to the crashed pid, am_anr + \"ANR in\") plus the device DropBox, which also covers crashes from before recording started and ANR thread dumps.\n" +
+				"Pass `id` (e.g. \"cr3\") for full detail: complete stack / Caused-by chain, `before_lines` (default 20, max 100) log lines of the crashed process before the crash, and for ANRs the reason plus main-thread trace. If only one crash matches, detail is returned automatically.\n" +
+				"Response (fmt=1): `ok`/`empty`/`error` + key=value header; `crash id=cr3 time= kind= pid= process=` entries, `same_signature ... next: id=...`; cuts are `truncated ... next:`. See docs/reference.md.",
 			schema: `{"type":"object","properties":{
 "device":{"type":"string","description":"adb serial. Omit when only one device has logs."},
 "package":{"type":"string","description":"Exact application id. Omit for all apps."},
@@ -118,17 +118,17 @@ func toolDefs() []toolDef {
 "to":{"type":"string","description":"Device time; same formats as logcat_search.to."},
 "id":{"type":"string","description":"Crash id from a previous list (e.g. cr3, anr1) to get full detail."},
 "limit":{"type":"integer","minimum":1,"maximum":50,"default":10},
-"before_lines":{"type":"integer","minimum":1,"maximum":100,"default":20,"description":"With id: how many log lines of the crashed process before the crash to show."},
-"verbose":{"type":"boolean","default":false,"description":"Also print host_now, tz, the ANR CPU block and the shared-uid package list."}
+"before_lines":{"type":"integer","minimum":1,"maximum":100,"default":20,"description":"With id: log lines before the crash."},
+"verbose":{"type":"boolean","default":false,"description":"Also print host_now, tz, the ANR CPU block, shared-uid packages."}
 },"additionalProperties":false}`,
 		},
 		{
 			name:  "logcat_app_launches",
 			title: "App launch timings",
 			desc: "Report recent app launches with computed timings — use this for \"how long does cold start take / time to first onResume\".\n" +
-				"For each launch: cold/warm/hot, the launched activity, and a timeline relative to the launch request: process start (am_proc_start), Activity onCreate, onStart, onResume (from wm_on_*_called events in the app process), Displayed (time to initial display, TTID) and Fully drawn (TTFD, only if the app calls reportFullyDrawn()).\n" +
-				"This tool only reads logs; launch the app yourself first (e.g. `adb shell am force-stop <pkg>` then `adb shell am start -W -n <pkg>/<activity>`), or ask the user to tap the icon, then call this.\n" +
-				"Response format (fmt=1): line 1 is `ok` or `empty` then key=value fields (view=launches, device, launches, shown, order=newest_first, since, note=no_callback_durations when this Android version logs lifecycle callbacks without durations, dev_now, clock, offset_s, fmt). Each launch is `#N launch time=<ISO> kind=COLD|WARM|HOT component=... pid=N ttid_ms=N|ttid=none ttfd_ms=N|ttfd=none` followed by `step name=... at_ms=N [took_ms=N]` lines: at_ms is when the line was logged, relative to the launch request; onX lines are logged when the callback returned; TTID/TTFD are the system's own measurement (request to first frame / reportFullyDrawn) and can be logged much later than they happened. `at_ms=? unreliable=clock_jump device_time=<ISO>` marks a step logged after a device clock jump: its duration is not shown (the system-measured ttid_ms/ttfd_ms/took_ms stay valid). `step ... logged=0` = not logged. Cuts are `truncated older=N exact=1 next: limit=N`; an empty result has `hint code=no_launch_requests next: ...`. verbose=true adds host_now and tz.",
+				"Per launch: cold/warm/hot, activity, and a timeline relative to the launch request: process start, onCreate, onStart, onResume, Displayed (TTID) and Fully drawn (TTFD, only if the app calls reportFullyDrawn()).\n" +
+				"Only reads logs: launch the app yourself first (e.g. `adb shell am force-stop <pkg>` then `adb shell am start -W -n <pkg>/<activity>`) or ask the user to tap the icon, then call this.\n" +
+				"Response (fmt=1): `ok`/`empty` + header; `#N launch time= kind= component= pid= ttid_ms= ttfd_ms=` then `step name= at_ms= [took_ms=]` lines (at_ms: relative to the request); `unreliable=clock_jump` marks steps logged after a clock jump. See docs/reference.md.",
 			schema: `{"type":"object","properties":{
 "device":{"type":"string","description":"adb serial. Omit when only one device has logs."},
 "package":{"type":"string","description":"Exact application id. Omit for all apps."},
