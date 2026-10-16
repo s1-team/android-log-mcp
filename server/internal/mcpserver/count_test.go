@@ -103,10 +103,14 @@ func TestSearchPartialCount(t *testing.T) {
 	// serial: sets countBudget (package global)
 	withCountBudget(t, time.Nanosecond)
 	tl, _ := bigFixture(t, 30000)
+	// countable filter (tag=): exact via class counts even with a tiny budget (issue #37)
 	out, e := call(t, tl, "logcat_search", `{"filter":"tag=:Ten","limit":20}`)
-	must(t, out, e, " exact=0 counted_from=", " shown=20 ", "\ntruncated older=", " exact=0 ", "\nsummary sampled=")
+	must(t, out, e, "matched=3000 exact=1 shown=20 ")
+	// non-countable filter (message:): still a lower bound when the budget is tiny
+	out, e = call(t, tl, "logcat_search", `{"filter":"message:line tag=:Ten","limit":20}`)
+	must(t, out, e, " exact=0 counted_from=", " shown=20 ", "\ntruncated older=", " exact=0 ")
 	total, exact, key, at := parseCount(t, out)
-	if exact || key != "counted_from" || at == "" || total == "3000" {
+	if exact || key != "counted_from" || at == "" {
 		t.Fatalf("count line: %s %v %s %s\n%s", total, exact, key, at, out)
 	}
 	// a budget long enough for the whole range: exact, as before

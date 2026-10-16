@@ -173,7 +173,7 @@ func (t *Tools) buildQuery(d *device.Device, a commonArgs) (*query, error) {
 		pkg := strings.TrimSpace(a.pkg)
 		q.pkg = pkg
 		su := newSharedUID(pkg, d.Packages(), d.Procs)
-		kids = append(kids, &filter.Pred{Desc: "package == " + pkg, Fn: func(r *model.Record, _ *filter.Ctx) bool { return pkgMatches(r, pkg) || su.line(r.UID, r.Process) }})
+		kids = append(kids, &filter.Pred{Desc: "package == " + pkg, ClassOnly: true, Fn: func(r *model.Record, _ *filter.Ctx) bool { return pkgMatches(r, pkg) || su.line(r.UID, r.Process) }})
 		if su != nil {
 			q.notes = append(q.notes, su.noteLine(a.verbose))
 		}
@@ -190,7 +190,7 @@ func (t *Tools) buildQuery(d *device.Device, a commonArgs) (*query, error) {
 			ds = append(ds, "tag == "+strconv.Quote(tg))
 		}
 		desc := strings.Join(ds, " OR ")
-		kids = append(kids, &filter.Pred{Desc: desc, Fn: func(r *model.Record, _ *filter.Ctx) bool { return set[r.Tag] }})
+		kids = append(kids, &filter.Pred{Desc: desc, ClassOnly: true, Fn: func(r *model.Record, _ *filter.Ctx) bool { return set[r.Tag] }})
 		q.parts = append(q.parts, desc)
 	}
 	if strings.TrimSpace(a.filter) != "" {
@@ -363,10 +363,16 @@ func (q *query) scan(limit int, desc bool) *scanResult {
 	if len(res.jumps) > 0 {
 		byRange = false // per-side counts need every match
 	}
+	// Issue #37: countable filters (tag/package/process/level/uid only) get
+	// an exact total from per-block class counts, with no countBudget.
+	countable := !byRange && filter.Countable(q.pred)
+	var classIDs map[uint32]bool
+	if countable {
+		st.EnsureIndex()
+		classIDs = st.MatchingClassIDs(func(r *model.Record) bool { return q.pred.Match(r, q.ectx) })
+	}
 	n := 0
-	// only records in the time window, skipping history blocks wholly
-	// outside it; never an order-based early stop (issues #21, #48)
-	st.ScanTime(q.afterSeq, res.upper, desc, q.fromNs, q.toNs, func(r *model.Record) bool {
+	visit := func(r *model.Record) bool {
 		n++
 		res.scannedTo = r.Seq
 		if n == 1 {
@@ -378,6 +384,9 @@ func (q *query) scan(limit int, desc bool) *scanResult {
 			if !fullAt.IsZero() && time.Since(fullAt) > countBudget {
 				if byRange { // exact count comes from the record range; only the digest sample ends here
 					res.byRange = true
+					return false
+				}
+				if countable { // exact total comes from the class index
 					return false
 				}
 				res.countDone = false
@@ -413,15 +422,44 @@ func (q *query) scan(limit int, desc bool) *scanResult {
 				fullAt = time.Now()
 			}
 		}
-		if byRange && len(res.matches) == limit && res.tagN >= headSample {
-			res.byRange = true
-			return false // the total comes from the record range
+		if (byRange || countable) && len(res.matches) == limit && res.tagN >= headSample {
+			if byRange {
+				res.byRange = true
+			}
+			return false // the total comes from Count / CountMatch
 		}
 		return true
-	})
+	}
+	// only records in the time window, skipping history blocks wholly
+	// outside it (and, when countable, blocks with no matching class);
+	// never an order-based early stop (issues #21, #48, #37)
+	if countable {
+		st.ScanTimeClass(q.afterSeq, res.upper, desc, q.fromNs, q.toNs, classIDs, visit)
+	} else {
+		st.ScanTime(q.afterSeq, res.upper, desc, q.fromNs, q.toNs, visit)
+	}
 	if res.byRange {
 		res.total = int(st.Count(q.afterSeq, res.upper))
 		res.countDone = true
+	} else if countable && !res.incomplete {
+		match := func(r *model.Record) bool { return q.pred.Match(r, q.ectx) }
+		res.total = int(st.CountMatch(q.afterSeq, res.upper, q.fromNs, q.toNs, classIDs, match))
+		res.countDone = true
+		// per-side counts across clock jumps: one CountMatch per side
+		if len(res.jumps) > 0 {
+			res.side = make([]int, len(res.jumps)+1)
+			lo := q.afterSeq
+			for i, j := range res.jumps {
+				res.side[i] = int(st.CountMatch(lo, j.Seq, q.fromNs, q.toNs, classIDs, match))
+				// CountMatch uses after < seq; seq == j.Seq belongs to the next side
+				if j.Seq == 0 {
+					lo = 0
+				} else {
+					lo = j.Seq - 1
+				}
+			}
+			res.side[len(res.jumps)] = int(st.CountMatch(lo, res.upper, q.fromNs, q.toNs, classIDs, match))
+		}
 	}
 	return res
 }
@@ -1097,16 +1135,31 @@ func (t *Tools) summary(q *query) string {
 	incomplete := false
 	n := 0
 	res := q.jumpsIn(q.beforeSeq)
-	q.d.Store.ScanTime(q.afterSeq, q.beforeSeq, true, q.fromNs, q.toNs, func(r *model.Record) bool {
+	st := q.d.Store
+	countable := filter.Countable(q.pred)
+	var classIDs map[uint32]bool
+	match := func(r *model.Record) bool { return q.pred.Match(r, q.ectx) }
+	if countable {
+		st.EnsureIndex()
+		classIDs = st.MatchingClassIDs(match)
+		// exact total / levels / tags / processes from class counts (issue #37)
+		total, levels, tags, procs = st.AggClasses(q.afterSeq, q.beforeSeq, q.fromNs, q.toNs, classIDs, match)
+	}
+	visit := func(r *model.Record) bool {
 		n++
 		if n&4095 == 0 && time.Since(start) > scanBudget {
 			incomplete = true
 			return false
 		}
-		if !q.inTime(r) || !q.pred.Match(r, q.ectx) {
+		if !q.inTime(r) || !match(r) {
 			return true
 		}
-		total++
+		if !countable {
+			total++
+			levels[r.Level.Rank()]++
+			tags[r.Tag]++
+			procs[procLabel(r)]++
+		}
 		res.addSide(r.Seq)
 		// stored order is not time order (clock changes): true min / max
 		if newest == 0 || r.TimeNs > newest {
@@ -1115,20 +1168,27 @@ func (t *Tools) summary(q *query) string {
 		if oldest == 0 || r.TimeNs < oldest {
 			oldest = r.TimeNs
 		}
-		levels[r.Level.Rank()]++
-		tags[r.Tag]++
-		procs[procLabel(r)]++
 		tmpl[template(r)]++
 		if r.Level.Rank() >= 5 && len(errs) < 5 {
 			errs = append(errs, r)
 		}
 		return true
-	})
+	}
+	// countable: still scan under budget for msgs / latest errors / time range
+	// ("newest part"); levels/tags/procs/total already exact from AggClasses
+	if countable {
+		st.ScanTimeClass(q.afterSeq, q.beforeSeq, true, q.fromNs, q.toNs, classIDs, visit)
+	} else {
+		st.ScanTime(q.afterSeq, q.beforeSeq, true, q.fromNs, q.toNs, visit)
+	}
 	var b strings.Builder
-	extra := []any{"matched", total, "exact", !incomplete}
+	// countable: total/levels/tags/procs are exact from the index even when
+	// the msgs/errors scan hit the budget (issue #37 decision 3a)
+	exact := !incomplete || countable
+	extra := []any{"matched", total, "exact", exact}
 	if total == 0 {
 		st := q.d.Store.Stats()
-		extra = []any{"matched", total, "scanned", n, "exact", !incomplete}
+		extra = []any{"matched", total, "scanned", n, "exact", exact}
 		if st.Records > 0 {
 			extra = append(extra, "range", isoNs(st.OldestNs, q.loc)+"/"+isoNs(st.NewestNs, q.loc))
 		}
@@ -1147,7 +1207,7 @@ func (t *Tools) summary(q *query) string {
 		b.WriteString(n + "\n")
 	}
 	t.rangeNotes(&b, q, nil)
-	res.countDone = !incomplete
+	res.countDone = exact
 	t.clockNotes(&b, q, res)
 	if total == 0 {
 		_, hints := t.zeroHints(q)

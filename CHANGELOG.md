@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+### Added
+
+- Exact filtered counts for tag / package / process / level / uid queries via per-block class counts in the history index ([#37](https://github.com/s1crab/android-log-mcp/issues/37)). Countable `logcat_search` queries report `exact=1` with no 100 ms count budget; blocks with zero matching classes are skipped; `view=summary` levels / tags / processes are exact over the whole range. Index built lazily at query time (ingest unchanged). Cap: >4096 classes in a block falls back to decode so the result stays exact.
+
 ## [0.8.0] - 2026-10-16
 
 Platform status: Windows and macOS are covered by CI only (unit tests with the fake adb); they were not tested with a real or emulator-attached adb for this release and are **unverified**. The emulator checks ran on API 29 and API 35 on the GitHub runners, and on API 29 locally (software emulation).
