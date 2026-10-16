@@ -75,7 +75,7 @@ func (t *Tools) target(name string) (id string, d *device.Device, err error) {
 		d, err := t.resolveDevice(name)
 		return "", d, err
 	}
-	t.M.Track(device.CatchUpWait) // part of the single 10 s wait (§5)
+	t.M.Track(t.M.CatchUpWait) // part of the single 10 s wait (§5)
 	online := t.M.OnlineIDs()
 	identifying := t.M.Identifying()
 	slow := func() error {
@@ -144,7 +144,7 @@ func (t *Tools) use(name string, start time.Time) (d *device.Device, done func()
 		return nil, done, false, errf("starting %s: %v", id, err)
 	}
 	done = t.M.Begin(id)
-	d, ok := t.M.WaitRecording(context.Background(), id, waitLeft(start))
+	d, ok := t.M.WaitRecording(context.Background(), id, t.waitLeft(start))
 	if d == nil {
 		done()
 		return nil, func() {}, false, errf("device %s is connected but could not be opened for recording; see logcat_status", id)
@@ -162,7 +162,7 @@ func (t *Tools) useAndWait(ctx context.Context, name string) (*device.Device, fu
 	}
 	p := device.StartingProgress()
 	if !starting {
-		p = d.WaitCaughtUp(ctx, waitLeft(start))
+		p = d.WaitCaughtUp(ctx, t.waitLeft(start))
 	}
 	if !p.Pending {
 		return d, done, "", nil
@@ -177,6 +177,6 @@ func (t *Tools) Target(name string) (string, *device.Device, error) { return t.t
 
 // waitLeft is what is left of the single catch-up wait (§5) of a call that
 // began at start (starting tracking and identifying devices count).
-func waitLeft(start time.Time) time.Duration {
-	return max(0, device.CatchUpWait-time.Since(start))
+func (t *Tools) waitLeft(start time.Time) time.Duration {
+	return max(0, t.M.CatchUpWait-time.Since(start))
 }

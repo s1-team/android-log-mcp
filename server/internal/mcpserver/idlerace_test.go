@@ -16,6 +16,7 @@ import (
 // read-only device: they see the new line or the backfill note, and
 // logcat_status returns no cursor before the catch-up.
 func TestCallDuringIdleStop(t *testing.T) {
+	// serial: sets device.ReleasePause (package global)
 	l := newLazy(t, 3, "FAKEA")
 	if out, isErr := l.call(t, "logcat_status", `{"device":"FAKEA"}`); isErr || !strings.Contains(out, "cursor (newest line") {
 		t.Fatalf("first status:\n%s", out)

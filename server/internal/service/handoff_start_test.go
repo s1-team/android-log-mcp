@@ -9,8 +9,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/s1crab/android-log-mcp/server/internal/device"
 )
 
 func TestFirstStatusAfterHandoffStartsDevice(t *testing.T) {
@@ -34,10 +32,11 @@ func TestFirstStatusAfterHandoffStartsDevice(t *testing.T) {
 	old.Stop("replaced")
 	<-old.Done()
 	e.SetIdentDelay("FAKEA", 3*time.Second)
-	prev := device.CatchUpWait
-	device.CatchUpWait = 300 * time.Millisecond
-	t.Cleanup(func() { device.CatchUpWait = prev })
-	s := startTest(t, ctrl, "0.4.1")
+	s, err := Start(Options{Control: ctrl, Version: "0.4.1", Drain: time.Second, CatchUpWait: 300 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Stop("test end") })
 	c2, err := Dial(context.Background(), ctrl, "0.4.1", "mcp")
 	if err != nil {
 		t.Fatal(err)

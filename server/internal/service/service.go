@@ -44,6 +44,9 @@ type Options struct {
 	// OnRootChange is called when set-root moves the data root (e.g. to
 	// move the crash log).
 	OnRootChange func(root string)
+	// CatchUpWait overrides the log-tool catch-up wait; 0 = the default
+	// (tests shorten it per service, #26).
+	CatchUpWait time.Duration
 }
 
 // Service is a running service.
@@ -252,6 +255,9 @@ func (s *Service) startManager(root string) {
 	m.Lazy = true
 	m.Linger = deviceLinger
 	m.PinnedUntil = s.pinUntil
+	if s.opt.CatchUpWait > 0 {
+		m.CatchUpWait = s.opt.CatchUpWait
+	}
 	m.Start(ctx)
 	t := &mcpserver.Tools{M: m, Pins: pinner{s}}
 	t.Service = func() []mcpserver.StatusLine { return s.Info().Lines() }

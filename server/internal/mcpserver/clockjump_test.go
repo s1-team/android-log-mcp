@@ -130,6 +130,7 @@ func expiryFx(t *testing.T) *jumpFx {
 }
 
 func TestClockJumpFullScanEquality(t *testing.T) {
+	t.Parallel()
 	fx := expiryFx(t)
 	n := fx.devNow
 	for _, w := range [][2]time.Time{
@@ -162,6 +163,7 @@ func TestClockJumpFullScanEquality(t *testing.T) {
 // relative windows end at device now + 2 s; lines from the future
 // timelines are excluded and counted in a note; to= or {} is unbounded
 func TestRelativeWindowUpperBound(t *testing.T) {
+	t.Parallel()
 	fx := expiryFx(t)
 	want := 200 + 1 // devNow-4m..-40s, and the line at devNow+1.5s (not +5s)
 	for _, args := range []string{`{"filter":"age:5m","limit":1000}`, `{"from":"5m","limit":1000}`} {
@@ -198,6 +200,7 @@ func TestRelativeWindowUpperBound(t *testing.T) {
 // every line is reached exactly once by paging with before= cursors,
 // across all jumps; the same with a device-time window covering all
 func TestMoreWalkExactlyOnce(t *testing.T) {
+	t.Parallel()
 	fx := expiryFx(t)
 	reMore := regexp.MustCompile(`more: before="([^"]+)"`)
 	for _, base := range []string{`"limit":37`, fmt.Sprintf(`"limit":37,"from":%q,"to":%q`, iso(time.Unix(0, 0)), iso(fx.devNow.Add(2*yearD)))} {
@@ -230,6 +233,7 @@ func TestMoreWalkExactlyOnce(t *testing.T) {
 }
 
 func TestHostPrefixRejected(t *testing.T) {
+	t.Parallel()
 	fx := expiryFx(t)
 	for _, c := range []struct{ args, want string }{
 		{`{"from":"host:5m"}`, "from: host time is not supported: from/to/age: use device time"},
@@ -253,6 +257,7 @@ func TestHostPrefixRejected(t *testing.T) {
 // a back jump just before the query (device now already post-jump): the
 // relative window returns the post-jump lines, not the old timeline
 func TestRelativeRightAfterBackJump(t *testing.T) {
+	t.Parallel()
 	devNow := time.Now().UTC().Add(-24 * time.Hour) // clock just set back one day
 	fx := newJumpFx(t, devNow, []seg{
 		{devNow.Add(24*time.Hour - 10*time.Minute), 100, time.Second}, // old timeline

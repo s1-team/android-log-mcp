@@ -21,8 +21,9 @@ import (
 // No timing heuristics: an empty buffer, or a -T resume whose T_end is not
 // newer than the last stored line, is caught up at once.
 
-// CatchUpWait is the longest a log-tool call waits for catch-up.
-var CatchUpWait = 10 * time.Second
+// DefaultCatchUpWait is the longest a log-tool call waits for catch-up
+// (Manager.CatchUpWait).
+const DefaultCatchUpWait = 10 * time.Second
 
 // TEndCmd measures T_end (the same buffers the recorder streams).
 const TEndCmd = "logcat -d -t 50 -b main,system,crash,events -v threadtime -v epoch -v uid -v usec -v printable"

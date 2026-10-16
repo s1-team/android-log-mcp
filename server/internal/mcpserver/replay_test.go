@@ -199,6 +199,7 @@ func crashes(e *replayEnv) []string {
 func fxNow() time.Time { return time.Unix(1791572000, 0) }
 
 func TestReplayExplore(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("REPLAY_DUMP") == "" {
 		t.Skip("set REPLAY_DUMP=1")
 	}
@@ -229,6 +230,7 @@ func countOf(s, sub string) int { return strings.Count(s, sub) }
 
 // §4.1: am_on_*_called (API 29) + am_activity_launch_time + Displayed; COLD.
 func TestReplayLaunchCold(t *testing.T) {
+	t.Parallel()
 	e := newReplay(t, fxBoot1)
 	e.file("coldstart.logcat.txt")
 	out := e.ok(launches, `{"package":"com.example.logtest","from":"2026-10-10 02:59:00","to":"2026-10-10 03:00:14"}`,
@@ -246,6 +248,7 @@ func TestReplayLaunchCold(t *testing.T) {
 
 // §4.1: HOT = am_on_restart/start/resume, no Displayed line.
 func TestReplayLaunchHot(t *testing.T) {
+	t.Parallel()
 	e := newReplay(t, fxBoot3)
 	e.file("hotstart.logcat.txt")
 	out := e.ok(launches, `{"package":"com.example.logtest","from":"2026-10-10 03:24:00"}`,
@@ -257,6 +260,7 @@ func TestReplayLaunchHot(t *testing.T) {
 
 // §4.1: Displayed logged >10 s after onResume; also must be found outside the request window.
 func TestReplayLaunchLateDisplayed(t *testing.T) {
+	t.Parallel()
 	e := newReplay(t, fxBoot1)
 	e.file("session-raw.log")
 	out := e.ok(launches, `{"package":"com.example.logtest","from":"2026-10-10 02:56:00","to":"2026-10-10 02:56:40"}`,
@@ -271,6 +275,7 @@ func TestReplayLaunchLateDisplayed(t *testing.T) {
 }
 
 func TestReplayLaunchAfterReboot(t *testing.T) {
+	t.Parallel()
 	e := newReplay(t, fxBoot3)
 	e.file("coldstart_after_reboot.logcat.txt")
 	e.ok(launches, `{"package":"com.example.logtest","from":"2026-10-10 03:22:00"}`,
@@ -280,6 +285,7 @@ func TestReplayLaunchAfterReboot(t *testing.T) {
 
 // The "warm start" that turned into onNewIntent: must not be called COLD/WARM/HOT.
 func TestReplayLaunchNewIntent(t *testing.T) {
+	t.Parallel()
 	e := newReplay(t, fxBoot3)
 	e.file("warmstart_FAILED_was_onNewIntent.logcat.txt")
 	out := e.ok(launches, `{"package":"com.example.logtest","from":"2026-10-10 03:25:00"}`,
@@ -299,6 +305,7 @@ func pkgCrashes(e *replayEnv) []string {
 
 // §4.2: am_crash [pid,user,process,flags,exc,msg,file,line] merges with FATAL EXCEPTION and dropbox.
 func TestReplayJavaCrash(t *testing.T) {
+	t.Parallel()
 	e := newReplay(t, fxBoot1)
 	e.file("java_crash.logcat.txt")
 	e.pipe.ApplyDropbox(fixtureFile(t, "dropbox-data_app_crash.txt"))
@@ -317,6 +324,7 @@ func TestReplayJavaCrash(t *testing.T) {
 // pid and is merged), DEBUG lines are crash_dump's (attributed to the app by uid),
 // location = first app frame, SYSTEM_TOMBSTONE attached.
 func TestReplayNativeCrash(t *testing.T) {
+	t.Parallel()
 	e := newReplay(t, fxBoot1)
 	e.file("native_crash.logcat.txt")
 	e.pipe.ApplyDropbox(fixtureFile(t, "dropbox-data_app_native_crash.txt"))
@@ -341,6 +349,7 @@ func TestReplayNativeCrash(t *testing.T) {
 
 // §4.2: SIGABRT has no "fault addr --------"; location is the first app frame (#02), not libc.
 func TestReplayNativeAbort(t *testing.T) {
+	t.Parallel()
 	e := newReplay(t, fxBoot3)
 	e.file("native_abort.logcat.txt")
 	cs := pkgCrashes(e)
@@ -358,6 +367,7 @@ func TestReplayNativeAbort(t *testing.T) {
 
 // §4.2: the :remote crashes group together and never with "repo not ready".
 func TestReplayCrashGrouping(t *testing.T) {
+	t.Parallel()
 	e := newReplay(t, fxBoot1)
 	e.file("session-raw.log")
 	out := e.ok("logcat_crashes", `{"package":"com.example.logtest"}`,
@@ -379,6 +389,7 @@ func TestReplayCrashGrouping(t *testing.T) {
 }
 
 func TestReplayANR(t *testing.T) {
+	t.Parallel()
 	e := newReplay(t, fxBoot1)
 	e.file("anr_broadcast.logcat.txt")
 	e.pipe.ApplyDropbox(fixtureFile(t, "dropbox-data_app_anr.txt"))
@@ -423,6 +434,7 @@ func replayWithSnapshots(t *testing.T) *replayEnv {
 }
 
 func TestReplayProcesses(t *testing.T) {
+	t.Parallel()
 	e := replayWithSnapshots(t)
 	out := e.ok("logcat_status", `{"package":"com.example.logtest"}`,
 		"running when the device was last seen: pid 8076 com.example.logtest:remote (since 2026-10-10 03:07:42), pid 7815 com.example.logtest (since 2026-10-10 03:03:44)",
@@ -439,6 +451,7 @@ func TestReplayProcesses(t *testing.T) {
 }
 
 func TestReplayProcessesReboot(t *testing.T) {
+	t.Parallel()
 	e := replayWithSnapshots(t)
 	e.newSession(fxBoot2) // reboot (boot bf71fe22)
 	e.file("session2-raw.log")
@@ -451,6 +464,7 @@ func TestReplayProcessesReboot(t *testing.T) {
 
 // Same capture, status before the reboot: the live processes are listed as running.
 func TestReplayProcessesNoReboot(t *testing.T) {
+	t.Parallel()
 	e := newReplay(t, fxBoot1)
 	e.file("session-raw.log")
 	e.pipe.SeedPS(psRows(" 7815 10146 com.example.logtest", " 8076 10146 com.example.logtest:remote"), sec(1791573033))
@@ -462,6 +476,7 @@ func TestReplayProcessesNoReboot(t *testing.T) {
 
 // §4.6: -v printable octal escapes are decoded to UTF-8 for storage, matching and display.
 func TestReplayPrintable(t *testing.T) {
+	t.Parallel()
 	e := newReplay(t, fxBoot3)
 	a, _ := splitAt(fixtureFile(t, "session3-raw.log"), 1791573720)
 	e.replay(a)
@@ -472,6 +487,7 @@ func TestReplayPrintable(t *testing.T) {
 
 // §4.3: `log -t` lines from the shell have no known process; label them by uid.
 func TestReplayShellLines(t *testing.T) {
+	t.Parallel()
 	e := newReplay(t, fxBoot1)
 	e.replay("--------- beginning of main\n" +
 		"         1791572937.282000 shell  8182  8182 I LOGMCP_MARK: hello mark from shell\n" +
@@ -482,6 +498,7 @@ func TestReplayShellLines(t *testing.T) {
 
 // §4.5: the echo shows explicit parentheses matching real precedence.
 func TestReplayFilterEcho(t *testing.T) {
+	t.Parallel()
 	e := newReplay(t, fxBoot1)
 	e.file("remote.logcat.txt")
 	e.ok("logcat_search", `{"filter":"tag=:LogTest tag=:MyRepo","from":"2026-10-10 03:07:00"}`,
@@ -494,6 +511,7 @@ func TestReplayFilterEcho(t *testing.T) {
 // -D backlog is still being replayed; it must not pre-empt the am_proc_died /
 // zygote exit lines that are still queued.
 func TestReplayPSDuringBacklog(t *testing.T) {
+	t.Parallel()
 	e := newReplay(t, fxBoot3)
 	a, rest := splitAt(fixtureFile(t, "session3-raw.log"), 1791573900) // 3418 alive here
 	e.replay(a)
@@ -508,6 +526,7 @@ func TestReplayPSDuringBacklog(t *testing.T) {
 // backlog is still replaying, so DropBox can know a crash before logcat does.
 // The logcat crash must adopt the DropBox entry instead of duplicating it.
 func TestReplayDropboxBeforeLogcat(t *testing.T) {
+	t.Parallel()
 	e := newReplay(t, fxBoot1)
 	e.pipe.ApplyDropbox(fixtureFile(t, "dropbox-data_app_crash.txt"))
 	e.pipe.ApplyDropbox(fixtureFile(t, "dropbox-data_app_native_crash.txt"))
@@ -529,6 +548,7 @@ func TestReplayDropboxBeforeLogcat(t *testing.T) {
 // update of the same crash (am_crash arrives ~10 s after the tombstone under
 // TCG) must not drop the DropBox sources/tombstone.
 func TestReplayDropboxThenLogcatUpdate(t *testing.T) {
+	t.Parallel()
 	e := newReplay(t, fxBoot1)
 	a, rest := splitAt(fixtureFile(t, "native_crash.logcat.txt"), 1791572565) // after DEBUG, before am_crash
 	e.replay(a)

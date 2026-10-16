@@ -78,6 +78,7 @@ func withCountBudget(t *testing.T, d time.Duration) {
 // No filter: the exact total without scanning past the page, also for a
 // before cursor (paging) and with a tiny count budget.
 func TestSearchExactTotalWithoutFilter(t *testing.T) {
+	// serial: sets countBudget (package global)
 	withCountBudget(t, time.Nanosecond)
 	tl, _ := bigFixture(t, 30000)
 	out, e := call(t, tl, "logcat_search", `{"limit":50}`)
@@ -97,6 +98,7 @@ func TestSearchExactTotalWithoutFilter(t *testing.T) {
 // With a filter, counting stops after the budget: a lower bound, the span
 // it covers, what to do for an exact count, and the fields.
 func TestSearchPartialCount(t *testing.T) {
+	// serial: sets countBudget (package global)
 	withCountBudget(t, time.Nanosecond)
 	tl, _ := bigFixture(t, 30000)
 	out, e := call(t, tl, "logcat_search", `{"filter":"tag=:Ten","limit":20}`)
@@ -118,6 +120,7 @@ func TestSearchPartialCount(t *testing.T) {
 // Fewer matches than the limit: the whole range is scanned (exact), as
 // before; zero matches carry the count line too.
 func TestSearchFewMatchesExact(t *testing.T) {
+	// serial: sets countBudget (package global)
 	withCountBudget(t, time.Nanosecond)
 	tl, _ := bigFixture(t, 30000)
 	out, e := call(t, tl, "logcat_search", `{"filter":"message:\"line 7\" tag=:Other","limit":1000}`)
