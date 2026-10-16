@@ -499,6 +499,7 @@ func scaleMetrics(t *testing.T, r *Results) {
 		t.Fatal("no device in the synthetic dataset")
 	}
 	scanMetrics(t, r, d.Store)
+	indexMetrics(t, r, d.Store)
 	for _, q := range queryCases(first, last, fxLoc()) {
 		if q.cold {
 			d.Store.ReleaseCaches()
@@ -540,6 +541,22 @@ func scaleMetrics(t *testing.T, r *Results) {
 	runtime.ReadMemStats(&ms2)
 	r.Set("mem.heap_after_release_mib", Metric{Value: round(float64(ms2.HeapAlloc)/(1<<20), 1), Unit: "MiB", Kind: Mem,
 		Desc: fmt.Sprintf("live heap after the idle release (%.1f MiB freed)", float64(freed)/(1<<20))})
+}
+
+// indexMetrics measures the cold block+class index build and its memory
+// (issue #37).
+func indexMetrics(t *testing.T, r *Results, st *store.Store) {
+	st.ReleaseCaches()
+	// drop the segment indexes so EnsureIndex rebuilds from scratch
+	st.DropIndexes()
+	t0 := time.Now()
+	st.EnsureIndex()
+	el := time.Since(t0)
+	r.Set("index.build_ms", Metric{Value: ms(el), Unit: "ms", Kind: Time,
+		Desc: "cold EnsureIndex over all segments (block minT/maxT + class counts)"})
+	kib := float64(st.IndexBytes()) / 1024
+	r.Set("mem.index_kib", Metric{Value: round(kib, 1), Unit: "KiB", Kind: Mem,
+		Desc: "class dictionary + per-block class lists after EnsureIndex"})
 }
 
 // scanMetrics measures the raw store scan over the whole history (no time
@@ -592,9 +609,14 @@ func noteCountExact(r *Results, name, out string) {
 		v = 1
 	}
 	met := Metric{Value: v, Unit: "flag", Kind: Info, Desc: "1: the match count is exact; 0: a lower bound (count stopped 100 ms after the page was full)"}
-	if name == "search_default" {
+	switch name {
+	case "search_default":
 		met.Kind, met.Budget = Rate, 1
 		met.Desc += "; must be exact without a filter"
+	case "search_level_error", "search_tag", "search_package":
+		// issue #37: countable filters must be exact via class counts
+		met.Kind, met.Budget = Rate, 1
+		met.Desc += "; must be exact for countable filters (issue #37)"
 	}
 	r.Set("query."+name+".count_exact", met)
 }

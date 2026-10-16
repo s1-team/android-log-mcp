@@ -260,6 +260,9 @@ func (n *Buffer) String() string {
 type Pred struct {
 	Desc string
 	Fn   func(r *model.Record, c *Ctx) bool
+	// ClassOnly: Match depends only on package / process / uid / tag / level
+	// (issue #37). Such a Pred is countable via the per-block class index.
+	ClassOnly bool
 }
 
 func (n *Pred) Match(r *model.Record, c *Ctx) bool { return n.Fn(r, c) }

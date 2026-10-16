@@ -129,6 +129,7 @@ type Store struct {
 	blocks  map[blockKey]*list.Element
 	lru     *list.List
 	hBytes  int64
+	classes classDict // per-store class dictionary for block counts (issue #37)
 	lastUse time.Time
 	idleT   *time.Timer
 	closed  atomic.Bool
@@ -998,6 +999,16 @@ func (s *Store) ClockJumps() []ClockJump {
 // stored order (the clock can be set back), so every record in the window
 // is visited however it is stored (issue #48).
 func (s *Store) ScanTime(after, before uint64, desc bool, fromNs, toNs int64, fn func(*model.Record) bool) {
+	s.scanTime(after, before, desc, fromNs, toNs, nil, fn)
+}
+
+// ScanTimeClass is ScanTime with a countable class-id set: blocks whose
+// classes do not intersect ids are skipped without decoding (issue #37).
+func (s *Store) ScanTimeClass(after, before uint64, desc bool, fromNs, toNs int64, ids map[uint32]bool, fn func(*model.Record) bool) {
+	s.scanTime(after, before, desc, fromNs, toNs, ids, fn)
+}
+
+func (s *Store) scanTime(after, before uint64, desc bool, fromNs, toNs int64, ids map[uint32]bool, fn func(*model.Record) bool) {
 	if fromNs != 0 || toNs != 0 {
 		inner := fn
 		fn = func(r *model.Record) bool {
@@ -1088,7 +1099,7 @@ func (s *Store) ScanTime(after, before uint64, desc bool, fromNs, toNs int64, fn
 			}
 			var bl []block
 			for _, b := range ix.blocks {
-				if b.first < hi && b.last >= lo && !b.outside(fromNs, toNs) {
+				if b.first < hi && b.last >= lo && !b.outside(fromNs, toNs) && b.classMatch(ids) {
 					bl = append(bl, b)
 				}
 			}
@@ -1189,6 +1200,90 @@ func (s *Store) Count(after, before uint64) uint64 {
 					if r.Seq >= lo && r.Seq < hi {
 						n++
 					}
+				}
+			}
+		}
+	}
+	return n
+}
+
+// CountMatch returns the number of records with after < seq < before that
+// match a countable class filter (ids) and lie in [fromNs, toNs) (0 =
+// unbounded). Blocks wholly inside the window contribute their class sums;
+// straddling, uncounted, or jump-straddling blocks are decoded. The
+// in-memory window is always scanned. Issue #37.
+func (s *Store) CountMatch(after, before uint64, fromNs, toNs int64, ids map[uint32]bool, match func(*model.Record) bool) uint64 {
+	s.touch()
+	s.mu.RLock()
+	loaded := s.loaded
+	s.mu.RUnlock()
+	if !loaded {
+		s.mu.Lock()
+		if !s.loaded {
+			s.loadWindowLocked()
+		}
+		s.mu.Unlock()
+	}
+	s.mu.RLock()
+	mem := s.mem
+	segs := append([]segment(nil), s.segs...)
+	last := s.lastSeq
+	s.mu.RUnlock()
+	if before == 0 || before > last+1 {
+		before = last + 1
+	}
+	if after+1 >= before {
+		return 0
+	}
+	lo, hi := after+1, before
+	var n uint64
+	memFirst := uint64(0)
+	inTime := func(r *model.Record) bool {
+		return (fromNs == 0 || r.TimeNs >= fromNs) && (toNs == 0 || r.TimeNs < toNs)
+	}
+	if len(mem) > 0 {
+		memFirst = mem[0].Seq
+		if mlo, mhi := max(lo, memFirst), min(hi, memFirst+uint64(len(mem))); mhi > mlo {
+			for q := mlo; q < mhi; q++ {
+				r := mem[q-memFirst]
+				if inTime(r) && match(r) {
+					n++
+				}
+			}
+		}
+		hi = min(hi, memFirst)
+	}
+	if lo >= hi {
+		return n
+	}
+	for i, sg := range segs {
+		end := uint64(1<<63 - 1)
+		if i+1 < len(segs) {
+			end = segs[i+1].first
+		}
+		if sg.first >= hi || end <= lo {
+			continue
+		}
+		ix := s.segIndexFor(sg.path)
+		if ix == nil {
+			continue
+		}
+		for _, b := range ix.blocks {
+			if b.n == 0 || b.first >= hi || b.last < lo {
+				continue
+			}
+			// wholly inside the seq range and the time window: use counts
+			whollySeq := b.first >= lo && b.last < hi
+			if whollySeq && b.whollyInside(fromNs, toNs) {
+				if sum, ok := b.classSum(ids); ok {
+					n += sum
+					continue
+				}
+			}
+			// straddling, uncounted, or unreadable time: decode
+			for _, r := range s.blockRecords(sg.path, b) {
+				if r.Seq >= lo && r.Seq < hi && inTime(r) && match(r) {
+					n++
 				}
 			}
 		}
