@@ -1,74 +1,76 @@
-# Android 日志 MCP stdio server：设计 v3（面向 AI agent 的批判性修订）
+# Android log MCP stdio server: design v3 (a critical revision for AI agents)
 
-- 日期：2026-10-10（Asia/Shanghai）。仍处于设计阶段，没有写代码。
-- 前提：调用方**永远是 AI agent**（Claude Code/Desktop、Codex、Cursor 等），不是人。
-- 承接 `research-v2.md`。v2 中 AS 语法、pid 映射、buffer 选择、录制进程存储（v2 称 daemon，现为后台服务进程）的调研结论依然有效，本文只改“对 agent 暴露的接口”和相关行为。
-- 标注约定：**[源]** 有出处；**[推断]** 是我的判断，没有实测；**[未知]** 待验证。
+- Date: 2026-10-10 (Asia/Shanghai). Written at design time, before any code; later sections record what was built (issue numbers in the headings).
+- Premise: the caller is **always an AI agent** (Claude Code/Desktop, Codex, Cursor, etc.), never a human.
+- Builds on `research-v2.md`. Its findings on AS syntax, pid mapping, buffer choice and the recording process (v2 called it the daemon; now the service process) still hold. This document changes only the interface exposed to agents and the behavior around it.
+- Labeling convention: **[source]** has a cited source; **[inferred]** is my judgment, not measured; **[unknown]** still has to be verified.
+- The output examples in §2 are the design-time sketches. The shipped text format (`fmt=1`, [#85](https://github.com/s1crab/android-log-mcp/issues/85)) is specified in [reference.md](reference.md#output-format-fmt1); the tool descriptions and parameters are in [tools.md](tools.md). Where they differ, those two win.
+- Terms follow [glossary.md](glossary.md) (MCP process, service process, CLI process, adb server, adb child, device process, MCP host).
 
-## 0. 依据的最佳实践（均已核对原文）
+## 0. Best practices relied on (all checked against the original text)
 
-1. **Anthropic《Writing effective tools for agents》**：https://www.anthropic.com/engineering/writing-tools-for-agents
-   - 工具“少而精”，围绕高价值工作流设计，避免 1:1 包装底层 API。原文举例：与其做 `read_logs`，不如做 `search_logs`，只返回相关行加周边上下文。
-   - 用前缀做命名空间。
-   - 返回高信号信息：用自然语言名字，避开难懂的 ID；可以提供 concise/detailed 两档。
-   - 分页、过滤、截断要有合理默认值；截断时要告诉 agent 怎样拿到更多。
-   - 错误信息要可执行，并给出正确格式的示例。
-   - 参数名要无歧义（例如 `user_id` 而不是 `user`）。
-   - 原文提到 Claude Code 默认把工具输出限制在 25,000 token。
-2. **MCP 规范 2025-11-25 tools**：https://modelcontextprotocol.io/specification/2025-11-25/server/tools ，以及 schema.ts
-   - 工具定义包含 `title`、`inputSchema`（无参数时推荐 `{"type":"object","additionalProperties":false}`）、可选的 `outputSchema`、`annotations`（readOnlyHint、destructiveHint、idempotentHint、openWorldHint）。
-   - 返回 `structuredContent` 时，**SHOULD** 同时在 TextContent 中放序列化后的 JSON；声明了 outputSchema 就 **MUST** 遵守。
-   - 业务错误用 `isError: true` 返回，“供模型自我纠正”。
-   - `InitializeResult.instructions` 可以放 server 级说明（即本 MCP stdio server 的说明）。
-3. **Claude Code MCP 文档**：https://code.claude.com/docs/en/mcp
-   - 输出超过 10,000 token 时告警，默认上限 25,000 token（环境变量 `MAX_MCP_OUTPUT_TOKENS`）。
-   - 文本结果超过 **50,000 字符**会被转存为文件。
-   - 单次工具调用的超时由 `MCP_TOOL_TIMEOUT` 或 per-server `timeout` 控制，默认约 28 小时。
-4. **Codex 配置参考**：https://developers.openai.com/codex/config-reference ，`mcp_servers.<id>.tool_timeout_sec` **默认 60 秒**。
-5. **OpenAI function calling 最佳实践**：https://platform.openai.com/docs/guides/function-calling
-   - 名字和参数要清晰；用 enum 和结构杜绝非法状态。
-   - “Combine functions that are always called in sequence”。
-   - 初始可用函数尽量少（软建议 < 20）。
-   - 不要让模型填你已经知道的参数。
+1. **Anthropic, "Writing effective tools for agents"**: https://www.anthropic.com/engineering/writing-tools-for-agents
+   - Few, well-chosen tools built around high-value workflows; do not wrap the underlying API 1:1. The text's example: instead of `read_logs`, build `search_logs`, which returns only the relevant lines plus surrounding context.
+   - Use prefixes as namespaces.
+   - Return high-signal information: natural-language names, no cryptic IDs; offer concise/detailed levels.
+   - Pagination, filtering and truncation need sensible defaults; when truncating, tell the agent how to get more.
+   - Error messages must be actionable and show the correct format with an example.
+   - Parameter names must be unambiguous (`user_id`, not `user`).
+   - The text mentions that Claude Code limits tool output to 25,000 tokens by default.
+2. **MCP specification 2025-11-25, tools**: https://modelcontextprotocol.io/specification/2025-11-25/server/tools , and schema.ts
+   - A tool definition has `title`, `inputSchema` (for no parameters, `{"type":"object","additionalProperties":false}` is recommended), an optional `outputSchema`, and `annotations` (readOnlyHint, destructiveHint, idempotentHint, openWorldHint).
+   - When returning `structuredContent`, a tool **SHOULD** also put the serialized JSON in a TextContent; if it declares an outputSchema it **MUST** conform.
+   - Business errors are returned with `isError: true`, "so the model can correct itself".
+   - `InitializeResult.instructions` can carry server-level guidance (here: for this MCP stdio server).
+3. **Claude Code MCP documentation**: https://code.claude.com/docs/en/mcp
+   - Output above 10,000 tokens triggers a warning; the default cap is 25,000 tokens (environment variable `MAX_MCP_OUTPUT_TOKENS`).
+   - Text results above **50,000 characters** are saved to a file instead.
+   - The timeout of one tool call is set by `MCP_TOOL_TIMEOUT` or the per-server `timeout`; the default is about 28 hours.
+4. **Codex configuration reference**: https://developers.openai.com/codex/config-reference , `mcp_servers.<id>.tool_timeout_sec` defaults to **60 seconds**.
+5. **OpenAI function calling best practices**: https://platform.openai.com/docs/guides/function-calling
+   - Clear names and parameters; use enums and structure to rule out invalid states.
+   - "Combine functions that are always called in sequence".
+   - Keep the initially available functions few (soft advice: fewer than 20).
+   - Do not make the model fill in parameters you already know.
 
 ---
 
-## 1. v3 相对 v2 改了什么、为什么
+## 1. What v3 changes relative to v2, and why
 
-| # | v2 | v3 | 理由 |
+| # | v2 | v3 | Reason |
 |---|---|---|---|
-| 1 | 8–9 个工具：list_devices、query_logs、wait_logs、get_crashes、get_app_starts、list_processes、recording、clear_logs、mark | **4 个只读工具**：`logcat_status`、`logcat_search`、`logcat_crashes`、`logcat_app_launches` | 有重叠，也有一类“控制状态”的工具：recording、clear、mark 会让 agent 去操心隐藏状态。Anthropic 和 OpenAI 都建议少而精、合并总是连续调用的工具 |
-| 2 | `query_logs` 和 `wait_logs` 分开 | 合并为 `logcat_search`，长轮询用 `after` + `wait_ms` | 两者的过滤和返回完全相同 |
-| 3 | `list_devices` 和 `list_processes` 是两个工具 | 合并为 `logcat_status(package?)` | agent 的第一个问题通常是“设备在吗、在录吗、App 在跑吗”，一次回答 |
-| 4 | `recording` 用来启停，只自动录一台设备 | **自动记录所有在线设备**（上限 4 台，可配置），没有启停工具 | 消除“当前在录哪台”这一隐藏状态；对 agent 来说零参数就能用 |
-| 5 | `clear_logs` 可以执行 `logcat -c` | **删除**。改成“先拿 cursor 再复现”的模式（`logcat_status` 返回 `cursor`） | 清日志有破坏性，而且多个 agent 共用时会互相干扰；用游标就能做到“只看这次复现之后的日志” |
-| 6 | `mark` 用 `log -t` 往设备打标记 | **删除**，同上用 cursor 替代 | 少一个工具，也少一次写设备 |
-| 7 | 过滤串解析失败时，按 AS 行为静默退化为子串匹配，只给 warning | **严格模式**：解析错误返回 `isError:true`，附带列号、`^` 指示和改写建议。每次成功的响应都**回显规范化后的解释**（`filter parsed as: …`） | 静默退化会让 agent 拿到错误结果却毫无察觉。回显解释可以暴露 AS 里“同字段隐式 OR”这类和直觉相反的语义 |
-| 8 | 只有 AS 过滤串 | AS `filter` 加上少量结构化参数：`package`、`tags[]`、`min_level`、`from`/`to`，**一律 AND** | 最常见的意图（某个 App、几个 tag、级别、时间窗）不必写语法，降低出错率；需要表达力时再用 filter |
-| 9 | 输出可以是 JSON 或 text，默认 200 条 | **紧凑文本行为主**：表头写一次时区和日期，每行 `HH:MM:SS.mmm L pid/tid 包名 tag: msg`。另有字符硬预算 30,000，以及“如何拿更多”的明确指引 | JSON 每行要重复键名，token 成本约为文本的 2–3 倍 **[推断]**；Claude Code 超过 50,000 字符会转存文件 |
-| 10 | 没有摘要 | `view:"summary"`：按级别、tag、包统计，再加 Top 重复消息模板。lines 模式截断时自动附一个迷你摘要 | 先看全貌再缩小范围，比一次倒出几千行省 token |
-| 11 | 没有去重 | 连续完全相同的行折叠为 `↳ ×37 identical until 01:20:09.001`。多行消息（堆栈）整体保留，不拆开 | 省 token，也保证堆栈完整 |
-| 12 | 只按 seq 或时间分页 | **不透明字符串 cursor**，含设备、boot、seq，跨 server 重启仍然有效。`before`/`after` 两个方向 | 无状态、可重放、幂等 |
-| 13 | get_crashes 只看日志 | 加 **ANR**（events `am_anr` + ActivityManager `ANR in` 块），并从 **dropbox** 补充 traces 和历史崩溃 | 用户已确认。dropbox 还能补回“MCP 启动前”和“日志已经滚掉”的崩溃 |
-| 14 | crash ID 没有定义 | 短 ID（`cr7`、`anr2`）。只有一个匹配时**自动返回详情**，包括同一设备进程崩溃前 40 行日志 | Anthropic 指出语义化或短 ID 能减少幻觉；少一次调用 |
-| 15 | get_app_starts 返回原始证据 | `logcat_app_launches` **直接给出算好的时长**：请求→设备进程启动→onCreate→onResume、TTID、TTFD、冷热判定，并附证据行时间 | 让 agent 不必自己算；冷启动场景只需 1 次调用 |
-| 16 | 时间：`since` 接受 epoch、RFC3339 或相对时长 | `from`/`to` 接受**设备本地时间**（`2026-10-10 01:20:00` 或 `01:20:00`）、带偏移的 ISO、或相对时长（`30m`）。输出一律用设备本地时间，表头注明时区 | 设备日志本来就是设备本地时间。混用主机和设备时区是 agent 常见的错因 |
-| 17 | 长等待没有上限 | `wait_ms` 最大 **25,000**；默认 0 | Codex 的工具超时默认 60 秒 |
-| 18 | 所有工具都带 annotations（v2 没写） | 4 个工具都设 `readOnlyHint:true`、`openWorldHint:false` | 规范建议；MCP 宿主可以据此免确认（MCP 宿主行为 **[未知]**） |
+| 1 | 8–9 tools: list_devices, query_logs, wait_logs, get_crashes, get_app_starts, list_processes, recording, clear_logs, mark | **4 read-only tools**: `logcat_status`, `logcat_search`, `logcat_crashes`, `logcat_app_launches` | Overlap, plus a class of "control state" tools: recording, clear and mark make the agent worry about hidden state. Anthropic and OpenAI both advise few, well-chosen tools and merging tools that are always called in sequence |
+| 2 | `query_logs` and `wait_logs` separate | Merged into `logcat_search`; long polling with `after` + `wait_ms` | Same filtering and same result |
+| 3 | `list_devices` and `list_processes` are two tools | Merged into `logcat_status(package?)` | The agent's first question is usually "is the device there, is it recording, is the app running": one answer |
+| 4 | `recording` starts and stops, records only one device automatically | **All online devices are recorded automatically** (at most 4, configurable); no start/stop tool | Removes the hidden state "which device is being recorded now"; works with zero parameters |
+| 5 | `clear_logs` can run `logcat -c` | **Removed.** Replaced by "take a cursor, then reproduce" (`logcat_status` returns `cursor`) | Clearing is destructive and agents sharing a device interfere; a cursor gives "only the logs after this reproduction" |
+| 6 | `mark` writes a marker to the device with `log -t` | **Removed**, replaced by the cursor | One tool less, one device write less |
+| 7 | A filter parse failure silently falls back to substring matching with a warning, as AS does | **Strict mode**: a parse error returns `isError:true` with the column, a `^` marker and a suggested rewrite. Every successful response **echoes the normalized interpretation** (`filter parsed as: …`) | A silent fallback gives the agent wrong results without any sign. The echo exposes counter-intuitive AS semantics such as the implicit OR on the same key |
+| 8 | Only an AS filter string | The AS `filter` plus a few structured parameters: `package`, `tags[]`, `min_level`, `from`/`to`, **always ANDed** | The most common intents (an app, a few tags, a level, a time window) need no syntax, which lowers the error rate; use filter when more expressiveness is needed |
+| 9 | Output is JSON or text, 200 entries by default | **Compact text first**: the header states time zone and date once, each line is `HH:MM:SS.mmm L pid/tid package tag: msg`. Plus a hard budget of 30,000 characters and explicit guidance on how to get more | JSON repeats the key names on every line, roughly 2–3 times the tokens of text **[inferred]**; Claude Code saves output above 50,000 characters to a file |
+| 10 | No summary | `view:"summary"`: statistics by level, tag and package, plus the top repeated message templates. A truncated lines response gets a mini summary automatically | Seeing the whole picture first and then narrowing saves tokens compared with dumping thousands of lines |
+| 11 | No de-duplication | Consecutive identical lines fold into `↳ ×37 identical until 01:20:09.001`. Multi-line messages (stacks) stay whole | Saves tokens and keeps stacks complete |
+| 12 | Paging by seq or time only | **Opaque string cursor** containing device, boot and seq, valid across server restarts. `before`/`after` directions | Stateless, replayable, idempotent |
+| 13 | get_crashes looks at logs only | Adds **ANR** (events `am_anr` + the ActivityManager `ANR in` block) and supplements traces and past crashes from **dropbox** | Confirmed by the user. dropbox also recovers crashes from "before the MCP started" and from logs that have already rolled over |
+| 14 | Crash IDs undefined | Short IDs (`cr7`, `anr2`). With exactly one match the **detail is returned automatically**, including the 40 log lines before the crash from the same device process | Anthropic notes that semantic or short IDs reduce hallucination; one call less |
+| 15 | get_app_starts returns raw evidence | `logcat_app_launches` **gives the computed durations**: request → device process start → onCreate → onResume, TTID, TTFD, cold/warm/hot, with the times of the evidence lines | The agent does not have to compute; a cold-start scenario needs 1 call |
+| 16 | Time: `since` takes epoch, RFC3339 or a relative duration | `from`/`to` take **device-local time** (`2026-10-10 01:20:00` or `01:20:00`), ISO with offset, or a relative duration (`30m`). Output is always device-local time, with the zone in the header | Device logs are device-local time to begin with. Mixing host and device time zones is a common cause of agent mistakes |
+| 17 | Unbounded long wait | `wait_ms` is at most **25,000**; default 0 | Codex's default tool timeout is 60 seconds |
+| 18 | v2 set no annotations on any tool | All 4 tools set `readOnlyHint:true`, `openWorldHint:false` | Recommended by the specification; an MCP host can skip confirmation based on it (MCP host behavior **[unknown]**) |
 
-**明确没有改的部分**：AS 语法本身照旧（键、运算符、优先级、同字段隐式 OR、大小写规则），只把出错时的行为改成报错。存储、录制进程（v2 称 daemon，现为后台服务进程）、设备发现、pid 映射沿用 v2。
+**Explicitly unchanged**: the AS syntax itself (keys, operators, precedence, implicit OR on the same field, case rules); only the failure behavior changes to an error. Storage, the recording process (v2: daemon; now the service process), device discovery and pid mapping stay as in v2.
 
 ---
 
-## 2. 最终工具集（4 个，都只读）
+## 2. The final tool set (4 tools, all read-only)
 
-**通用约定**
-- 工具名统一用 `logcat_` 前缀，模型熟悉 logcat 这个词。MCP 宿主配置里的 server 名建议为 `android-log`，在 Claude Code 中呈现为 `mcp__android-log__logcat_search`。
-- 所有工具都有可选参数 `device`。只有一台有数据的设备时自动选中；有多台时如果没指定，返回可执行的错误并列出各设备的 serial。
-- 返回方式：v1 **只返回 TextContent**（紧凑文本），不声明 outputSchema。原因见第 7 节第 2 个开放问题。
-- annotations：`{"readOnlyHint": true, "openWorldHint": false}`，并设置 `title`。
-- server instructions（`InitializeResult.instructions`）放一段 ≤ 120 词的工作流说明，见 2.5。各 MCP 宿主是否把它注入模型上下文 **[未知]**，所以每个工具的 description 也要能独立读懂。
-- 工具 description 用**英文**写：模型对英文工具描述最熟，社区工具也基本是英文。本文档其余部分用中文。
+**Common conventions**
+- All tool names use the `logcat_` prefix; models know the word logcat. The recommended server name in the MCP host configuration is `android-log`, which Claude Code shows as `mcp__android-log__logcat_search`.
+- Every tool has an optional `device` parameter. With only one device that has data it is selected automatically; with several and none given, an actionable error lists the serials of all devices.
+- Return format: v1 returns **TextContent only** (compact text) and declares no outputSchema. See open question 2 in §7.
+- annotations: `{"readOnlyHint": true, "openWorldHint": false}`, plus a `title`.
+- The server instructions (`InitializeResult.instructions`) carry a workflow note of at most 120 words, see 2.5. Whether an MCP host injects them into the model context is **[unknown]**, so every tool description must also be readable on its own.
+- Tool descriptions are written in **English**: models know English tool descriptions best and community tools are almost all in English. The rest of this document is also English.
 
 ### 2.1 `logcat_status`
 
@@ -91,9 +93,9 @@ With `package`, also reports install state and live/recently-dead processes (pid
 }
 ```
 
-Since #23 the lines that rarely change (`root`, `linger`, `lifetime`, `service log`, `adb`, `store`) are shown on the first call of a connection to the service process and again when they change; `verbose: true` always shows them. 自 #23 起，这些很少变化的行只在每个连接的第一次调用和内容变化时显示，`verbose: true` 总是显示。
+Since #23 the lines that rarely change (`root`, `linger`, `lifetime`, `service log`, `adb`, `store`) are shown on the first call of a connection to the service process and again when they change; `verbose: true` always shows them.
 
-**输出示例**（示意，数据是虚构的）
+**Output example** (a sketch; the data is made up)
 ```
 adb: ok (server 1.0.41)
 devices (1):
@@ -147,14 +149,14 @@ Use view="summary" first for broad or unknown time ranges (counts by level/tag/p
 }
 ```
 
-**组合与优先级（写入实现规范）**
-- 最终谓词 = `filter` ∧ `package` ∧ (`tags` 中任一) ∧ `min_level` ∧ `[from, to)` ∧ cursor 边界。
-- 结构化参数**从不覆盖** filter，只做交集。例如 filter 里写了 `age:10m`，同时 `from=01:00`，结果取两者的交集。
-- 能静态判定为必然为空的组合（例如 `from` ≥ `to`，或者 `before` 与 `after` 同时给出）直接报错说明，不返回“0 条”。
-- `before` 和 `after` 不能同时给。给了 `after` 时，按从旧到新取前 `limit` 条（用于追新）；否则取最新的 `limit` 条。
-- 结构化参数 `package` 是**精确匹配 applicationId**；AS 语法里的 `package:` 是 contains，两者区别要写在 description 里。
+**Combination and precedence (part of the implementation specification)**
+- Final predicate = `filter` ∧ `package` ∧ (any of `tags`) ∧ `min_level` ∧ `[from, to)` ∧ cursor bound.
+- Structured parameters **never override** the filter; they only intersect. For example, a filter containing `age:10m` together with `from=01:00` yields the intersection of both.
+- A combination that is statically known to be empty (for example `from` ≥ `to`, or `before` and `after` given together) is an error with an explanation, not "0 lines".
+- `before` and `after` cannot both be given. With `after`, the first `limit` matches from oldest to newest are returned (for following new lines); otherwise the newest `limit` matches.
+- The structured parameter `package` is an **exact applicationId match**; `package:` in AS syntax is contains. The difference must be stated in the description.
 
-**输出示例：lines**（示意）
+**Output example: lines** (sketch)
 ```
 device emulator-5554 · times are device-local Asia/Shanghai (+08:00) · date 2026-10-10
 filter parsed as: package == com.foo AND (tag = "OkHttp" OR tag = "MyRepo") AND level >= DEBUG AND time in [01:20:00, 01:30:00)
@@ -187,15 +189,15 @@ more: before="c1.ZW11LTU1NTQ.9f2a.1188020"  ·  newer/wait: after="c1.ZW11LTU1NT
 top tags in all 1,284 matches: OkHttp 911, MyRepo 373 · narrow with e.g. -message:heartbeat, min_level=info, or a smaller from/to
 ```
 
-**行格式细则**
-- 时间只显示 `HH:MM:SS.mmm`，日期放在表头；跨天时插入 `--- 2026-10-11 ---` 分隔行。
-- process 列显示设备进程名（多进程 App 会显示 `com.foo:push`）；pid 未知时显示 `?`。
-- 单条消息超过 2,000 字符时截断，标记为 `…[+N chars, use filter on this line's pid+time to get full]`。堆栈类消息上限放宽到 8,000 字符。
-- `context` 带出来的周边行以两个空格缩进，匹配行不缩进。
-- 折叠规则：同一 pid、tag、level，消息字节完全相同且相邻时才折叠，不做数字归一化，避免误伤。
-- 时间来源一律是设备时间戳。
+**Line format details**
+- The time shows only `HH:MM:SS.mmm`; the date is in the header. When the range crosses midnight a `--- 2026-10-11 ---` separator line is inserted.
+- The process column shows the device process name (a multi-process app shows `com.foo:push`); `?` when the pid is unknown.
+- A single message longer than 2,000 characters is cut and marked `…[+N chars, use filter on this line's pid+time to get full]`. Stack-like messages are allowed up to 8,000 characters.
+- Surrounding lines brought in by `context` are indented by two spaces; matching lines are not.
+- Folding rule: lines fold only when pid, tag and level are the same and the message bytes are identical and adjacent. No digit normalization, to avoid false folds.
+- The time source is always the device timestamp.
 
-**输出示例：summary**（示意）
+**Output example: summary** (sketch)
 ```
 device emulator-5554 · Asia/Shanghai (+08:00) · 2026-10-10 01:20:00–01:30:00
 filter parsed as: package == com.foo
@@ -236,11 +238,11 @@ Pass `id` (e.g. "cr3") for full detail: complete stack / Caused-by chain, the cr
 }
 ```
 
-**ID 方案**
-- 每台设备单调递增，`cr<N>` 表示 crash（java 和 native 共用一个序列），`anr<N>` 表示 ANR。ID 写入持久存储，跨会话稳定。
-- 带 device 时 ID 在设备内唯一；有多台设备时，ID 前加 serial 的短前缀 **[待定]**。
+**ID scheme**
+- Per device, monotonically increasing: `cr<N>` is a crash (Java and native share one sequence), `anr<N>` an ANR. IDs are persisted and stable across sessions.
+- With `device` given, an ID is unique within the device; with several devices, the ID gets a short serial prefix **[to be decided]**.
 
-**列表输出**（示意）
+**List output** (sketch)
 ```
 device emulator-5554 · Asia/Shanghai (+08:00) · package com.foo · 3 crash groups (5 events) in recorded history
 cr5  2026-10-10 01:24:10  java   pid 21877 com.foo (thread main)
@@ -255,20 +257,20 @@ cr4  2026-10-09 23:02:55  native pid 19876 com.foo  SIGSEGV (SEGV_MAPERR) fault 
 more: logcat_crashes id="cr5" for full detail
 ```
 
-**详情**（`id` 给定，或只有一个匹配）包含：
-- 完整堆栈，Caused by 链保持完整。总长超过 20,000 字符时，每段只保留前 40 帧和最后 5 帧，并标注省略了多少。
-- `before crash (pid 21877, last 40 lines)`：用 logcat_search 的行格式。
-- native 崩溃：signal、abort message、backtrace（全部帧）、构建指纹。
-- ANR：Subject 或 reason、CPU usage 摘要（截前 10 行）、主线程 trace 全文、它所等待的锁的持有线程的 trace。
-  - 拿不到 traces 时明确写出原因，例如：`traces: unavailable — dropbox entry not found / rate-limited / dumpsys dropbox permission denied. /data/anr needs root. Fallback: run "adb bugreport" yourself.`
+**Detail** (when `id` is given, or exactly one match) contains:
+- The full stack with the complete Caused by chain. When the total exceeds 20,000 characters, each section keeps only its first 40 frames and last 5 frames, and says how many were omitted.
+- `before crash (pid 21877, last 40 lines)`: in the line format of logcat_search. The shipped default is 20 lines (`before_lines`, see tools.md).
+- Native crash: signal, abort message, backtrace (all frames), build fingerprint.
+- ANR: Subject or reason, a CPU usage summary (first 10 lines), the full main-thread trace, and the trace of the thread that holds the lock it waits for.
+  - When traces cannot be obtained, say why, for example: `traces: unavailable — dropbox entry not found / rate-limited / dumpsys dropbox permission denied. /data/anr needs root. Fallback: run "adb bugreport" yourself.`
 
-**ANR 与 dropbox 的事实**
-- AMS 把 ANR 写入 dropbox，tag 为 `<processClass>_anr`，processClass 取 `system_server`、`system_app` 或 `data_app`。写入时传入 tracesFile 作为 dataFile，篇幅允许时**内联 traces 内容**。dropbox 有速率限制（DropboxRateLimiter）。
-  - 来源 [源]：frameworks/base main 的 `ActivityManagerService.addErrorToDropBox`、`ProcessErrorStateRecord.java`（`addErrorToDropBox("anr", …, tracesFile, …)`）
-- `dumpsys dropbox` 的参数为 `[-p|--print] [-f|--file] [--proto] [timestamp]`，其余非 `-` 开头的参数作为 tag 或时间的搜索条件。
-  - 权限检查是 `checkDumpAndUsageStatsPermission`，**SHELL_UID 直接放行**。[源]：`DropBoxManagerService.java`、`DumpUtils.java`（main 分支）
-- **[未知]**：老版本和各 OEM ROM 上 dropbox tag 是否开启、保留条数、traces 是否被截断，都需要实机验证。
-- 实现方式：后台服务进程定时（例如 60 秒一次）或在看到 `am_anr`/`am_crash` 后触发 `dumpsys dropbox --print data_app_anr`（crash 同理），解析后缓存到本地。agent 调用时不需要等待。
+**Facts about ANR and dropbox**
+- AMS writes an ANR to dropbox with the tag `<processClass>_anr`, where processClass is `system_server`, `system_app` or `data_app`. It passes tracesFile as the dataFile and, when size allows, **inlines the traces content**. dropbox is rate-limited (DropboxRateLimiter).
+  - Source [source]: frameworks/base main, `ActivityManagerService.addErrorToDropBox`, `ProcessErrorStateRecord.java` (`addErrorToDropBox("anr", …, tracesFile, …)`)
+- The arguments of `dumpsys dropbox` are `[-p|--print] [-f|--file] [--proto] [timestamp]`; other arguments not starting with `-` are search conditions for a tag or a time.
+  - The permission check is `checkDumpAndUsageStatsPermission`, which **lets SHELL_UID through**. [source]: `DropBoxManagerService.java`, `DumpUtils.java` (main branch)
+- **[unknown]**: whether dropbox tags are enabled, how many entries are kept and whether traces are truncated on old versions and OEM ROMs; all need verification on real devices.
+- Implementation: the service process, on a timer (for example every 60 seconds) or after seeing `am_anr`/`am_crash`, runs `dumpsys dropbox --print data_app_anr` (and the same for crashes), parses the result and caches it locally. The agent does not wait when it calls.
 
 ### 2.4 `logcat_app_launches`
 
@@ -294,7 +296,7 @@ This tool only reads logs; launch the app yourself first (e.g. `adb shell am for
 }
 ```
 
-**输出示例**（示意）
+**Output example** (sketch)
 ```
 device emulator-5554 · Asia/Shanghai (+08:00) · package com.foo · 2 launches
 #1 2026-10-10 01:40:55.102  COLD  com.foo/.ui.MainActivity  (pid 23011)
@@ -309,17 +311,17 @@ device emulator-5554 · Asia/Shanghai (+08:00) · package com.foo · 2 launches
 caveats: onX "returned" times are when the callback finished (event logged after return); TTID is measured by the system from the launch request.
 ```
 
-**算法要点**
-- 锚点：ActivityTaskManager 的 `START u0 {… cmp=<pkg>/…}`。
-- 冷启动：锚点之后、首个 onResume 之前，出现了该 package 的 `am_proc_start`。
-- 温启动：设备进程已存在，但出现了 `wm_on_create_called`。
-- 热启动：只有 `wm_on_resume_called`，没有 onCreate。
-- `wm_on_*_called` 必须出自该包的 pid，并且组件名匹配。
-- `Displayed` 同时兼容 ActivityTaskManager 和 ActivityManager 两种 tag、是否带 ` for user N` 两种写法。
-- 证据缺失时逐项写 `not found`，并给出原因猜测，例如：events buffer 没录到；启动早于 history 起点。
-- 上述冷/温/热判定规则是 **[推断]**，需要用 `am start -W` 的 LaunchState 交叉验证。
+**Algorithm notes**
+- Anchor: ActivityTaskManager's `START u0 {… cmp=<pkg>/…}`.
+- Cold start: an `am_proc_start` of that package appears after the anchor and before the first onResume.
+- Warm start: the device process already exists, but a `wm_on_create_called` appears.
+- Hot start: only `wm_on_resume_called`, no onCreate.
+- `wm_on_*_called` must come from the pid of that package and the component name must match.
+- `Displayed` is accepted under both the ActivityTaskManager and ActivityManager tags, with or without ` for user N`.
+- When evidence is missing, write `not found` per item with a guess at the reason, for example: the events buffer was not recorded; the launch was before the start of the history.
+- The cold/warm/hot rules above are **[inferred]** and must be cross-checked against the LaunchState of `am start -W`.
 
-### 2.5 server instructions（草案）
+### 2.5 Server instructions (draft)
 
 ```
 Android logcat recorder. Logs from every connected device are captured continuously in the background and kept across sessions; nothing to start/stop/clear.
@@ -330,249 +332,249 @@ All times are device-local; responses state the device timezone.
 
 ---
 
-## 3. 暴露给 agent 的过滤语言（AS 语法 + 少量扩展 + 严格报错）
+## 3. The filter language exposed to the agent (AS syntax + a few extensions + strict errors)
 
-### 3.1 语法速查
+### 3.1 Syntax cheat sheet
 
-| 写法 | 含义 |
+| Form | Meaning |
 |---|---|
-| `tag:x` `message:x` `package:x` `process:x` `line:x` | contains，忽略大小写 |
-| `key=:x` | 完全相等，区分大小写 |
-| `key~:re` | 正则部分匹配，区分大小写；可用 `(?i)` 关闭大小写区分；引擎是 RE2 |
-| `-key:x` `-key=:x` `-key~:re` | 取反 |
-| `level:<verbose\|debug\|info\|warn\|error\|assert>` | 不低于该级别 |
-| `age:<N>[smhd]` | 最近 N 秒、分、时、天（以设备时钟为准，见 3.4） |
-| `is:crash` `is:stacktrace` | 与 AS 定义一致 |
-| 裸词或 `"带 空格"` | 在整行中 contains |
-| `a & b`、`a \| b`、`( … )` | AND、OR（`&` 优先）、分组；运算符两边**必须有空格** |
-| 空格并列 | AND；**例外**：同一字段的正向项之间是 OR；多个 `level:` 之间、多个 `age:` 之间、`is:crash` 与 `is:stacktrace` 之间也是 OR |
+| `tag:x` `message:x` `package:x` `process:x` `line:x` | contains, case-insensitive |
+| `key=:x` | exact equality, case-sensitive |
+| `key~:re` | partial regex match, case-sensitive; `(?i)` turns case sensitivity off; the engine is RE2 |
+| `-key:x` `-key=:x` `-key~:re` | negation |
+| `level:<verbose\|debug\|info\|warn\|error\|assert>` | at or above that level |
+| `age:<N>[smhd]` | the last N seconds, minutes, hours, days (by the device clock, see 3.4) |
+| `is:crash` `is:stacktrace` | same definition as AS |
+| a bare word or `"with space"` | contains, on the whole line |
+| `a & b`, `a \| b`, `( … )` | AND, OR (`&` binds tighter), grouping; the operators **must have spaces on both sides** |
+| terms separated by spaces | AND; **exception**: positive terms on the same key are ORed; so are several `level:`, several `age:`, and `is:crash` with `is:stacktrace` |
 
-**扩展（非 AS，在 description 和回显中标注 `[ext]`）**
-- `pid:<n>`、`tid:<n>`：精确匹配。
-- `buffer:<main|system|crash|events>`：可取反。
-- `level:` 额外接受单字母 `V/D/I/W/E/A/F`，以及 `fatal`（等同 assert）。agent 常沿用 logcat 的 `*:E` 习惯。
-- `name:` 和 `package:mine`：**不支持**，因为 MCP 没有“当前工程”的概念。遇到时报错，并建议改用 `package` 参数。
+**Extensions (not AS; marked `[ext]` in the description and the echo)**
+- `pid:<n>`, `tid:<n>`: exact match.
+- `buffer:<main|system|crash|events>`: can be negated.
+- `level:` additionally accepts the single letters `V/D/I/W/E/A/F` and `fatal` (same as assert). Agents often carry over logcat's `*:E` habit.
+- `name:` and `package:mine`: **not supported**, because MCP has no notion of a "current project". They return an error that suggests the `package` parameter.
 
-### 3.2 解释回显
+### 3.2 Interpretation echo
 
-每次成功的响应第一行写出规范化的谓词树，例如：
+The first line of every successful response gives the normalized predicate tree, for example:
 
 `filter parsed as: (tag = "OkHttp" OR tag = "MyRepo") AND level >= DEBUG AND NOT message contains "heartbeat"`
 
-agent 可以借此发现自己写的 `message:foo message:bar` 实际被解释成了 OR。
+An agent can use this to notice that its `message:foo message:bar` was interpreted as OR.
 
-### 3.3 错误行为（替代 AS 的静默退化）
+### 3.3 Error behavior (instead of AS's silent fallback)
 
-所有错误都以 `isError: true` 返回，文本由 3 部分组成：问题、位置、改法。
+Every error is returned with `isError: true`; the text has three parts: the problem, the position, the fix.
 
-| 情况 | 返回文本示例 |
+| Case | Example text returned |
 |---|---|
-| 未知键 | `Filter error at col 12: unknown key "lvl". Keys: tag message package process line level age is pid tid buffer.`<br>`  tag:OkHttp lvl:error`<br>`             ^`<br>`Did you mean: level:error` |
-| 键名大写 | `Filter error at col 1: keys are lowercase — use tag: instead of Tag:` |
-| 非法 level | `level:"err" is not a level. Use one of verbose debug info warn error assert (or V D I W E A F).` |
-| 非法 age | `age:"10min" — use <number><s|m|h|d>, e.g. age:10m` |
-| 引号未闭合或括号不配对 | 给出列号，并附一个配对后的建议写法 |
-| RE2 不支持的正则 | `tag~:"(?<!Ok)Http" uses look-behind, which is not supported (regex engine: Go RE2 — no look-around, no backreferences). Rewrite, e.g.: tag~:Http -tag~:OkHttp` |
-| 括号内空格并列 `(a b)` | `Inside parentheses terms must be joined with & or \|, e.g. (tag:a & level:error)` |
-| `name:` 或 `package:mine` | `package:mine is not supported here (no IDE project). Use the package parameter: package="com.foo"` |
+| Unknown key | `Filter error at col 12: unknown key "lvl". Keys: tag message package process line level age is pid tid buffer.`<br>`  tag:OkHttp lvl:error`<br>`             ^`<br>`Did you mean: level:error` |
+| Uppercase key | `Filter error at col 1: keys are lowercase — use tag: instead of Tag:` |
+| Invalid level | `level:"err" is not a level. Use one of verbose debug info warn error assert (or V D I W E A F).` |
+| Invalid age | `age:"10min" — use <number><s|m|h|d>, e.g. age:10m` |
+| Unclosed quote or unbalanced parentheses | The column, plus a suggested balanced rewrite |
+| Regex not supported by RE2 | `tag~:"(?<!Ok)Http" uses look-behind, which is not supported (regex engine: Go RE2 — no look-around, no backreferences). Rewrite, e.g.: tag~:Http -tag~:OkHttp` |
+| Space-separated terms inside parentheses `(a b)` | `Inside parentheses terms must be joined with & or \|, e.g. (tag:a & level:error)` |
+| `name:` or `package:mine` | `package:mine is not supported here (no IDE project). Use the package parameter: package="com.foo"` |
 
-**警告**（不算错误，写在表头 `note:` 行）
-- 可疑写法 `tag:foo|bar`：`note: value "foo|bar" contains "|" — if you meant OR write tag:foo | tag:bar`
-- 同字段多项被合并成 OR 时：`note: tag:A tag:B are ORed (same key)`
-- 结果为 0 条时给出最可能的原因：package 在该时间范围内没有设备进程；tag 大小写不匹配（`=:` 区分大小写）；时间窗在 history 起点之前；附近相似的 tag 名有哪些。
+**Warnings** (not errors; written on the header `note:` line)
+- Suspicious form `tag:foo|bar`: `note: value "foo|bar" contains "|" — if you meant OR write tag:foo | tag:bar`
+- When several terms on the same key are merged into an OR: `note: tag:A tag:B are ORed (same key)`
+- With 0 results, give the most likely reasons: the package had no device process in that time range; the tag differs in case (`=:` is case-sensitive); the time window is before the start of the history; which similar tag names exist nearby.
 
-### 3.4 与 AS 的有意差异（全部写进 description 或文档）
+### 3.4 Intentional differences from AS (all go into the description or the documentation)
 
-1. 出错时报错，不退化。
-2. 扩展键 pid、tid、buffer，以及 level 单字母。
-3. 不支持 `name:` 和 `package:mine`。
-4. `age:` 以**设备时钟的估计值**为准，AS 用的是主机时钟。理由是日志时间戳来自设备。设备“现在”= 主机现在 + 连接时测得的偏移，偏移用 `adb shell date +%s` 测量，精度 1 秒，**[推断]** 够用。
-5. 正则引擎是 RE2，不是 java.util.regex。
-6. `foo bar` 按 AS **代码**解释为 AND；AS 文档说是短语，两者冲突，见 v2。
+1. Errors are reported, not degraded.
+2. Extension keys pid, tid, buffer, and single-letter levels.
+3. `name:` and `package:mine` are not supported.
+4. `age:` uses the **estimate of the device clock**; AS uses the host clock. The reason is that log timestamps come from the device. Device "now" = host now + the offset measured at connection time; the offset is measured with `adb shell date +%s`, accurate to 1 second, which is enough **[inferred]**.
+5. The regex engine is RE2, not java.util.regex.
+6. `foo bar` is interpreted as AND according to the AS **code**; the AS documentation says it is a phrase. The two conflict, see v2.
 
 ---
 
-## 4. 错误与边界情况（可执行的文本）
+## 4. Errors and edge cases (actionable text)
 
-| 情况 | 返回（isError） |
+| Case | Returned (isError) |
 |---|---|
-| adb 不在 PATH 中 | `adb not found. Install Android platform-tools or set ANDROID_LOG_MCP_ADB=/path/to/adb (also checked: $ANDROID_HOME/platform-tools, ~/Library/Android/sdk/platform-tools).` |
-| adb server 起不来 | 附 `adb start-server` 的错误输出的前 3 行 |
-| 无设备 | `No device connected. Connect a device with USB debugging enabled or start an emulator; logcat_status shows the state. Previously recorded devices: emulator-5554 (last seen 01:10:22) — pass device="emulator-5554" to query its stored logs.` |
-| 设备 unauthorized | `Device R5CT… is unauthorized: accept the "Allow USB debugging" prompt on the phone.` |
-| 多台设备且未指定 | `2 devices have logs; pass device=one of: emulator-5554 (Pixel_8_API_35, online), R5CT12345 (SM-S918B, online).` |
-| 指定的设备没有记录 | 列出已有记录的设备 |
-| package 从未见过 | `No logs from package "com.fo" in range. Did you mean com.foo? (installed: yes). Known packages with logs in range: com.foo, com.android.systemui, …`（不算错误，返回 0 条并附提示） |
-| App 当前没在运行 | 不算错误：`com.foo has no running process (last pid 21877 died 01:39:47).` |
-| 时间无法解析 | `from="yesterday 3pm" not understood. Use "2026-10-10 15:00:00", "15:00:00", ISO-8601, or a duration like "30m".` |
-| 时间窗早于 history 起点 | 正常返回，并在表头注明：`note: history starts 2026-10-09 17:58:10; earlier logs were not recorded (device buffer had rolled over).` |
-| cursor 失效（设备重启或数据被清理） | `cursor refers to boot 9f2a which has been pruned/replaced; showing from oldest available instead.`（这算 note；只有 cursor 格式错误时才是 error） |
-| `wait_ms` 超时 | 不算错误：`no new matches within 20000 ms; call again with the same after cursor to keep waiting.` |
-| 输出预算耗尽 | 见 2.2 的截断尾部：剩余条数、cursor、缩小范围的建议 |
-| 录制有缺口 | 在相关时间段的表头注明 `gap: 22:10:04–22:10:19 (device disconnected)` |
+| adb not on PATH | `adb not found. Install Android platform-tools or set ANDROID_LOG_MCP_ADB=/path/to/adb (also checked: $ANDROID_HOME/platform-tools, ~/Library/Android/sdk/platform-tools).` |
+| adb server fails to start | Append the first 3 lines of the error output of `adb start-server` |
+| No device | `No device connected. Connect a device with USB debugging enabled or start an emulator; logcat_status shows the state. Previously recorded devices: emulator-5554 (last seen 01:10:22) — pass device="emulator-5554" to query its stored logs.` |
+| Device unauthorized | `Device R5CT… is unauthorized: accept the "Allow USB debugging" prompt on the phone.` |
+| Several devices and none given | `2 devices have logs; pass device=one of: emulator-5554 (Pixel_8_API_35, online), R5CT12345 (SM-S918B, online).` |
+| The given device has no records | List the devices that have records |
+| Package never seen | `No logs from package "com.fo" in range. Did you mean com.foo? (installed: yes). Known packages with logs in range: com.foo, com.android.systemui, …` (not an error: 0 lines with a hint) |
+| The app is not running now | Not an error: `com.foo has no running process (last pid 21877 died 01:39:47).` |
+| Time cannot be parsed | `from="yesterday 3pm" not understood. Use "2026-10-10 15:00:00", "15:00:00", ISO-8601, or a duration like "30m".` |
+| Time window before the start of the history | Returned normally, with a note in the header: `note: history starts 2026-10-09 17:58:10; earlier logs were not recorded (device buffer had rolled over).` |
+| Cursor no longer valid (device rebooted or data pruned) | `cursor refers to boot 9f2a which has been pruned/replaced; showing from oldest available instead.` (this is a note; only a malformed cursor is an error) |
+| `wait_ms` timed out | Not an error: `no new matches within 20000 ms; call again with the same after cursor to keep waiting.` |
+| Output budget exhausted | See the truncation tail in 2.2: the remaining count, the cursor, suggestions to narrow the range |
+| Recording gap | Note in the header of the affected time range: `gap: 22:10:04–22:10:19 (device disconnected)` |
 
 ---
 
-## 5. 场景走查（最少调用次数）
+## 5. Scenario walk-through (fewest calls)
 
-**A. 冷启动到首个 onResume 的耗时**（1–2 次调用）
-1. agent 用自带的 shell 执行 `adb shell am force-stop com.foo && adb shell am start -W -n com.foo/.ui.MainActivity`；没有 shell 能力时，请用户手动点开 App。
-2. `logcat_app_launches(package="com.foo")`，直接得到 `request→first onResume: 440 ms` 和各阶段耗时。
-3. 想看启动期间的 App 日志时：`logcat_search(package="com.foo", from="01:40:55", to="01:40:57")`，时间取自上一步结果中的绝对时间。
+**A. Time from a cold start to the first onResume** (1–2 calls)
+1. The agent runs `adb shell am force-stop com.foo && adb shell am start -W -n com.foo/.ui.MainActivity` with its own shell; without shell access, ask the user to open the app by hand.
+2. `logcat_app_launches(package="com.foo")` returns `request→first onResume: 440 ms` and the time of each phase directly.
+3. To see the app's logs during the start: `logcat_search(package="com.foo", from="01:40:55", to="01:40:57")`, with the absolute times taken from the previous result.
 
-**B. 崩溃或 ANR 分析**（1–2 次调用）
-1. `logcat_crashes(package="com.foo")`。只有一条时直接返回详情：完整堆栈加崩溃前 40 行。多条时，列表里已经有异常、首个 App 帧和重复次数。
-2. 需要时调用 `logcat_crashes(id="cr5")`，或者看更大范围的上下文：`logcat_search(package="com.foo", from="01:23:40", to="01:24:11", min_level="debug")`。
-3. ANR 走同样的路径。详情里有 reason 和主线程 trace；traces 不可用时会写明原因和替代办法（bugreport）。
+**B. Crash or ANR analysis** (1–2 calls)
+1. `logcat_crashes(package="com.foo")`. With a single match it returns the detail directly: the full stack plus the 40 lines before the crash. With several, the list already has the exception, the first app frame and the repeat count.
+2. When needed, call `logcat_crashes(id="cr5")`, or look at a wider context: `logcat_search(package="com.foo", from="01:23:40", to="01:24:11", min_level="debug")`.
+3. An ANR takes the same path. The detail has the reason and the main-thread trace; when traces are unavailable it says why and gives an alternative (bugreport).
 
-**C. 用几个 tag 定位 bug**（1–3 次调用）
-1. 范围不明时，先 `logcat_search(package="com.foo", from="15m", view="summary")`，看 top tags 和重复消息。
+**C. Locating a bug with a few tags** (1–3 calls)
+1. When the range is unclear, first `logcat_search(package="com.foo", from="15m", view="summary")` to see the top tags and repeated messages.
 2. `logcat_search(package="com.foo", tags=["OkHttp","MyRepo","Billing"], min_level="debug", from="15m")`。
-3. 需要排除时：`filter="-message:heartbeat -tag:Choreographer"`。需要 AND 两个 message 条件时：`filter="message:order & message~:\"id=\\d+\""`。
+3. To exclude: `filter="-message:heartbeat -tag:Choreographer"`. To AND two message conditions: `filter="message:order & message~:\"id=\\d+\""`.
 
-**D. 指定时间窗**（1 次调用）
-- `logcat_search(from="2026-10-10 01:20:00", to="2026-10-10 01:25:00", filter="level:warn")`，或者用相对时间 `from="30m"`，也可以加 `filter="... age:10m"`，两者取交集。
+**D. A given time window** (1 call)
+- `logcat_search(from="2026-10-10 01:20:00", to="2026-10-10 01:25:00", filter="level:warn")`, or a relative time `from="30m"`, or `filter="... age:10m"`; the results intersect.
 
-**E. 现场复现**（2 次调用）
-1. `logcat_status()`，拿到 `cursor`。
-2. 请用户复现。
-3. `logcat_search(after=cursor, package="com.foo", wait_ms=20000)`。没等到新日志就用同一个 cursor 再调。
-4. 也可以复现后直接 `logcat_crashes(package="com.foo", from=<上一步的时间>)`。
+**E. Reproducing live** (2 calls)
+1. `logcat_status()` to get the `cursor`.
+2. Ask the user to reproduce.
+3. `logcat_search(after=cursor, package="com.foo", wait_ms=20000)`. If no new logs arrived, call again with the same cursor.
+4. Alternatively, after the reproduction call `logcat_crashes(package="com.foo", from=<the time from the previous step>)` directly.
 
 ---
 
-## 6. 其他与 agent 友好性相关的决策
+## 6. Other decisions related to agent friendliness
 
-- **无隐藏会话状态**：所有工具都是纯查询，同样的参数加同样的 cursor 得到同样的结果（`wait_ms` 和“最新 N 条”除外，它们随时间变化）。cursor 是不透明字符串 `c1.<base64 serial>.<boot>.<seq>`，可以跨 server 重启、跨 agent 共享。
-- **零参数调用都有用**：
-  - `logcat_status()`：设备、录制状态、cursor。
-  - `logcat_search()`：最新 50 行（#23 之前是 200），附 top tags 摘要。
-  - `logcat_crashes()`：全部 App 的近期崩溃。
-  - `logcat_app_launches()`：最近 30 分钟内的启动。
-- **大小控制**：
-  - 每次响应的硬预算是 30,000 字符，留出 Claude Code 50,000 字符转存阈值以下的余量，大约 8–10k token。
-  - limit 默认 50（#23；之前是 200，默认输出约 27.5k 字符，被 30k 预算截在约 175 行）。超出时按 2.2 的截断格式输出，`[truncated: …]` 行提示 `view="summary"`；30k 预算放不下 `limit` 条时多一行 `[output cap: …]`。
+- **No hidden session state**: every tool is a pure query; the same parameters with the same cursor give the same result (except `wait_ms` and "newest N lines", which change over time). The cursor is an opaque string `c1.<base64 serial>.<boot>.<seq>` that survives service restarts and can be shared between agents.
+- **Every zero-parameter call is useful**:
+  - `logcat_status()`: devices, recording state, cursor.
+  - `logcat_search()`: the newest 50 lines (200 before #23), with a top-tags summary.
+  - `logcat_crashes()`: recent crashes of all apps.
+  - `logcat_app_launches()`: launches in the last 30 minutes.
+- **Size control**:
+  - The hard budget per response is 30,000 characters, leaving headroom below Claude Code's 50,000-character save-to-file threshold; about 8–10k tokens.
+  - The default limit is 50 (#23; it was 200, whose default output of about 27.5k characters was cut by the 30k budget at about 175 lines). Beyond that the output uses the truncation format of 2.2, and the `[truncated: …]` line points to `view="summary"`; when the 30k budget cannot hold `limit` lines there is an extra `[output cap: …]` line. Since #85 (`fmt=1`) the same information is one `truncated … next:` line; see reference.md.
   - **Short stacks (#23).** A Java stack logged with a line is one record of 20–40 frame lines (~1 KB); shown in full it dominated the response whatever `limit` was. With `stack="short"` (default) each exception and each `Caused by` keeps its head and first 3 frames (`↳ K more frames`, Java's `... N more` and the frames of a `Suppressed:` exception included); a stack whose frames were already printed in the same response becomes `↳ same K frames as HH:MM:SS.mmm`; a line holding a stack is cut at 2,000 chars, keeping every `Caused by` head and its first frame first (the last `Caused by` is usually the root cause). A `stacks: N shortened (M frames hidden)` line says when anything was left out. `stack="full"` shows every frame (8,000-char cap), as before. When the context lines overflow the budget, whole records are dropped so a `same frames` reference never points at a line that was cut.
   - Per-line caps (2,000 chars, 8,000 for a full stack) apply to every query; the cut marker says so (`…[+N chars; lines are cut at 2,000 chars in every query, narrowing does not show more]`).
-  - 可以考虑给 Claude Code 声明 `anthropic/maxResultSizeChars`，**[未知]** 是否值得做。
+  - Declaring `anthropic/maxResultSizeChars` for Claude Code could be considered; whether it is worth it is **[unknown]**.
 - **Match counts (issue #20).** `logcat_search` stops counting 100 ms after its page (`limit`) is full. The total is then a lower bound, and the text says which span was counted and how to get an exact count: `matched ≥14,043 lines (counted the newest 21 min only, since 23:32:09; older history not counted — narrow with from/to, e.g. from="1h", for an exact count)`. Without a filter or time window, the exact total comes from the store's record range (`Store.Count`: the in-memory window plus the per-block line counts of the segment index), without decoding records. Every lines response has one machine-readable line, `count: total=N count_exact=true|false [counted_from|counted_to="<device-local time>"]`, so agents need not parse the prose. The top-tags line says when it covers only the counted matches (or only the page). These fields are a text line rather than MCP `structuredContent`, because Claude Code passes only `structuredContent` to the model when both are present, which would drop the log lines (see §7 Q2).
-- **超时**：只有 `wait_ms` 会阻塞，上限 25 秒。其他查询目标是 1 秒内返回（内存索引加分段扫描）。冷查询扫描大段历史时，返回已扫描的部分，并给出 `continue: before=<cursor>`，不做长时间阻塞。
-- **时区**：
-  - 所有输出用设备本地时间，表头写 `tz <IANA> (+hh:mm)`。时区来源是 `getprop persist.sys.timezone`，具体命令 **[需实机]**。
-  - 输入的绝对时间也按设备本地时间解释；带偏移的 ISO 时间按其偏移换算。
-  - 主机与设备时区不同时，`logcat_status` 会提示：`note: host timezone differs (UTC-07:00)`。
-- **pid 内联名字**：每行都带设备进程名，名字在入库时解析（v2 的方案），已结束的设备进程也能正确显示。
-- **安全**：工具不执行任意 shell，不写设备。只调用固定的 `logcat`、`ps`、`dumpsys dropbox`、`getprop`、`pm list packages -U`、`date`。
+- **Timeouts**: only `wait_ms` blocks, at most 25 seconds. Other queries aim to return within 1 second (in-memory index plus segment scan). A cold query that scans a large stretch of history returns the part already scanned with `continue: before=<cursor>` and does not block for long.
+- **Time zone**:
+  - All output uses device-local time, with `tz <IANA> (+hh:mm)` in the header. The zone comes from `getprop persist.sys.timezone`; the exact command **[needs a real device]**.
+  - Absolute input times are also interpreted as device-local; an ISO time with an offset is converted by that offset.
+  - When the host and device zones differ, `logcat_status` says: `note: host timezone differs (UTC-07:00)`.
+- **pid with inline name**: every line carries the device process name, resolved at ingest time (the v2 approach), so an ended device process is also shown correctly.
+- **Safety**: the tools run no arbitrary shell and write nothing to the device. They call only the fixed `logcat`, `ps`, `dumpsys dropbox`, `getprop`, `pm list packages -U` and `date`.
 
 ---
 
-## 7. 开放问题（需要用户决定或实测）
+## 7. Open questions (need a user decision or measurement)
 
-1. **要不要提供一个带副作用的 `logcat_measure_launch(package, activity?, mode=cold|warm, runs=1..5)`**：它会 force-stop App 再 `am start -W`，然后返回汇总。
-   - 好处：没有 shell 的 MCP 宿主（如 Claude Desktop）也能一键测冷启动；多次运行可以给出中位数。
-   - 坏处：会杀掉 App（destructiveHint），并超出“只看日志”的边界。
-   - 建议：v1 不做，或者用启动参数 `--enable-actions` 打开，默认关闭。
-2. **structuredContent 和 outputSchema**：各 MCP 宿主把 text 还是 structuredContent 交给模型，**[未知]**，需要按 MCP 宿主实测。规范要求返回 structuredContent 时 SHOULD 同时给出 JSON 文本，可能导致 token 翻倍。
-   - 建议：v1 只返回文本。v1.1 在 status、crashes、launches 这几个小结果上评测加 structuredContent 的效果。
+1. **Whether to provide a side-effecting `logcat_measure_launch(package, activity?, mode=cold|warm, runs=1..5)`**: it force-stops the app, runs `am start -W` and returns a summary.
+   - Pro: MCP hosts without a shell (such as Claude Desktop) can measure a cold start in one step; several runs give a median.
+   - Con: it kills the app (destructiveHint) and goes beyond "read logs only".
+   - Recommendation: not in v1, or behind a start-up flag `--enable-actions`, off by default.
+2. **structuredContent and outputSchema**: whether an MCP host hands the text or the structuredContent to the model is **[unknown]** and must be measured per MCP host. The specification says a tool that returns structuredContent SHOULD also give JSON text, which can double the tokens.
+   - Recommendation: v1 returns text only. In v1.1, evaluate adding structuredContent on the small results of status, crashes and launches.
    - Finding (2026-10, #20): Claude Code forwards only `structuredContent` to the model when a result has both (anthropics/claude-code#9962, #55677). Machine-readable fields therefore go into a fixed text line (`count: …`), not `structuredContent`.
-3. **自动记录所有设备**还是只记录一台。前者对 agent 最简单，但资源占用随设备数线性增长；上限 4 台是拍脑袋定的。
-4. **严格报错是否需要一个“AS 兼容的宽松模式”开关**。agent 场景下建议不提供。
-5. **默认 limit**（200 条、30k 字符）和**是否默认折叠重复行**，应通过评测确定。Anthropic 建议做 eval：拿真实任务比较调用次数、token 和成功率。
-6. **dropbox 在旧版本和 OEM ROM 上的可用性**，以及 ANR traces 是否被截断。
-7. **冷/温/热判定规则**和 `wm_on_*_called` 在旧版本上是否存在（这些事件在 main 分支中存在，最早出现的版本 **[未知]**）。
-8. **工具 description 用英文**是否可以接受；如有需要可以加中文别名说明。
-9. 多设备时 crash ID 的格式。
+3. **Record all devices automatically**, or only one. The former is simplest for the agent, but resource use grows linearly with the number of devices; the limit of 4 was a guess.
+4. **Whether strict errors need an "AS-compatible lenient mode" switch.** For the agent use case, the recommendation is not to offer one.
+5. **Default limit and default folding of repeated lines.** Resolved: the default limit is 50 (#23; the earlier 200 items / 30k characters budget was too large, see §6) and consecutive identical lines are folded by default (§1 row 11). The Anthropic advice to run an eval (compare calls, tokens and success rate on real tasks) still applies to any further change.
+6. **Availability of dropbox on old versions and OEM ROMs**, and whether ANR traces are truncated.
+7. **The cold/warm/hot rules** and whether `wm_on_*_called` exists on old versions (these events exist on the main branch; the earliest version that has them is **[unknown]**).
+8. **Whether English tool descriptions are acceptable**; a Chinese alias note can be added if needed.
+9. The format of crash IDs with several devices.
 
-## 8. 诊断包：`report` 子命令（v0.2.0，issue #1）
+## 8. Diagnostic bundle: the `report` subcommand (v0.2.0, issue #1)
 
-目的：用户把诊断数据发给维护者，用来回放、复现和补回归测试。用法和打码规则见 docs/reference.md「Diagnostic reports and privacy」一节，这里只记设计取舍。
+Purpose: the user sends diagnostic data to the maintainer, who uses it to replay, reproduce and add regression tests. Usage and redaction rules are in the "Diagnostic reports and privacy" section of docs/reference.md; only the design trade-offs are recorded here.
 
-- **不是 MCP 工具，而是 CLI 子命令**：打包要写本地文件、可能启动 App（`--am-start`），不适合交给 agent 随手调用。子命令只用 `store.OpenReadOnly` 读数据目录，不抢 writer 锁、不开始录制，和正在运行的录制进程（现为后台服务进程）互不影响。
-- **日志以两种形式放进包里**：
-  - `store/v1/<device-id>/`（0.4 起，manifest `format` 为 `android-log-mcp-report/2`）：本工具自己的格式，按窗口 / 包名裁剪，序号重排为 1..N（崩溃的 `seq` 和会话的 `first_seq` 按下界映射过去），只写一个分段。`--offline <解压目录>/store` 只读加载（不录制、不清理、不创建文件），4 个工具照常可用。0.3 的 zip（`store/<serial>/`）不再能加载（issue #7）。
-  - `devices/<serial>/logcat/<boot>.txt`：同一批记录按录制时的 `logcat -v threadtime -v epoch -v uid -v usec -v printable` 格式重新输出，每个 boot 一个文件；DropBox 条目保持 `dumpsys dropbox --print` 格式。回放测试的 `Pipeline.ReplayText` / `ApplyDropbox` 可以原样加载，崩溃识别和启动分析会重新跑一遍。已知限制：头部完全相同的相邻两条记录在回放时会被合并（与 README「合并多行消息」相同）。
-- **打码只作用于正文**：日志的 message、崩溃 / ANR / tombstone 文本、DropBox 正文、`am start` 输出和 note。时间、pid、tid、uid、级别、tag、包名、设备进程名和设备属性是结构化字段，不经过打码器，所以结构不可能被破坏；规则本身再排除时间戳、十六进制、堆栈帧、版本号等（单元测试 + API 29 全量 fixture 回归）。
-- **占位符 `[REDACTED:<类型>#n]`**：编号按首次出现顺序分配，同值同号；映射用每个包随机生成、用完即丢的 HMAC 密钥，内存里也只存 HMAC，包里不保存原值。`--redact-extra` 的正则、`--keep-domain` 的域名和 `--note` 的内容不写进 manifest（只记条数 / 是否有）。
-- **域名**：URL 里的主机不论顶级域名都打码（只换主机，保留 scheme / 端口 / 路径）；裸主机名只认精选公共顶级域名、且第一段不是反向域名前缀（`com.`、`android.`、`java.`、`ro.`、`persist.`…），以避免把包名、类名、文件名、属性名、intent action 当成域名。代价是以 `.so` `.md` `.sh` `.py` `.rs` `.id` `.top` `.online`… 这类既是文件扩展名 / 常用词又是 TLD 结尾的裸主机名会漏掉，URL 里的不受影响；可用 `--redact-extra` 补。在 API 29 全量 fixture 上，域名规则命中的只有 11 个真实主机（`connectivitycheck.gstatic.com`、`time.android.com`、`www.google.com` 等），测试里固定了这份清单，多出任何一个都算误判。
-- **大小上限**：按「未压缩的 JSONL + logcat 文本」计算，多台设备共用一个上限，从最旧的记录开始丢；丢弃数写进 manifest，并在包内 `meta.json` 加一个 `report size cap` 缺口，`logcat_status` 会显示。
-- **`--package`**：保留该 App 的记录（按 ingest 时解析出的包名 / 设备进程名），以及正文里提到包名的系统记录（`START u0`、`am_proc_start`、`Displayed`、`ANR in` 等），这样启动时间线和崩溃上下文在包里仍然完整。`packages.json` 也只保留该 App 的 uid，避免把整个已安装应用列表带出去。
-- **`--am-start`**：先执行再收集日志；执行后最多等 8 秒，直到后台服务进程落盘了 am start 开始之后的日志。没有后台服务进程录制时在 `am-start.txt` 里注明。组件名用正则校验，防止 shell 注入。
+- **Not an MCP tool but a CLI subcommand**: packaging writes local files and may start an app (`--am-start`), so it should not be something an agent calls casually. The subcommand reads the data directory only through `store.OpenReadOnly`, does not take the writer lock and does not start recording, so it does not interfere with the running recording process (now the service process).
+- **The logs go into the bundle in two forms**:
+  - `store/v1/<device-id>/` (since 0.4, manifest `format` `android-log-mcp-report/2`): this tool's own format, trimmed by window / package, seqs renumbered 1..N (the `seq` of a crash and the `first_seq` of a session are mapped by lower bound), one segment only. `--offline <unpacked dir>/store` loads it read-only (no recording, no pruning, no files created) and the 4 tools work as usual. 0.3 zips (`store/<serial>/`) can no longer be loaded (issue #7).
+  - `devices/<serial>/logcat/<boot>.txt`: the same records re-emitted in the format used when recording, `logcat -v threadtime -v epoch -v uid -v usec -v printable`, one file per boot; DropBox entries keep the `dumpsys dropbox --print` format. The replay tests' `Pipeline.ReplayText` / `ApplyDropbox` load it unchanged, and crash detection and launch analysis run again. Known limitation: two adjacent records with identical headers are merged on replay (the same as "merging multi-line messages" in the README).
+- **Redaction applies only to the body**: the log message, crash / ANR / tombstone text, DropBox body, `am start` output and the note. Time, pid, tid, uid, level, tag, package name, device process name and device properties are structured fields that do not pass through the redactor, so the structure cannot be damaged; the rules themselves also exclude timestamps, hex numbers, stack frames and version numbers (unit tests + a regression over the full API 29 fixture).
+- **Placeholder `[REDACTED:<type>#n]`**: numbers are assigned in order of first appearance, the same value gets the same number; the mapping uses a randomly generated HMAC key per bundle that is discarded after use, and memory holds only the HMAC; the bundle never holds the original value. The regexes of `--redact-extra`, the domains of `--keep-domain` and the content of `--note` are not written into the manifest (only the count / whether there is one).
+- **Domains**: hosts in URLs are redacted whatever the top-level domain (only the host is replaced; scheme / port / path stay); a bare host name is recognized only with a curated set of public top-level domains and when its first label is not a reverse-domain prefix (`com.`, `android.`, `java.`, `ro.`, `persist.`…), to avoid treating package names, class names, file names, property names and intent actions as domains. The cost is that bare host names ending in something that is both a file extension / common word and a TLD, such as `.so` `.md` `.sh` `.py` `.rs` `.id` `.top` `.online`…, are missed; those in URLs are not affected; `--redact-extra` can fill the gap. On the full API 29 fixture the domain rule hits only 11 real hosts (`connectivitycheck.gstatic.com`, `time.android.com`, `www.google.com` and so on); the test pins this list, and any extra hit counts as a false positive.
+- **Size cap**: computed on "uncompressed JSONL + logcat text"; several devices share one cap and the oldest records are dropped first; the number dropped goes into the manifest, and a `report size cap` gap is added to the in-bundle `meta.json`, which `logcat_status` shows.
+- **`--package`**: keeps that app's records (by the package name / device process name resolved at ingest) and the system records whose body mentions the package name (`START u0`, `am_proc_start`, `Displayed`, `ANR in`, etc.), so the launch timeline and the crash context stay complete in the bundle. `packages.json` keeps only that app's uid too, so the whole installed-app list does not leave the machine.
+- **`--am-start`**: runs first and then collects the logs; after running it waits up to 8 seconds until the service process has persisted the logs from after the start of `am start`. When no service process is recording, `am-start.txt` says so. The component name is validated with a regex to prevent shell injection.
 
-## 9. 内存与磁盘上限（issue #2）
+## 9. Memory and disk limits (issue #2)
 
-起因：在 Codex 里长时间使用时，有用户反馈内存和磁盘占用偏高。原来的实现有这些问题：
-- 每台设备在内存里缓存最近 100k 条日志，只按条数计；
-- 历史查询会缓存最多 3 个完整的已解码分段（每段 16 MiB，解码后更大）；
-- 只读打开数据的 MCP 进程 / CLI 进程启动时也会预读整个窗口，而且从不释放；
-- 辅助文件只追加，不清理；
-- 数据目录没有总量上限，磁盘快满时也不会暂停录制。
+Background: after long use in Codex, users reported high memory and disk use. The original implementation had these problems:
+- Each device cached the most recent 100k lines in memory, counted by lines only;
+- A history query cached up to 3 whole decoded segments (16 MiB each, larger once decoded);
+- An MCP process / CLI process that opened the data read-only also pre-read the whole window at start and never released it;
+- Auxiliary files were append-only and never cleaned;
+- The data directory had no total cap, and recording did not pause when the disk was nearly full.
 
-### 9.1 内存
+### 9.1 Memory
 
-- **最近窗口**：默认 20000 条，另外按估算字节数限制在 16 MiB 以内，取先到者。估算值 = 结构体 + 2 ×（message、tag、设备进程名、包名的长度），其中第二份对应过滤引擎缓存在记录上的规范行（`Record.Line`），所以是偏高的估计。超过上限 25% 时才裁剪一次，这样每次 append 不用复制整个窗口。
-- **历史读取改成按块**：
-  - 每个分段第一次被读到时建一个块索引：只按行边界切成约 512 KiB 的块，每块记录 seq 范围和文件偏移；建索引时只解析行首的 `{"s":N`，不解码整行。
-  - 正在写入的分段，索引会随文件增长往后延伸，未满的最后一块会被重新打开并接着填。
-  - 查询只解码与 seq 区间重叠的块，解码结果进入按字节计的 LRU（默认 32 MiB）。比上限还大的单块照常返回，但不缓存。
-  - 分段被删除时，它的索引和缓存块一起丢掉。
-  - 解码时，boot、tag、buffer、设备进程名、包名这类短字符串在块内驻留（intern），同一块的记录共用同一份字符串。
-  - 记录解码（#22 D1，`store.DecodeRecord`）：手写解码器只处理 store 自己写出的格式（已知的单字母键、紧凑、整数在范围内、字符串含任意转义）。其他任何输入（未知或重复的键、空白、浮点数、null、语法错误）整行交给 `encoding/json`，所以结果和错误都与 `encoding/json` 完全相同。差分测试（`FuzzDecodeRecord`、全部 fixture、真实 store）逐字段比较整个结构体。
-- **空闲释放**：每次查询（`Scan`）重置一个空闲计时器，默认 2 分钟到期。到期后清空历史缓存；如果是只读实例，同时丢掉最近窗口，并调用 `debug.FreeOSMemory` 把内存还给系统。录制方（现为后台服务进程）保留最近窗口，因为它本来就一直在往里追加。
-- **只读实例按需加载**：只读实例打开时，只从最后一个分段末尾倒着读出最后一行，拿到 lastSeq、最新时间和续读位置，不预读窗口。`Refresh` 在未加载状态下只推进 lastSeq，不积累记录。第一次 `Scan` 时再从块索引倒着加载窗口。`Stats` 读最早时间时直接读第一行，不经过缓存，所以 `logcat_status` 本身不会触发加载。
-- 仍然只有一个进程负责录制（`writer.lock`）。共享的后台服务进程另见 issue #3。
+- **Recent window**: 20000 lines by default, and also limited to 16 MiB by estimated bytes, whichever comes first. Estimate = struct + 2 × (the lengths of message, tag, device process name and package name), where the second copy stands for the normalized line the filter engine caches on the record (`Record.Line`), so the estimate is on the high side. It trims only once the window exceeds the limit by 25%, so each append does not copy the whole window.
+- **History reads work per block**:
+  - The first time a segment is read, a block index is built: it is cut only at line boundaries into blocks of about 512 KiB, each recording its seq range and file offset; while indexing, only the leading `{"s":N` of a line is parsed, not the whole line.
+  - For the segment being written, the index extends as the file grows, and the last, unfilled block is reopened and filled further.
+  - A query decodes only the blocks that overlap the seq range, and decoded blocks go into an LRU counted in bytes (32 MiB by default). A single block larger than the limit is returned as usual but not cached.
+  - When a segment is deleted, its index and cached blocks are dropped with it.
+  - While decoding, short strings such as boot, tag, buffer, device process name and package name are interned within the block, so the records of one block share one copy of each string.
+  - Record decoding (#22 D1, `store.DecodeRecord`): the hand-written decoder handles only the format the store itself writes (known single-letter keys, compact, integers in range, strings with any escapes). Any other input (unknown or duplicate keys, whitespace, floats, null, syntax errors) goes to `encoding/json` as a whole line, so results and errors are exactly those of `encoding/json`. Differential tests (`FuzzDecodeRecord`, all fixtures, real stores) compare the whole struct field by field.
+- **Release when idle**: every query (`Scan`) resets an idle timer, 2 minutes by default. On expiry the history cache is cleared; for a read-only instance the recent window is dropped as well, and `debug.FreeOSMemory` returns memory to the system. The recorder (now the service process) keeps its recent window because it keeps appending to it anyway.
+- **Read-only instances load on demand**: when a read-only instance opens, it reads only the last line backwards from the end of the last segment to get lastSeq, the newest time and the resume position, and does not pre-read the window. While not loaded, `Refresh` only advances lastSeq and accumulates no records. The first `Scan` loads the window backwards from the block index. `Stats` reads the first line directly for the earliest time, bypassing the cache, so `logcat_status` itself never triggers a load.
+- Still only one process records (`writer.lock`). The shared service process is covered in issue #3.
 
-实测数据：300k 条日志、5 个分段、共 76 MB 的数据目录，`--offline` 模式，录制者（持有锁）和只读者各一个。每个进程先跑 5 个查询，其中包括全历史扫描；之后空闲 150 秒，再查询一次。RSS 和最近一次 GC 后的 live heap 如下：
+Measurements: 300k log lines, 5 segments, a 76 MB data directory, `--offline` mode, one recorder (holding the lock) and one read-only reader. Each process ran 5 queries first, including a full-history scan, then idled for 150 seconds and queried once more. RSS and the live heap after the last GC:
 
-| | 改动前 RSS / heap | 改动后 RSS / heap |
+| | RSS / heap before the change | RSS / heap after the change |
 |---|---|---|
-| 录制者：启动 | 133 / 80 MiB | 20 / 6 MiB |
-| 录制者：5 个查询后 | 301 / 134 MiB | 65 / 26 MiB |
-| 录制者：空闲 150 秒 | 301 / 98 MiB | 19 / 5 MiB |
-| 只读者：启动 | 140 / 87 MiB | 10 / 0 MiB |
-| 只读者：5 个查询后 | 278 / 138 MiB | 66 / 25 MiB |
-| 只读者：空闲 150 秒 | 278 / 98 MiB | 14 / 0 MiB |
+| Recorder: at start | 133 / 80 MiB | 20 / 6 MiB |
+| Recorder: after 5 queries | 301 / 134 MiB | 65 / 26 MiB |
+| Recorder: idle for 150 s | 301 / 98 MiB | 19 / 5 MiB |
+| Reader: at start | 140 / 87 MiB | 10 / 0 MiB |
+| Reader: after 5 queries | 278 / 138 MiB | 66 / 25 MiB |
+| Reader: idle for 150 s | 278 / 98 MiB | 14 / 0 MiB |
 
-查询结果逐字节一致（search、crashes、launches 对同一份数据目录比对过）。查询耗时持平或更快：全量扫描约 1 秒，单段时间窗从约 1.0 秒降到约 0.55 秒。
+Query results are byte-for-byte identical (search, crashes and launches were compared on the same data directory). Query time is the same or faster: a full scan takes about 1 second, and a single-segment time window dropped from about 1.0 second to about 0.55 second.
 
-### 9.2 磁盘
+### 9.2 Disk
 
-- **辅助文件压缩**（`device.CompactAux`，只由录制者执行，启动约 30 秒后一次，之后每 10 分钟一次）：
-  - `procs.jsonl` 和 `crashes.jsonl` 每个条目只保留最新版本，位置放在该条目第一次出现的地方，所以 `LoadProcs` / `LoadCrashes` 的结果不变；
-  - 最新版本写入时间早于保留期（`ANDROID_LOG_MCP_MAX_AGE`，默认 1 天）的已结束设备进程、崩溃和 `dropbox_seen` 键被删除。写入时间是主机时间：每行带 `"ht"`（写入时的主机时间），`dropbox_seen` 行为 `{"k":"tag|b:正文 FNV-64a","ht":…}`（正文写明崩溃 pid 时；否则 `tag|设备时间`，旧版本的 `tag|设备时间` 键仍然有效，#63）。设备时钟回拨到 1970 或调快一年，都不影响保留期（#50）。没有 `"ht"` 的旧行仍按设备时间判断，直到过期；
-  - 设备端 DropBox 默认保留 3 天，比 1 天的默认保留期长，所以 `dropbox_seen` 键删掉后，设备上可能还有对应条目。为了不把这些旧崩溃当成新崩溃重新导入，`ApplyDropbox` 不导入早于「最新一条已存日志的时间 − 保留期」的条目（按设备时钟算，回放 fixture 也不会随日期漂移）。截止时间是设备当前时间 − 保留期（#53）；
-  - 设备时钟回拨后，DropBox 会把时间晚于设备当前时间的条目改写成下一条新条目的时间（`DropBoxManagerService.createEntry`）。所以 `dropbox_seen` 按正文识别条目，不按时间；Java / native 崩溃条目还会并入同一次启动、同 pid、同进程的已有崩溃，不管两者设备时间差多少（一个进程实例只会崩溃一次）。ANR 仍按 60 秒规则匹配，因为进程可以在 ANR 后继续运行，再次 ANR（#63）；
-  - 压缩时持有辅助文件锁，和 `AppendAux` 互斥，不会丢追加；只有变小时才重写。`*.tmp` 残留超过 10 分钟就删除。
-- **崩溃索引**（`device/crashindex.go`，#22）：每台设备一个内存索引，按 `crashes.jsonl` 的绝对路径在本进程内共享（录制者和工具调用共用，同一目录的只读 store 也共用）。
-  - 每个崩溃 ID 只保留最新版本的摘要（不含 `Body`、`Traces`、`CPU`、`Dropbox`、`Tombstone`），以及该版本在文件中的偏移和长度；列表视图、分组、DropBox 匹配都用摘要，需要堆栈或 traces 时按偏移解码那一行（`CrashFull`）。
-  - 每次访问先 `Stat`：文件没变就什么都不读；变长了只解码新追加的完整行（不完整的最后一行等下次）；换了文件（压缩改名）、变短了、或索引末尾前 64 字节对不上，就整个重建。
-  - 顺序与原来的 `LoadCrashes` 完全相同：先按首次出现顺序，再按设备时间从新到旧稳定排序（不引入新的时间顺序假设，#48 的 C2 另行处理）。
-  - `EmitCrash` 用摘要挑出要合并的 DropBox-only 崩溃，再只解码这一个；`ApplyDropbox` 同理。压缩频率不变。
-- **目录总量上限**（0.4 起由 `layout.Sweep` 实现，见第 10 节；默认 2 GiB，每分钟检查一次）：
-  - 统计所有设备目录里所有文件的大小，按 mtime 从旧到新删除分段，每台设备的最后一段不删。
-  - 本进程负责录制的目录，通过它自己的 store 删除（同步内存里的段表）；没人录制的目录，先拿 `writer.lock` 再删；别的 android-log-mcp 进程在录制的目录跳过，留给那个进程自己处理。
-- **剩余空间低时暂停**（`store.DiskGuard`，每 10 秒检查一次）：
-  - 剩余空间检查抽象成 `FreeSpaceFunc`：Linux 和 macOS 用 statfs，Windows 用 `GetDiskFreeSpaceEx`，测试注入假实现。
-  - 剩余空间低于 512 MiB 时暂停；恢复到 2 倍阈值（1 GiB）以上才续录，留出回差，避免反复切换。
-  - 正在录制的会话会先把队列落盘，再记一个开放缺口，然后结束 logcat；暂停期间仍然持有 `writer.lock`，所以不会有别的 android-log-mcp 进程接着录制。
-  - 恢复时走 `logcat -T` 续录路径：第一条新记录会关闭这个缺口；如果设备 buffer 里还有已经存过的行（说明没丢数据），缺口直接删除。
-  - `logcat_status` 会显示暂停原因和恢复阈值。
+- **Auxiliary file compaction** (`device.CompactAux`, run only by the recorder, once about 30 seconds after start and every 10 minutes after that):
+  - `procs.jsonl` and `crashes.jsonl` keep only the newest version of each entry, placed where the entry first appeared, so the results of `LoadProcs` / `LoadCrashes` do not change;
+  - Ended device processes, crashes and `dropbox_seen` keys whose newest version was written before the retention period (`ANDROID_LOG_MCP_MAX_AGE`, default 1 day) are deleted. The write time is host time: every line carries `"ht"` (the host time of the write), and a `dropbox_seen` line is `{"k":"tag|b:body FNV-64a","ht":…}` (when the body states the crashed pid; otherwise `tag|device time`; old `tag|device time` keys remain valid, #63). A device clock set back to 1970 or forward by a year does not affect retention (#50). Old lines without `"ht"` are still judged by device time until they expire;
+  - The device-side DropBox keeps 3 days by default, longer than the 1-day default retention, so after a `dropbox_seen` key is deleted the device may still hold the matching entry. So that these old crashes are not re-imported as new ones, `ApplyDropbox` does not import entries older than "time of the newest stored log line − retention" (by the device clock, so replaying a fixture does not drift with the date). The cutoff is device now − retention (#53);
+  - After the device clock is set back, DropBox rewrites entries whose time is later than device now to the time of the next new entry (`DropBoxManagerService.createEntry`). So `dropbox_seen` identifies entries by body, not by time; a Java / native crash entry is also merged into an existing crash of the same boot, same pid and same process, whatever the device time difference (a process instance crashes only once). An ANR is still matched by the 60-second rule, because a process can continue after an ANR and ANR again (#63);
+  - Compaction holds the auxiliary file lock, mutually exclusive with `AppendAux`, so no append is lost; it rewrites only when the file shrinks. `*.tmp` leftovers older than 10 minutes are deleted.
+- **Crash index** (`device/crashindex.go`, #22): one in-memory index per device, shared inside the process by the absolute path of `crashes.jsonl` (the recorder and tool calls share it, as do read-only stores of the same directory).
+  - Per crash ID only a summary of the newest version is kept (without `Body`, `Traces`, `CPU`, `Dropbox`, `Tombstone`), plus the offset and length of that version in the file; list views, grouping and DropBox matching use the summary, and when the stack or traces are needed the line is decoded by offset (`CrashFull`).
+  - Every access first runs `Stat`: if the file is unchanged nothing is read; if it grew only the newly appended complete lines are decoded (an incomplete last line waits for next time); if the file was replaced (compaction rename), became shorter, or the 64 bytes before the end of the index no longer match, the whole index is rebuilt.
+  - The order is exactly that of the former `LoadCrashes`: first by first appearance, then a stable sort by device time, newest first (no new time-order assumption is introduced; C2 of #48 is handled separately).
+  - `EmitCrash` uses the summaries to pick the DropBox-only crash to merge and then decodes only that one; `ApplyDropbox` likewise. The compaction frequency is unchanged.
+- **Total directory cap** (implemented since 0.4 by `layout.Sweep`, see §10; 2 GiB by default, checked every minute):
+  - Sum the sizes of all files in all device directories and delete segments from oldest to newest by mtime; the last segment of each device is never deleted.
+  - A directory this process records is cleaned through its own store (which keeps the in-memory segment table in sync); a directory nobody records is cleaned after taking `writer.lock`; a directory another android-log-mcp process records is skipped and left to that process.
+- **Pause when free space is low** (`store.DiskGuard`, checked every 10 seconds):
+  - The free-space check is abstracted as `FreeSpaceFunc`: statfs on Linux and macOS, `GetDiskFreeSpaceEx` on Windows, a fake injected in tests.
+  - Pause when free space drops below 512 MiB; resume only above 2 times the threshold (1 GiB), leaving hysteresis so it does not toggle repeatedly.
+  - A recording session first flushes its queue to disk, then records an open gap, then ends logcat; during the pause it still holds `writer.lock`, so no other android-log-mcp process takes over recording.
+  - On resume it takes the `logcat -T` resume path: the first new record closes the gap; if the device buffer still holds lines that were already stored (so no data was lost), the gap is simply deleted.
+  - `logcat_status` shows the pause reason and the resume threshold.
 
-### 9.3 可配置的保留期（v0.3.0）
+### 9.3 Configurable retention (v0.3.0)
 
-- 新增 `ANDROID_LOG_MCP_MAX_AGE`，默认从 7 天改成 **1 天**。它接受两种写法：
-  - Go 时长（`72h`、`90m`）；
-  - 天数后缀（`1d`、`7d`、`1.5d`）。
-- 空值使用默认值。无效值或非正值会在 stderr 打一条警告并回退到默认值。其他 `ANDROID_LOG_MCP_*` 整数变量现在出错时也会给出警告，以前是静默忽略。
-- 保留仍然按整段删除，一段里最新的一行（mtime）也超过保留期才删。原来有两个问题：
-  - 安静的设备可能好几天也写不满一个 16 MiB 的分段，而正在写入的分段永远不删，所以 1 天的保留期形同虚设；
-  - 只有换段时才检查保留期。
-- 现在的做法：
-  1. 正在写入的分段，从开始写入算起（主机时间），跨度超过 MaxAge/4 就换新段；重启后也不会续写这样的旧段，段的开始时间取前一段的 mtime。设备时间不参与判断（#50）。所以日志最长保留约 1.25 × MaxAge；
-  2. 录制方（现为后台服务进程）每分钟跑一次 `Store.Prune()`。
-- 辅助文件清理和日志用同一个保留期（见 9.2）。
-- `logcat_status` 的 `stored …` 行显示生效的保留期和每台设备的上限。
-- `report` 的默认窗口仍然是 2 小时，在 1 天以内。`--since` 超出已保留的历史时，照旧在 manifest 和输出里注明 history 起点。
-- 升级提示见 CHANGELOG 0.3.0 的 Breaking 条目。
+- New `ANDROID_LOG_MCP_MAX_AGE`; the default changed from 7 days to **1 day**. It accepts two forms:
+  - A Go duration (`72h`, `90m`);
+  - A day suffix (`1d`, `7d`, `1.5d`).
+- An empty value uses the default. An invalid or non-positive value prints a warning on stderr and falls back to the default. The other integer `ANDROID_LOG_MCP_*` variables now also warn on error; they used to be ignored silently.
+- Retention still deletes whole segments, and only when even the newest line of a segment (its mtime) is past retention. The original had two problems:
+  - A quiet device may not fill a 16 MiB segment for days, and the segment being written is never deleted, so a 1-day retention was meaningless;
+  - Retention was checked only when switching segments.
+- What happens now:
+  1. A segment being written is replaced by a new one when, counted from when it started being written (host time), its span exceeds MaxAge/4; after a restart such an old segment is not continued either, and the start time of a segment is taken from the mtime of the previous one. Device time plays no part (#50). So logs are kept for at most about 1.25 × MaxAge;
+  2. The recorder (now the service process) runs `Store.Prune()` once a minute.
+- Auxiliary file cleanup uses the same retention as the logs (see 9.2).
+- The `stored …` line of `logcat_status` shows the effective retention and the per-device cap.
+- The default window of `report` is still 2 hours, within 1 day. When `--since` goes beyond the retained history, the start of the history is stated in the manifest and the output as before.
+- For upgrade notes see the Breaking entry in CHANGELOG 0.3.0.
 
 ## 10. Storage layout and device identity (issues #3, #5, #7, #9, #10)
 
@@ -702,3 +704,12 @@ Earlier unit tests: `ipc` (framing, cancel, limits, socket-path fallback, permis
 - The CLI starts the service detached for `--for` (never in-process) and returns without waiting for the backfill; `--stop` and the state never start one (offline they edit/read `record.json`). The service starts pinned devices on start (`startPinned`), keeps them past their linger, and stays alive while a pin is active.
 - **Crash accounting** (`service/record.go: loadPins`): a starting service that finds a `service.json` of a dead pid (read before the `run/` sweep) counts a crash for every active pin, with the last error from `crash.log` (`panic:` / `fatal error:` newer than the old start) or "service pid N (version V) ended without shutting down". 3 crashes within 1 min → `suspended: crash-loop`; more than 10 automatic restarts per (version, pin) → `suspended: crash-budget`. A new `record --for` clears both; a takeover by a different version resets the budget, the same version keeps it. Suspended pins start nothing and do not keep the service alive.
 - **Restart:** a connected MCP process watches its connection; when it breaks, `service.json` is stale and an unsuspended pin is active, it starts a new service at once (`ClientOptions.RestartPinned`). Without connected MCP processes there is no supervisor (README "Known limitations").
+
+---
+
+## 中文摘要
+
+- 本文是 AI agent 视角的 v3 设计：4 个只读工具（`logcat_status`、`logcat_search`、`logcat_crashes`、`logcat_app_launches`）、严格的过滤语法并回显解释、紧凑文本输出、不透明 cursor、设备时间优先。
+- §2–§7 是设计时的草案，输出示例是示意；实际输出格式（`fmt=1`）见 [reference.md](reference.md#output-format-fmt1)，参数见 [tools.md](tools.md)。
+- §7 的开放问题第 5 条（默认 limit 和折叠）已解决：默认 limit 为 50，连续相同行默认折叠。
+- §8–§9 记录 `report` 子命令和内存/磁盘上限；§10–§11 记录存储布局和后台服务进程。
