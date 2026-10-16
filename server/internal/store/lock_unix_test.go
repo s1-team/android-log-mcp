@@ -26,7 +26,9 @@ func TestTryLockWaitsForInheritedDescriptor(t *testing.T) {
 			t.Fatal("first lock failed")
 		}
 		cmd := exec.Command(os.Args[0], "-test.run=^TestTryLockWaitsForInheritedDescriptor$")
-		cmd.Env = append(os.Environ(), "ALM_LOCK_SLEEP_CHILD=1")
+		// the race runtime sleeps 1 s at exit by default, which would keep
+		// the lock far longer than the 50 ms this test is about (#119)
+		cmd.Env = append(os.Environ(), "ALM_LOCK_SLEEP_CHILD=1", "GORACE=atexit_sleep_ms=0")
 		cmd.ExtraFiles = []*os.File{f}
 		if err := cmd.Start(); err != nil {
 			t.Fatal(err)
