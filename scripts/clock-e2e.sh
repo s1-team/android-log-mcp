@@ -224,29 +224,31 @@ stage s6_now
 
 # --- #54: launch whose steps straddle a clock jump ---
 straddle() { # name method target_epoch
-  local n=$1 how=$2 tgt=$3 t0 c0 i
+  # Jump during the launch (between START and Displayed). KVM cold starts are
+  # ~0.5 s; schedule the clock set ~100 ms after am start so it lands mid-launch
+  # (logcat -d polling is too slow on a fast emulator).
+  local n=$1 how=$2 tgt=$3 t0
   caught || true
   adbs am force-stop "$PKG"
   sleep 1
   t0=$(devnow)
-  c0=$(adbsh "logcat -d -b system -t 400" | grep 'START u0.*logtest' | tail -1 || true)
-  "$ADB" -s "$SERIAL" shell "am start -n $PKG/.MainActivity" >/dev/null 2>&1 &
-  for i in $(seq 1 40); do
-    [ "$(adbsh "logcat -d -b system -t 400" | grep 'START u0.*logtest' | tail -1 || true)" != "$c0" ] && break
-    sleep 0.25
-  done
-  sleep 4
-  if [ "$how" = cmd ]; then setcmd "$tgt" "$n"; else setroot "$tgt" "$n"; fi
+  if [ "$how" = cmd ]; then
+    (sleep 0.1; setcmd "$tgt" "$n") &
+  else
+    (sleep 0.1; setroot "$tgt" "$n") &
+  fi
+  "$ADB" -s "$SERIAL" shell "am start -W -n $PKG/.MainActivity" > "$OUT/$n.amstart.txt" 2>&1 || true
   wait 2>/dev/null || true
-  sleep 20
+  sleep 15
   caught || true
-  printf '%s %s\n' "$n" "$t0" >> "$OUT/straddles.txt"
+  printf '%s %s
+' "$n" "$t0" >> "$OUT/straddles.txt"
   log "straddle $n ($how) request ~$(fmt "$t0") -> $(fmt "$(devnow)")"
   call "$n.launch" logcat_app_launches "{$D,\"package\":\"$PKG\",\"from\":\"$(fmt $((t0 - 5)))\",\"to\":\"$(fmt $((t0 + 120)))\",\"limit\":10}" || true
   check "$n (#54) a launch of $PKG" has "$n.launch" "component=$PKG/"
   check "$n (#54) unreliable=clock_jump on a step or TTID" has "$n.launch" "unreliable=clock_jump"
 }
-straddle x1_cmd_m1d cmd $(( $(NOW) - 86400 ))
+straddle x1_root_m1d root $(( $(NOW) - 86400 ))
 setcmd "$(NOW)" xnow
 caught || true
 
