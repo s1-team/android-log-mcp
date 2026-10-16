@@ -19,7 +19,14 @@ default data root (this is the manual live check, not a unit test):
     service exits 30 s (ExitGrace) later; the default linger is reported;
  5. record: `record --for 20s` with no service starts it detached and
     records without clients or calls; when the pin ends the device stops
-    (linger 1s) and the service exits.
+    (linger 1s) and the service exits. A marker logged during the pin is
+    stored by the pin or, when the pin ended during a slow backfill, by the
+    next start (it stays in the device buffer).
+
+When the device buffer holds a stored clock jump the service re-reads the
+whole buffer on every start (slow under TCG): waits follow `backfill in
+progress`, and after switching the root back a marker logged while the other
+root was active may be stored again in this root (once; history is not moved).
 
 Set HOME / XDG_CACHE_HOME to a scratch directory to keep this away from
 the real service.
@@ -132,13 +139,20 @@ def search_live(s):
     return s.call("logcat_search", {"device": serial, "tags": ["ALMCHECK"], "from": "2h", "limit": 500})
 
 
-def wait_recording(s, root=None, t=60):
-    end = time.time() + t
+def wait_recording(s, root=None, t=60, backfill_cap=300):
+    """Wait until the device records (and the root is `root`). While the
+    status says `backfill in progress` (a whole-buffer re-read after a stored
+    clock jump takes tens of seconds under TCG), keep waiting up to
+    backfill_cap seconds in total instead of the fixed t (#115)."""
+    start = time.time()
+    end = start + t
     while time.time() < end:
         # verbose: the root line is shown only when it changed since this
         # client last saw it otherwise (#23)
         txt = s.call("logcat_status", {"verbose": True} if root else None)
-        if re.search(r"^    recording", txt, re.M) and (root is None or f"root: {root}" in txt):
+        if "backfill in progress" in txt:
+            end = max(end, min(time.time() + 10, start + backfill_cap))
+        elif re.search(r"^  \S+: recording", txt, re.M) and (root is None or f"root: {root}" in txt):
             return True
         time.sleep(1)
     return False
@@ -215,8 +229,12 @@ m6 = marker(6)
 txt_back = wait_marker(b, m6)
 c_back = count_in(txt_back, markers + [m6])
 log("default root after switching back:", c_back)
-check(c_back[m5] == 0, "boundary line of the new root not stored again after switching back")
-check(c_back[m1] == c_back[m2] == c_back[m3] == c_back[m6] == 1 and c_back[m4] == 0, "default root keeps its history; new-root history is not in it (as documented)")
+# History is not moved. When the device buffer still holds lines that were
+# logged while the other root was active (always the case on a short run, and
+# a stored clock jump makes the service re-read the whole buffer), they are
+# read again into this root: allowed, but never twice (#115, design-v3 10.6).
+check(all(c_back[m] <= 1 for m in markers + [m6]), f"no marker stored twice in the default root after switching back: {c_back}")
+check(c_back[m1] == c_back[m2] == c_back[m3] == c_back[m6] == 1, "default root keeps its history and records new lines once")
 
 # 4. lifetime: per-device linger; the service lives while clients are connected
 a.close()
@@ -227,7 +245,7 @@ s = Session("L", {"ANDROID_LOG_MCP_LINGER": "5s"})
 pl, tl = s.service_pid()
 lingerline = [l for l in tl.splitlines() if l.startswith("linger:")]
 log("linger line:", lingerline)
-check(bool(re.search(r"^    recording", tl, re.M)), "logcat_status started recording")
+check(bool(re.search(r"^  \S+: recording", tl, re.M)), "logcat_status started recording")
 t0 = time.time()
 stopped = False
 while time.time() - t0 < 30:
@@ -259,15 +277,26 @@ code, out, err = cli("record", "--device", serial, "--for", "20s", env={"ANDROID
 log("record --for 20s:", out.strip(), err.strip())
 code2, out2, _ = cli("service", "status", "--json")
 pr = json.loads(out2).get("pid", 0) if code2 == 0 else 0
-check(code == 0 and "pinned until" in out and pr > 0, f"record --for started service {pr} detached")
+check(code == 0 and re.search(r"pinned_until=\d", out) and pr > 0, f"record --for started service {pr} detached")
 m7 = marker(7)
 time.sleep(10)
 code, out, _ = cli("record")
-check("recording" in out and "pinned until" in out, "recording without clients or calls while pinned")
+check("recording" in out and re.search(r"pinned_until=\d", out), "recording without clients or calls while pinned")
 gone = wait_gone(pr, 90)
 check(gone, f"service {pr} exited after the pin ended")
 code, out, _ = cli("--offline", default_root, "call", "logcat_search", json.dumps({"tags": ["ALMCHECK"], "from": "1h", "limit": 50}))
-check(m7 in out, "marker logged during the pin was recorded")
+in_pin = m7 in out
+log("marker 7 stored by the pin itself:", in_pin)
+if not in_pin:
+    # The pin may end before a slow whole-buffer backfill reached the marker
+    # (#115): it is still in the device buffer, so the next start stores it.
+    s = Session("P")
+    s.service_pid()
+    check(wait_recording(s), "recording again after the pin")
+    in_pin = m7 in wait_marker(s, m7, 90)
+    s.close()
+    cli("service", "stop")
+check(in_pin, "marker logged during the pin was recorded (by the pin, or by the next start from the device buffer)")
 
 print()
 print("RESULT:", "OK" if not failures else "FAILED: " + "; ".join(failures))
