@@ -21,7 +21,7 @@ Read [docs/GOALS.md](docs/GOALS.md) first, and check every change against its pr
    - `GOOS=windows go vet ./...`.
 3. **Every user-facing change adds an entry under `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md)** (Keep a Changelog groups: Added / Changed / Deprecated / Removed / Fixed / Security; mark breaking changes with **Breaking** and link the issue). Internal-only changes (tests, refactoring, CI) need no entry.
    **Bug fixes are described only in the CHANGELOG**, never in the README: the README describes the current behavior and options neutrally (no "before X.Y.Z this popped up / was broken" notes). **Upgrade notes and breaking changes are written only in the CHANGELOG** (a **Breaking** entry says what the user has to do); they are never repeated in the README.
-4. **Work on a feature branch, never on `main`.** `main` is branch-protected: direct pushes are rejected (admins included), history must stay linear, and nobody force-pushes. Commit with a reference to the issue, for example `feat(store): … (closes #N)` (`refs #N` on intermediate commits).
+4. **Work on a dev branch (`feature/…` or `fix/…`, see rule 9), never on `main`.** `main` is branch-protected: direct pushes are rejected (admins included), history must stay linear, and nobody force-pushes. Commit with a reference to the issue, for example `feat(store): … (closes #N)` (`refs #N` on intermediate commits).
 5. **Open a pull request** from the branch with `Closes #N` in the PR body (and in the commit message), so the issue closes on merge. A squash merge uses the PR title and body as the commit message.
 6. **Wait for CI to be fully green on the PR**: the required checks are `test` (ubuntu, macos, windows) and `npm-pack`, and the branch must be up to date with `main`. The npx-compat jobs and every other job must pass too. If anything fails, fix it on the branch. If `main` moved, rebase the branch on `origin/main` and push it again (`git push --force-with-lease` on your own feature branch is fine; never on `main`).
 7. **Merge with rebase or squash** (`gh pr merge --rebase` or `--squash`; merge commits are disabled). No review approval is required, so you can merge your own PR once the checks are green. Then delete the branch.
@@ -33,7 +33,8 @@ Read [docs/GOALS.md](docs/GOALS.md) first, and check every change against its pr
    - Keep the graph current in the pinned tracking issue [#67](https://github.com/s1crab/android-log-mcp/issues/67): update a node's status (and its PR) when it starts, blocks or merges.
 9. **Branch rules.**
    - `0.7.x` and `0.8.x` are release branches; change them only via a PR.
-   - All dev branches start with `feat` (for example `feat-108-socket-doc`).
+   - Dev branches use an OkHttp-style prefix: `feature/` for features and docs (for example `feature/output-redesign`) and `fix/` for bug fixes (for example `fix/anr-window`). Version-number branches such as `0.7.x` are release branches (above), never dev branches.
+   - Existing `feat-*` branches (the old rule) need not be renamed and stay valid until their PRs close; new branches follow the prefix rule.
    - PRs target `main` or the matching release branch.
    - When several PRs are ready, state the merge order and rebase the later ones so they are not BEHIND each other.
 
