@@ -78,7 +78,7 @@ Paths for every OS, Codex and `claude mcp add` variants, and why B is better on 
 | `logcat_crashes` | Java, native and ANR crashes grouped by signature; full detail with `id` |
 | `logcat_app_launches` | Launch timeline (COLD / WARM / HOT) with TTID / TTFD |
 
-All times in `from` / `to` / `age:` are **device time**; output is in the device's time zone. Parameters, time semantics, the `package` parameter and several devices: [docs/tools.md](docs/tools.md). Reproducing a bug: call `logcat_status` for a `cursor`, let the user reproduce, then `logcat_search(after=cursor, wait_ms=20000)`.
+All times in `from` / `to` / `age:` are **device time**; output is in the device's time zone. Parameters, time semantics, the `package` parameter and several devices: [docs/tools.md](docs/tools.md). Reproducing a bug: call `logcat_status` for a `cursor`, let the user reproduce, then `logcat_search(after=cursor, wait_ms=20000)`. `cursor` is the newest stored line at the time of the call; `after=cursor` is exclusive (only lines stored after it) and `before=cursor` pages older (only lines before it).
 
 ### Filter syntax
 
@@ -93,6 +93,8 @@ tag:A | tag:B   (tag:A | level:error) & package:com.foo
 ```
 
 The same key repeated is OR (`tag:A tag:B` = A or B); different keys are AND. Unknown keys, `&&` / `||`, unbalanced parentheses and unquoted `foo:bar` are errors.
+
+Precedence: `|` binds tighter than the space (implicit AND), so `tag:A level:error | tag:B` is `tag:A & (level:error | tag:B)`; write `(tag:A & level:error) | tag:B` to OR whole groups. `OR` / `AND` are not operators: a bare `OR` is a message keyword (use `|` and `&`). A value with spaces needs quotes: `message:'rate limit'` (single or double); unquoted, `message:rate limit` is `message:rate` AND a line containing `limit`.
 
 ## FAQ
 

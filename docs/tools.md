@@ -10,7 +10,7 @@ The README has the short list; this page has the full descriptions. Terms are de
 | `logcat_app_launches` | Launch timeline (COLD/WARM/HOT/UNKNOWN), last 30 min by default. Each `+N ms` is when a line was logged relative to the launch request; TTID / TTFD on their own line with their source (`Displayed` or `*_activity_launch_time`). A step logged after a device clock jump that followed the request shows `?` and `duration: unreliable (device clock jumped)` with its device time instead of a number; steps are paired within the clock segment of the request and across the jump in arrival order | `package` `from` `to` `limit` |
 
 - **Device time:** `from` / `to` / `age:` are device time (the Android device's clock, as printed in lines): relative (`30m`, `2h` = device now minus that; such a window ends at device now + 2 s), device-local (`14:05`, `2026-10-10 14:05:00`), ISO 8601 and epoch. Output is in the **device's time zone**; each response shows device now, host now and the clock offset. Lines stay in arrival order; when the device clock is changed (auto_time, a manual set, expiry testing) the output marks the clock jump with matches on each side.
-- **Reproducing a bug:** call `logcat_status` for a `cursor`, let the user reproduce, then call `logcat_search(after=cursor, wait_ms=20000)`. If `logcat_status` returns `cursor=none` with `hint code=backfill_in_progress`, call it again: it returns no cursor until the device's log buffer has been read.
+- **Reproducing a bug:** call `logcat_status` for a `cursor`, let the user reproduce, then call `logcat_search(after=cursor, wait_ms=20000)`. `cursor` is the newest stored line at the time of the call; `after=cursor` is exclusive (only lines stored after it) and `before=cursor` pages older (only lines before it). If `logcat_status` returns `cursor=none` with `hint code=backfill_in_progress`, call it again: it returns no cursor until the device's log buffer has been read.
 - **`package` parameter:** an exact application id. It matches the package's device processes: a device process belongs to the installed package that its name equals or extends at a `.` or `:`. When packages share a uid, a device process of that uid whose name matches none of them (for example `android.process.acore` for `com.android.providers.contacts` and `com.android.contacts`) can run code of any of them: its lines, crashes and lifetimes are attributed to no package, and `package=` includes them for each package of the uid, with a `note:` naming the packages. The `package:` filter term keeps its Android Studio meaning (device process name prefix).
 - **Several devices:** a call without `device` uses the single connected device; with several connected, it starts none and lists them.
 
@@ -27,6 +27,8 @@ tag:A | tag:B   (tag:A | level:error) & package:com.foo
 ```
 
 The same key repeated is OR (`tag:A tag:B` = A or B); different keys are AND. Unknown keys, `&&` / `||`, unbalanced parentheses and unquoted `foo:bar` are errors.
+
+Precedence: `|` binds tighter than the space (implicit AND), so `tag:A level:error | tag:B` is `tag:A & (level:error | tag:B)`; write `(tag:A & level:error) | tag:B` to OR whole groups. `OR` / `AND` are not operators: a bare `OR` is a message keyword (use `|` and `&`). A value with spaces needs quotes: `message:'rate limit'` (single or double); unquoted, `message:rate limit` is `message:rate` AND a line containing `limit`.
 
 ## 中文摘要
 
