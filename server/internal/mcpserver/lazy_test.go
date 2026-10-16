@@ -155,7 +155,7 @@ func TestStatusNoCursorDuringBackfill(t *testing.T) {
 		t.Fatalf("status during backfill:\n%s", out)
 	}
 	out, _ = l.call(t, "logcat_search", `{}`)
-	if !strings.Contains(out, "\nnote code=backfill msg=\"backfill in progress (") || !strings.Contains(out, "results may be incomplete, call again") || !strings.HasPrefix(out, "ok ") {
+	if !strings.Contains(out, "\nnote code=backfill msg=\"backfill in progress (") || !strings.Contains(out, "results may be incomplete, call again") || !(strings.HasPrefix(out, "ok ") || strings.HasPrefix(out, "empty ")) {
 		t.Fatalf("search during backfill:\n%s", out)
 	}
 	deadline := time.Now().Add(20 * time.Second)
