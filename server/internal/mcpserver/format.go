@@ -297,10 +297,28 @@ func appendTemplate(b []byte, r *model.Record) []byte {
 
 // val formats a header value: integers, floats (1 decimal) and bools (1/0)
 // plain, strings quoted only when they contain a space, quote or are empty.
+// needsQuote is the one quoting rule of the key=value grammar: a string value
+// is printed bare unless it is empty or contains a space, a control character,
+// `"`, `=` or `\`; every other value is a JSON-style double-quoted string
+// (strconv.Quote: `\\` for a backslash, `\"`, `\n`), which any JSON string
+// parser reads back. So a Windows path `C:\x` is always `"C:\\x"`, with or
+// without spaces, and a bare value never needs unescaping.
+func needsQuote(s string) bool {
+	if s == "" {
+		return true
+	}
+	for _, r := range s {
+		if r <= ' ' || r == 0x7f || r == '"' || r == '=' || r == '\\' {
+			return true
+		}
+	}
+	return false
+}
+
 func val(v any) string {
 	switch x := v.(type) {
 	case string:
-		if x == "" || strings.ContainsAny(x, " \t\"=") {
+		if needsQuote(x) {
 			return strconv.Quote(x)
 		}
 		return x
