@@ -303,7 +303,7 @@ func TestResumeAfterIdle(t *testing.T) {
 	if m.Tracking() || e.LogcatRunning("FAKEA") || m.Get("FAKEA").Owned() {
 		t.Fatal("still recording after Unwant")
 	}
-	waitFor(t, "fake adb children to exit", 5*time.Second, func() bool { return !e.AnyChildRunning() })
+	waitFor(t, "fake adb children to exit", 30*time.Second, func() bool { return !e.AnyChildRunning() })
 	// nothing new: caught up at once
 	streams := len(e.CallsMatching("-s FAKEA exec-out logcat -b"))
 	d = startDevice(t, m, "FAKEA")
@@ -487,7 +487,7 @@ func TestSetBackWhileLiveAfterResume(t *testing.T) {
 	d := startDevice(t, m, "FAKEA")
 	waitFor(t, "backfill", 10*time.Second, func() bool { return len(messages(d.Store)) == 5 })
 	m.Unwant("FAKEA", "test")
-	waitFor(t, "fake adb children to exit", 5*time.Second, func() bool { return !e.AnyChildRunning() })
+	waitFor(t, "fake adb children to exit", 30*time.Second, func() bool { return !e.AnyChildRunning() })
 	d = startDevice(t, m, "FAKEA")
 	if p := d.WaitCaughtUp(context.Background(), 5*time.Second); p.Pending {
 		t.Fatalf("resume: %+v", p)

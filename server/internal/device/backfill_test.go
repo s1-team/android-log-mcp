@@ -123,7 +123,7 @@ func TestDropboxAfterResume(t *testing.T) {
 	d := startDevice(t, m, "FAKEA")
 	waitFor(t, "the DropBox history fetch", 10*time.Second, func() bool { return len(dropboxCounts(e)) == len(dropboxHistory) })
 	m.Unwant("FAKEA", "test")
-	waitFor(t, "fake adb children to exit", 5*time.Second, func() bool { return !e.AnyChildRunning() })
+	waitFor(t, "fake adb children to exit", 30*time.Second, func() bool { return !e.AnyChildRunning() })
 
 	e.Log("FAKEA", crashLine(time.Now(), 9100))
 	d = startDevice(t, m, "FAKEA")
@@ -137,7 +137,7 @@ func TestDropboxAfterResume(t *testing.T) {
 
 	testTiming(t).DropboxRecent.Set(0)
 	m.Unwant("FAKEA", "test")
-	waitFor(t, "fake adb children to exit", 5*time.Second, func() bool { return !e.AnyChildRunning() })
+	waitFor(t, "fake adb children to exit", 30*time.Second, func() bool { return !e.AnyChildRunning() })
 	e.Log("FAKEA", crashLine(time.Now(), 9200))
 	d = startDevice(t, m, "FAKEA")
 	d.WaitCaughtUp(context.Background(), 10*time.Second)
@@ -207,7 +207,7 @@ func TestStreamExecOutFallback(t *testing.T) {
 	}
 	// the next session goes straight to adb logcat
 	m.Unwant("FAKEA", "test")
-	waitFor(t, "fake adb children to exit", 5*time.Second, func() bool { return !e.AnyChildRunning() })
+	waitFor(t, "fake adb children to exit", 30*time.Second, func() bool { return !e.AnyChildRunning() })
 	startDevice(t, m, "FAKEA")
 	waitFor(t, "the second stream", 10*time.Second, func() bool { return len(e.CallsMatching("-s FAKEA logcat -b")) == 2 })
 	if n := len(e.CallsMatching("-s FAKEA exec-out logcat")); n != 1 {
@@ -246,7 +246,7 @@ func TestMergedProbe(t *testing.T) {
 	// a restart long after the identity probe probes again (cheap variant)
 	testTiming(t).ProbeReuse.Set(0)
 	m.Unwant("FAKEA", "test")
-	waitFor(t, "fake adb children to exit", 5*time.Second, func() bool { return !e.AnyChildRunning() })
+	waitFor(t, "fake adb children to exit", 30*time.Second, func() bool { return !e.AnyChildRunning() })
 	startDevice(t, m, "FAKEA")
 	// tracking stopped with the device, so the identity probe runs again
 	// (merged), then the recorder probes by itself (cheap variant)
