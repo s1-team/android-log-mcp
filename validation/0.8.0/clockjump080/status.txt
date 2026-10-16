@@ -1,0 +1,19 @@
+ok view=status devices=1 device=avd-api29 caught_up=1 cursor=c1.YXZkLWFwaTI5.4ae92773.24994 dev_now=2026-10-16T14:50:12+08:00 clock=observed offset_s=-80.1 clock_age_s=7 fmt=1
+service: service process pid 2158888, version 0.8.0, protocol 2, up 5m55s, connected 1
+root: /workspace/scratch/r080j/android-log-mcp
+recording: 1 device(s): avd-api29
+  avd-api29: recording; caught up; no idle stop
+linger: per device, after its last log tool call: max(10m0s, 2 × the device's log buffer span), at most 1h0m0s (default; each recording device shows its own)
+lifetime: exits 30s after there is no MCP or CLI process, no active pin and no recorded device; staying: 1 MCP/CLI process(es) connected
+service log: /workspace/scratch/r080j/android-log-mcp/log/service.log
+adb state=ok path=/home/box/android-sdk/platform-tools/adb version=1.0.41
+store path=/workspace/scratch/r080j/android-log-mcp
+device id=avd-api29 via=emulator-5556 state=device model=Android_SDK_built_for_x86_64 android=10 sdk=29 tz=Asia/Kuching tz_offset=+08:00
+  recording state=recording caught_up=1 idle_stop=never
+  note code=rollback msg="device clock jump among the stored lines that may still be in the device buffer: read the whole buffer without -T and dropped lines already stored; skipped 24955 already stored lines"
+  note code=recovered msg="repair reads on since host time 14:51:27: the device clock was set back and logd (Android 11 and older) can skip lines of the live stream while the device buffer holds lines dated after device now; the buffer is compared with the stored lines every 20s; recovered 1 lines that logd skipped (stored in the order they were recovered)"
+  clock_jumps stored=11 last_seq=24430 next: query="*"
+  window recording_since=2026-10-16T14:45:39+08:00 oldest=2026-10-16T10:10:21 newest=2026-10-16T14:50:04
+  stored lines=24994 bytes=6158131 retention=1d max_mib=512
+  memory window_lines=24994 window_bytes=11915715 cache_bytes=0
+

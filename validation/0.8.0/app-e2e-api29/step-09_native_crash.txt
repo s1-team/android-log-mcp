@@ -1,0 +1,5 @@
+### device 2026-10-16
+$ adb shell am start -n com.example.logtest/.MainActivity --es what native
+Starting: Intent { cmp=com.example.logtest/.MainActivity (has extras) }
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+### exit=0

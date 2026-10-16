@@ -1,0 +1,77 @@
+ok view=list device=avd-api29 groups=30 events=54 shown=20 order=newest_first history_from=2026-10-16T10:10:21.905+08:00 dev_now=2026-10-16T14:50:12+08:00 clock=observed offset_s=-80.1 clock_age_s=7 fmt=1
+crash id=cr31 time=2026-10-16T14:49:11.519+08:00 kind=java pid=10976 process=com.example.logtest thread=main
+  java.lang.RuntimeException: LogTest wrapped crash
+    at com.example.logtest.Triggers.run(Triggers.java:22)
+    at com.example.logtest.MainActivity.lambda$onResume$1$com-example-logtest-MainActivity(MainActivity.java:42)
+    at com.example.logtest.MainActivity$$ExternalSyntheticLambda0.run(D8$$SyntheticClass:0)
+    ^ root_cause: java.lang.IllegalStateException: repo not ready
+    ^ frames_hidden=9 next: id="cr31"
+  same_signature same_sig=10 ids=cr27,cr26,cr25,cr24,cr22 ids_more=5 first=2026-10-16T13:49:15.832+08:00 next: id="cr27"
+crash id=anr23 time=2026-10-15T14:46:11.000+08:00 kind=anr pid=9692 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  main_thread: "main" prio=5 tid=1 Sleeping | at java.lang.Thread.sleep(Native method) | traces=data_app_anr
+crash id=anr22 time=2026-10-15T14:46:11.000+08:00 kind=anr pid=7814 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  main_thread: "main" prio=5 tid=1 Sleeping | at java.lang.Thread.sleep(Native method) | traces=data_app_anr
+crash id=anr21 time=2026-10-14T22:58:27.000+08:00 kind=anr pid=10673 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  main_thread: "main" prio=5 tid=1 Sleeping | at java.lang.Thread.sleep(Native method) | traces=data_app_anr
+crash id=anr20 time=2026-10-15T14:48:00.739+08:00 kind=anr pid=10807 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  main_thread: "main" prio=5 tid=1 Sleeping | at java.lang.Thread.sleep(Native method) | traces=data_app_anr
+crash id=cr30 time=2026-10-14T22:57:00.000+08:00 kind=native pid=10567 process=com.example.logtest thread=example.logtest
+  SIGSEGV (SEGV_MAPERR) fault addr 0x0 in liblogtest.so [#00 pc 7fc]
+  same_signature same_sig=4 ids=cr29,cr17,cr12,cr7 first=2026-10-16T13:50:15.881+08:00 next: id="cr29"
+crash id=cr28 time=2026-10-15T14:46:53.066+08:00 kind=native pid=10712 process=com.example.logtest thread=example.logtest
+  SIGSEGV (SEGV_MAPERR) fault addr 0x0
+crash id=cr23 time=2026-10-14T19:45:04.000+08:00 kind=java pid=6862 process=com.example.logtest
+  java.lang.RuntimeException: LogTest deliberate Java crash
+    at com.example.logtest.Triggers.run(Triggers.java:19)
+    at com.example.logtest.MainActivity.lambda$onResume$1$com-example-logtest-MainActivity(MainActivity.java:42)
+    at com.example.logtest.MainActivity$$ExternalSyntheticLambda0.run(D8$$SyntheticClass:0)
+    ^ frames_hidden=7 next: id="cr23"
+  same_signature same_sig=4 ids=cr5,cr4,cr3,cr2 first=2026-10-16T10:42:51.845+08:00 next: id="cr5"
+crash id=anr19 time=2026-10-16T10:50:17.000+08:00 kind=anr pid=5228 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  main_thread: "main" prio=5 tid=1 Sleeping | at java.lang.Thread.sleep(Native method) | traces=data_app_anr
+crash id=anr18 time=2026-10-16T04:19:23.000+08:00 kind=anr pid=15050 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  main_thread: "main" prio=5 tid=1 Sleeping | at java.lang.Thread.sleep(Native method) | traces=data_app_anr
+crash id=anr17 time=2026-10-16T04:17:00.000+08:00 kind=anr pid=14920 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  main_thread: "main" prio=5 tid=1 Sleeping | at java.lang.Thread.sleep(Native method) | traces=data_app_anr
+crash id=anr16 time=2026-10-16T04:14:40.000+08:00 kind=anr pid=14807 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  main_thread: "main" prio=5 tid=1 Sleeping | at java.lang.Thread.sleep(Native method) | traces=data_app_anr
+crash id=anr15 time=2026-10-16T04:12:21.000+08:00 kind=anr pid=14665 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  main_thread: "main" prio=5 tid=1 Sleeping | at java.lang.Thread.sleep(Native method) | traces=data_app_anr
+crash id=anr14 time=2026-10-16T03:46:23.000+08:00 kind=anr pid=13916 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  main_thread: "main" prio=5 tid=1 Sleeping | at java.lang.Thread.sleep(Native method) | traces=data_app_anr
+crash id=anr13 time=2026-10-16T03:44:24.000+08:00 kind=anr pid=13790 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  main_thread: "main" prio=5 tid=1 Sleeping | at java.lang.Thread.sleep(Native method) | traces=data_app_anr
+crash id=anr12 time=2026-10-16T03:30:19.000+08:00 kind=anr pid=12974 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  main_thread: "main" prio=5 tid=1 Sleeping | at java.lang.Thread.sleep(Native method) | traces=data_app_anr
+crash id=anr11 time=2026-10-16T03:28:34.000+08:00 kind=anr pid=12761 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  main_thread: "main" prio=5 tid=1 Sleeping | at java.lang.Thread.sleep(Native method) | traces=data_app_anr
+crash id=anr10 time=2026-10-16T14:31:39.171+08:00 kind=anr pid=9692 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  traces=unavailable next: id="anr10"
+crash id=cr19 time=2026-10-16T14:30:27.879+08:00 kind=java pid=9395 process=com.example.logtest:remote thread=main
+  java.lang.RuntimeException: Unable to start service com.example.logtest.RemoteService@306887f with Intent { cmp=com.example.logtest/.RemoteService (has extras) }: java.lang.IllegalStateException: LogTest crash in :remote
+    at android.app.ActivityThread.handleServiceArgs(ActivityThread.java:4105)
+    at android.app.ActivityThread.access$1800(ActivityThread.java:219)
+    at android.app.ActivityThread$H.handleMessage(ActivityThread.java:1891)
+    ^ root_cause: java.lang.IllegalStateException: LogTest crash in :remote
+    ^ frames_hidden=8 next: id="cr19"
+  same_signature same_sig=4 ids=cr15,cr14,cr10,cr9 first=2026-10-16T13:52:41.272+08:00 next: id="cr15"
+crash id=cr18 time=2026-10-16T14:29:18.580+08:00 kind=native pid=9582 process=com.example.logtest thread=example.logtest
+  SIGABRT (SI_QUEUE) abort: 'LogTest deliberate abort()' in liblogtest.so [#02 pc 86f]
+  same_signature same_sig=2 ids=cr13,cr8 first=2026-10-16T13:51:25.613+08:00 next: id="cr13"
+truncated older_groups=10 exact=1 next: limit=30 | to="2026-10-16T14:29:18.580+08:00"
+next: id="cr31"
+

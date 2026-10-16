@@ -1,0 +1,10 @@
+### device 2026-10-16
+$ adb shell am start -W -n com.example.logtest/.MainActivity
+Starting: Intent { cmp=com.example.logtest/.MainActivity }
+Status: ok
+LaunchState: COLD
+Activity: com.example.logtest/.MainActivity
+TotalTime: 7112
+WaitTime: 7203
+Complete
+### exit=0
