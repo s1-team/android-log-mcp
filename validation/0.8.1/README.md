@@ -15,7 +15,7 @@ Release PR: https://github.com/s1crab/android-log-mcp/pull/169
 | `date` back-jump + crash + ANR | jumps applied/restored (`auto_time=1`); java/native crash + ANR attributed to `com.example.logtest` at body/device times | clockjump081.sh, clockjump081-run.txt, clockjump081/ |
 | set-root + whole-buffer re-read | no duplicates (service-e2e, boundary line not re-stored) | service-e2e-api29.txt |
 | perf | `scripts/perf.sh --check` and `--check --pr`: 0 regressions | perf-check.txt, perf-check-pr.txt |
-| race-gate `count=20` | see release PR body (run id when finished) | GitHub Actions artifact |
+| race-gate `count=20` | **21/21 pass**, run [38960806063](https://github.com/s1crab/android-log-mcp/actions/runs/38960806063) on `release/0.8.1` | Actions artifacts `race-*-*` |
 
 ## API 35 / Windows / macOS
 
