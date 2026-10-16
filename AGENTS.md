@@ -42,7 +42,7 @@ Read [docs/GOALS.md](docs/GOALS.md) first, and check every change against its pr
 
 Release only after **explicit sign-off from the user or maintainer**.
 
-**Pre-release verification** ([#106](https://github.com/s1crab/android-log-mcp/issues/106)). CI alone is not enough: before the release PR is merged, run the checklist below on the emulator (API 29 and API 35, software emulation only, never KVM, §6) and copy the results into the release PR body (the [release PR template](.github/PULL_REQUEST_TEMPLATE/release.md) carries it). Keep run evidence under `validation/` (per API level and scenario).
+**Pre-release verification** ([#106](https://github.com/s1crab/android-log-mcp/issues/106)). CI alone is not enough: before the release PR is merged, run the checklist below: device checks on the emulator (API 29 and API 35, software emulation only, never KVM, §6), race tests by the `race-gate` workflow and copy the results into the release PR body (the [release PR template](.github/PULL_REQUEST_TEMPLATE/release.md) carries it). Keep run evidence under `validation/` (per API level and scenario).
 
 - [ ] CI green on all OSes for the release commit.
 - [ ] `scripts/service-e2e.sh` on API 29 and API 35.
@@ -51,7 +51,7 @@ Release only after **explicit sign-off from the user or maintainer**.
 - [ ] Upgrade: old-version service process + new MCP process or CLI process (version handoff, socket directory migration).
 - [ ] `adb shell date -s` back-jump plus a real app crash and ANR: attribution still correct.
 - [ ] `set-root`, then a whole-buffer re-read: no duplicates.
-- [ ] `go test -race -count=20` on `service`, `store`, `device` and every package the release touched; the `perf` job is green.
+- [ ] Race gate: dispatch the `race-gate` workflow on the release commit (`gh workflow run race-gate.yml --ref <branch> -f count=20 -f pr=<release PR>`): `go test -race -count=20` per package (`store`, `ipc`, `analysis`, `device`, `mcpserver`, `service`, `cmd`) on Linux, Windows and macOS, results from Actions, its summary pasted into the release PR. Not run on the dev box (`service` alone took ~3.3 h there). The `perf` job is green and `scripts/perf.sh --check` passes locally.
 - [ ] Windows / macOS: if not tested with a real or emulator-attached adb, mark them **unverified** in the release notes (CHANGELOG).
 
 Testing never blocks merges to `main`; findings are fixed as a patch release.

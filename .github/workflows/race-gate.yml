@@ -1,0 +1,126 @@
+name: race-gate
+
+# Release race gate (AGENTS.md §3): `go test -race -count=N` per package on
+# Linux, Windows and macOS, one job per package and OS. Not part of the PR
+# checks: run it by hand before a release (workflow_dispatch, optional `pr`
+# to get the summary as a comment) and nightly with count=20.
+
+on:
+  workflow_dispatch:
+    inputs:
+      count:
+        description: "go test -count value"
+        default: "10"
+        required: true
+      pr:
+        description: "Pull request number to post the summary on (empty: no comment)"
+        default: ""
+        required: false
+  schedule:
+    - cron: "23 20 * * *"   # nightly (04:23 Asia/Shanghai), count=20
+
+permissions:
+  contents: read
+
+concurrency:
+  group: race-gate-${{ github.run_id }}
+  cancel-in-progress: false
+
+env:
+  COUNT: ${{ inputs.count || '20' }}
+
+jobs:
+  race:
+    name: race ${{ matrix.pkg }} (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        pkg: [store, ipc, analysis, device, mcpserver, service, cmd]
+        include:
+          # job timeout (GitHub max 360 min) and the go test timeout under it;
+          # service took ~3.3 h at count=20 on a local Linux box
+          - { pkg: store, target: ./internal/store, job: 120, gotest: 110m }
+          - { pkg: ipc, target: ./internal/ipc, job: 60, gotest: 50m }
+          - { pkg: analysis, target: ./internal/analysis, job: 60, gotest: 50m }
+          - { pkg: device, target: ./internal/device, job: 180, gotest: 170m }
+          - { pkg: mcpserver, target: ./internal/mcpserver, job: 120, gotest: 110m }
+          - { pkg: service, target: ./internal/service, job: 340, gotest: 330m }
+          - { pkg: cmd, target: ./cmd/..., job: 60, gotest: 50m }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ matrix.job }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - name: go test -race -count=${{ env.COUNT }}
+        run: |
+          mkdir -p ../out
+          name="${{ matrix.pkg }}-${{ matrix.os }}"
+          start=$(date +%s)
+          set +e
+          set -o pipefail
+          go test -race -count="$COUNT" -timeout ${{ matrix.gotest }} ${{ matrix.target }} 2>&1 | tee "../out/$name.log"
+          rc=$?
+          echo "pkg=${{ matrix.pkg }} os=${{ matrix.os }} count=$COUNT exit=$rc seconds=$(( $(date +%s) - start ))" > "../out/$name.result"
+          exit $rc
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: race-${{ matrix.pkg }}-${{ matrix.os }}
+          path: out/
+          retention-days: 30
+
+  summary:
+    name: summary
+    needs: race
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: race-*
+          path: results
+          merge-multiple: true
+      - name: Summarize
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ github.sha }}
+        run: |
+          {
+            echo "## Race gate: \`go test -race -count=$COUNT\` at \`${SHA::7}\`"
+            echo
+            echo "| package | os | result | seconds |"
+            echo "|---|---|---|---|"
+            fail=0
+            for os in ubuntu-latest windows-latest macos-latest; do
+              for pkg in store ipc analysis device mcpserver service cmd; do
+                f="results/$pkg-$os.result"
+                if [ -f "$f" ]; then
+                  rc=$(sed -n 's/.*exit=\([0-9]*\).*/\1/p' "$f"); sec=$(sed -n 's/.*seconds=\([0-9]*\).*/\1/p' "$f")
+                  if [ "$rc" = 0 ]; then res=pass; else res="FAIL (exit $rc)"; fail=1; fi
+                else
+                  res="no result (timeout, cancelled or runner lost)"; sec="-"; fail=1
+                fi
+                echo "| $pkg | $os | $res | $sec |"
+              done
+            done
+            echo
+            echo "Logs: the \`race-<package>-<os>\` artifacts of $RUN_URL"
+          } > summary.md
+          cat summary.md >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$PR" ]; then gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file summary.md; fi
+          exit $fail
