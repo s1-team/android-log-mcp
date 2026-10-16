@@ -102,6 +102,34 @@ func addDevices(t *testing.T, e fakeadb.Env, n int, serials ...string) {
 	}
 }
 
+// Issue #156: Track's wait is a bound, not a guarantee. When the identity
+// probe is slower than the bound, Track returns with no device online yet,
+// and they appear once the probe finishes.
+func TestTrackBoundExpiresBeforeIdentityIsRead(t *testing.T) {
+	t.Parallel()
+	e := fakeEnv(t)
+	addDevices(t, e, 5, "FAKEA")
+	if err := e.SetIdentDelay("FAKEA", 1500*time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	m := lazyManager(t, time.Minute)
+	start := time.Now()
+	m.Track(100 * time.Millisecond)
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("Track took %v, its bound is 100ms", d)
+	}
+	if ids := m.OnlineIDs(); len(ids) != 0 {
+		t.Fatalf("online %v before the identity was read", ids)
+	}
+	waitFor(t, "the device online once its identity is read", 30*time.Second, func() bool { return len(m.OnlineIDs()) == 1 })
+	m.WaitReady(5 * time.Second) // ready is reached with the identity
+	select {
+	case <-m.session().ready:
+	default:
+		t.Fatal("tracking session not ready after the identity was read")
+	}
+}
+
 func lazyManager(t *testing.T, linger time.Duration) *Manager {
 	t.Helper()
 	m := newTestManager(t, t.TempDir(), store.Config{})
@@ -187,9 +215,9 @@ func TestLazyStartsOnlyWantedDevice(t *testing.T) {
 	addDevices(t, e, 5, "FAKEA", "FAKEB")
 	m := lazyManager(t, time.Minute)
 	m.Track(5 * time.Second)
-	if ids := m.OnlineIDs(); len(ids) != 2 {
-		t.Fatalf("online %v", ids)
-	}
+	// Track waits for the identities only up to its bound, which a loaded
+	// runner can exceed (issue #156): wait for the condition itself.
+	waitFor(t, "both devices online with their identity", 30*time.Second, func() bool { return len(m.OnlineIDs()) == 2 })
 	if len(e.CallsMatching("logcat")) != 0 {
 		t.Fatal("logcat before any device was wanted")
 	}
