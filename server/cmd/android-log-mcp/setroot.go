@@ -59,8 +59,9 @@ func runSetRoot(ctx context.Context, args []string) int {
 	if dir == "" || *keep == *del {
 		msg, next := "missing_dir", "android-log-mcp root" // prints the current root; pass the new one to set-root
 		if dir != "" {
+			// only the safe command is suggested: --delete-old removes data and is never put in a next: line
 			msg = "exactly_one_of_keep_old_delete_old"
-			next = "android-log-mcp set-root " + shellQuote(dir) + " --keep-old | android-log-mcp set-root " + shellQuote(dir) + " --delete-old"
+			next = "android-log-mcp set-root " + shellQuote(dir) + " --keep-old"
 		}
 		fmt.Fprintln(os.Stderr, mcpserver.CLIError("usage", next, "msg", msg))
 		return 2
