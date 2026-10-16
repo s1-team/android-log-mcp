@@ -126,6 +126,7 @@ func must(t *testing.T, out string, isErr bool, want ...string) {
 }
 
 func TestSearchLines(t *testing.T) {
+	t.Parallel()
 	tl := fixture(t)
 	out, e := call(t, tl, "logcat_search", `{"filter":"tag:Net","limit":5}`)
 	must(t, out, e, "filter parsed as:", "matched 30 lines; showing newest 5", "Net: request 29 ok", "before=\"c1.")
@@ -144,6 +145,7 @@ func TestSearchLines(t *testing.T) {
 }
 
 func TestSearchPackageAndCollapse(t *testing.T) {
+	t.Parallel()
 	tl := fixture(t)
 	out, e := call(t, tl, "logcat_search", `{"filter":"tag:Noise","limit":50}`)
 	must(t, out, e, "identical")
@@ -155,12 +157,14 @@ func TestSearchPackageAndCollapse(t *testing.T) {
 }
 
 func TestSearchSummary(t *testing.T) {
+	t.Parallel()
 	tl := fixture(t)
 	out, e := call(t, tl, "logcat_search", `{"view":"summary"}`)
 	must(t, out, e, "top tags:", "Noise", "crashes in range: 1")
 }
 
 func TestSearchErrors(t *testing.T) {
+	t.Parallel()
 	tl := fixture(t)
 	for args, want := range map[string]string{
 		`{"filter":"tag:Net foo:bar"}`: `unknown key "foo"`,
@@ -178,6 +182,7 @@ func TestSearchErrors(t *testing.T) {
 }
 
 func TestCrashes(t *testing.T) {
+	t.Parallel()
 	tl := fixture(t)
 	out, e := call(t, tl, "logcat_crashes", `{}`)
 	must(t, out, e, "cr1", "NullPointerException", "Repo.load", "before crash", "Repo: loading user")
@@ -195,18 +200,21 @@ func TestCrashes(t *testing.T) {
 }
 
 func TestLaunches(t *testing.T) {
+	t.Parallel()
 	tl := fixture(t)
 	out, e := call(t, tl, "logcat_app_launches", `{"package":"com.foo"}`)
 	must(t, out, e, "1 launches", "COLD", "com.foo/.ui.MainActivity", "+440 ms", "TTID (time to initial display", "812")
 }
 
 func TestStatus(t *testing.T) {
+	t.Parallel()
 	tl := fixture(t)
 	out, e := call(t, tl, "logcat_status", `{}`)
 	must(t, out, e, "emu-1", "cursor")
 }
 
 func TestTrimStack(t *testing.T) {
+	t.Parallel()
 	var b strings.Builder
 	b.WriteString("java.lang.StackOverflowError\n")
 	for i := 0; i < 2000; i++ {
@@ -220,6 +228,7 @@ func TestTrimStack(t *testing.T) {
 
 // End-to-end over the MCP protocol with in-memory transports.
 func TestMCPInMemory(t *testing.T) {
+	t.Parallel()
 	tl := fixture(t)
 	ctx := context.Background()
 	srv := NewServer(tl)

@@ -201,6 +201,7 @@ func parseLaunches(out string) []gotLaunch {
 func fmtReq(t time.Time) string { return t.UTC().Format("2006-01-02 15:04:05.000") }
 
 func TestLaunchesAcrossClockJumps(t *testing.T) {
+	t.Parallel()
 	fx, n := launchTimeline(t)
 	full := analysis.LaunchesAcross(fx.recs, "", fx.steps) // full scan, arrival order
 	if len(full) != len(fx.want) {

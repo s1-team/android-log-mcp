@@ -6,6 +6,7 @@ import (
 )
 
 func TestRenderStatusHead(t *testing.T) {
+	t.Parallel()
 	lines := func(staying string) []StatusLine {
 		return []StatusLine{
 			{Text: "service: background service pid 1"},

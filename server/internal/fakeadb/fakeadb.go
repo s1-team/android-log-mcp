@@ -38,7 +38,29 @@ const EnvDir = "ALM_FAKEADB_DIR"
 // Is reports whether this process was started as the fake adb.
 func Is() bool {
 	b := strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe")
-	return (b == "adb" || b == helperName) && os.Getenv(EnvDir) != ""
+	return (b == "adb" || b == helperName) && stateDir() != ""
+}
+
+// markerName marks a bin directory made by Install: a fake adb started
+// from it finds its state directory without EnvDir, so tests can run in
+// parallel without changing the process environment (#26).
+const markerName = ".fakeadb"
+
+// stateDir is EnvDir, or the parent of the bin directory a fake adb was
+// installed in ("" when neither applies).
+func stateDir() string {
+	if d := os.Getenv(EnvDir); d != "" {
+		return d
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	bin := filepath.Dir(exe)
+	if _, err := os.Stat(filepath.Join(bin, markerName)); err != nil {
+		return ""
+	}
+	return filepath.Dir(bin)
 }
 
 // helperName is the grandchild a hanging shell command starts (SetHang):
@@ -46,7 +68,8 @@ func Is() bool {
 const helperName = "adbhang"
 
 // Install copies the running test binary to dir/bin/adb[.exe] and returns
-// its path (point ANDROID_LOG_MCP_ADB at it, and set EnvDir=dir).
+// its path (point ANDROID_LOG_MCP_ADB or Manager.ADBPath at it; the fake
+// finds dir from its own location, EnvDir=dir is optional).
 func Install(dir string) (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -62,6 +85,9 @@ func Install(dir string) (string, error) {
 	dst := filepath.Join(dir, "bin", name)
 	b, err := os.ReadFile(exe)
 	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "bin", markerName), nil, 0o644); err != nil {
 		return "", err
 	}
 	return dst, os.WriteFile(dst, b, 0o755)
@@ -260,7 +286,7 @@ func appendLine(p, s string) {
 
 // Main runs the fake adb with args (os.Args[1:]); returns the exit code.
 func Main(args []string) int {
-	e := Env{Dir: os.Getenv(EnvDir)}
+	e := Env{Dir: stateDir()}
 	appendLine(filepath.Join(e.Dir, "pids"), strconv.Itoa(os.Getpid()))
 	if strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe") == helperName {
 		return helperMain(e)

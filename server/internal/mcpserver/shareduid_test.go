@@ -23,6 +23,7 @@ package:android uid:1000
 `
 
 func TestPackageSharedUID(t *testing.T) {
+	t.Parallel()
 	e := &replayEnv{t: t, base: replayDir(t)}
 	st, err := store.Open(e.base, fxSerial, store.Config{})
 	if err != nil || !st.IsWriter() {

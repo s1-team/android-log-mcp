@@ -88,7 +88,7 @@ func init() {
 
 // startForReport starts the report's devices (--serial, or the single
 // online one) like a log-tool call and waits for their catch-up (max
-// device.CatchUpWait); the returned notes go into the manifest.
+// m.CatchUpWait); the returned notes go into the manifest.
 func startForReport(ctx context.Context, m *device.Manager, t *mcpserver.Tools, serials []string) []string {
 	names := serials
 	if len(names) == 0 {
@@ -115,7 +115,7 @@ func startForReport(ctx context.Context, m *device.Manager, t *mcpserver.Tools, 
 		}
 		startedIDs = append(startedIDs, id)
 	}
-	deadline := time.Now().Add(device.CatchUpWait)
+	deadline := time.Now().Add(m.CatchUpWait)
 	for _, id := range startedIDs {
 		// a device being stopped right now is re-attached first (issue #15)
 		d, ok := m.WaitRecording(ctx, id, max(0, time.Until(deadline)))
@@ -127,7 +127,7 @@ func startForReport(ctx context.Context, m *device.Manager, t *mcpserver.Tools, 
 			p = d.WaitCaughtUp(ctx, max(0, time.Until(deadline)))
 		}
 		if p.Pending {
-			notes = append(notes, fmt.Sprintf("backfill incomplete: %s: %s when the report was packed (waited %s)", d.Serial, p.BackfillText(d.Loc()), device.CatchUpWait))
+			notes = append(notes, fmt.Sprintf("backfill incomplete: %s: %s when the report was packed (waited %s)", d.Serial, p.BackfillText(d.Loc()), m.CatchUpWait))
 		}
 	}
 	return notes
