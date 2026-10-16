@@ -392,7 +392,7 @@ func (q *query) scan(limit int, desc bool) *scanResult {
 			res.tbuf = appendTemplate(res.tbuf[:0], r)
 			if i, ok := res.tmplIdx[string(res.tbuf)]; ok { // no allocation for a known template
 				res.tmplNs[i]++
-			} else {
+			} else if len(res.tmplKeys) < headTemplates { // bounded: later new templates are not counted
 				k := string(res.tbuf)
 				res.tmplIdx[k] = len(res.tmplKeys)
 				res.tmplKeys = append(res.tmplKeys, k)
@@ -655,6 +655,10 @@ func (q *query) withContext(shown []*model.Record, n int) ([]*model.Record, map[
 // When the sample is smaller than the matches, percentages carry a "~".
 const headSample = 2000
 
+// headTemplates bounds the distinct message templates the digest keeps (memory
+// and allocations per call); templates first seen after that are not counted.
+const headTemplates = 256
+
 // summaryHead is the one-line digest of a wide search (#85): the top tags
 // and message templates of the matches, so one call tells what the hidden
 // matches are. At most headCap chars: msgs go first, then tags.
@@ -669,15 +673,24 @@ func summaryHead(res *scanResult) string {
 		k string
 		v int
 	}
-	top := func(m map[string]int, n int) []kv {
-		var l []kv
-		for k, v := range m {
+	// top keeps the n largest (count desc, key asc) of the entries each yields,
+	// without sorting or copying all of them.
+	top := func(each func(yield func(string, int)), n int) []kv {
+		l := make([]kv, 0, n+1)
+		each(func(k string, v int) {
+			if len(l) == n && !(v > l[n-1].v || v == l[n-1].v && k < l[n-1].k) {
+				return
+			}
+			i := len(l)
 			l = append(l, kv{k, v})
-		}
-		sort.Slice(l, func(i, j int) bool { return l[i].v > l[j].v || l[i].v == l[j].v && l[i].k < l[j].k })
-		if len(l) > n {
-			l = l[:n]
-		}
+			for ; i > 0 && (v > l[i-1].v || v == l[i-1].v && k < l[i-1].k); i-- {
+				l[i] = l[i-1]
+			}
+			l[i] = kv{k, v}
+			if len(l) > n {
+				l = l[:n]
+			}
+		})
 		return l
 	}
 	approx := ""
@@ -691,13 +704,17 @@ func summaryHead(res *scanResult) string {
 		}
 		return approx + strconv.Itoa(p) + "%"
 	}
-	tl := top(res.tagCount, 5)
+	tl := top(func(y func(string, int)) {
+		for k, v := range res.tagCount {
+			y(k, v)
+		}
+	}, 5)
 	var ml []kv
-	tc := make(map[string]int, len(res.tmplKeys))
-	for i, k := range res.tmplKeys {
-		tc[k] = res.tmplNs[i]
-	}
-	for _, m := range top(tc, 6) {
+	for _, m := range top(func(y func(string, int)) {
+		for i, k := range res.tmplKeys {
+			y(k, res.tmplNs[i])
+		}
+	}, 6) {
 		if m.v > 1 {
 			ml = append(ml, m)
 		}
@@ -846,7 +863,7 @@ func (t *Tools) renderLines(q *query, res *scanResult, a searchArgs, desc, waite
 		if !waited {
 			scanned, hints = t.zeroHints(q)
 		}
-		extra[5] = scanned
+		extra[3] = scanned
 		if st := q.d.Store.Stats(); st.Records > 0 {
 			extra = append(extra, "range", isoNs(st.OldestNs, q.loc)+"/"+isoNs(st.NewestNs, q.loc))
 		}
