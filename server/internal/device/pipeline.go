@@ -412,7 +412,7 @@ func (p *Pipeline) ApplyDropbox(out string) {
 		cutoff = now - int64(p.Store.Config().MaxAge)
 	}
 	for _, e := range entries {
-		if e.TimeNs != 0 && e.TimeNs < cutoff {
+		if t := e.RealTimeNs(); t != 0 && t < cutoff {
 			continue
 		}
 		// Keyed by content when the body names the crashed pid (a pid

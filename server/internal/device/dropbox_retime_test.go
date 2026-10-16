@@ -122,3 +122,71 @@ func hasSource(c *analysis.Crash, s string) bool {
 	}
 	return false
 }
+
+// Issue #152: an ANR entry first read after the device re-dated it (one
+// back-jump, every old entry stamped with the next new entry's time) merges
+// into the ANR already stored from logcat, whenever the fetch runs; and the
+// retention cutoff follows the body time, not the re-dated header.
+func TestDropboxRedatedANRFirstReadAfterBackJump(t *testing.T) {
+	t.Parallel()
+	crashAt := time.Date(2026, 10, 16, 14, 31, 39, 0, time.UTC)
+	for _, tc := range []struct {
+		name string
+		now  time.Time // device now at the fetch
+		jump bool
+		hdr  string
+		want int
+	}{
+		{"clock still set back", time.Date(2026, 10, 15, 14, 50, 0, 0, time.UTC), true, "2026-10-15 14:46:11", 1},
+		{"clock restored", time.Date(2026, 10, 16, 15, 30, 0, 0, time.UTC), true, "2026-10-15 14:46:11", 1},
+		{"no jump stored", time.Date(2026, 10, 15, 14, 50, 0, 0, time.UTC), false, "2026-10-15 14:46:11", 1},
+		// header re-dated before the retention cutoff, body inside it: imported (merged)
+		{"re-dated header older than retention", time.Date(2026, 10, 16, 15, 30, 0, 0, time.UTC), false, "2026-10-10 00:00:00", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st, err := store.Open(t.TempDir(), "d", store.Config{MaxAge: 24 * time.Hour, IdleRelease: -1})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { st.Close() })
+			var recs []*model.Record
+			for i := 0; i < 3; i++ {
+				recs = append(recs, &model.Record{TimeNs: crashAt.Add(time.Duration(i) * time.Second).UnixNano(), Tag: "T", Msg: "m", Level: 'I'})
+			}
+			st.Append(recs)
+			st.Flush()
+			if tc.jump {
+				st.AddClockJump(store.ClockJump{Seq: 2, DeltaNs: -86400e9, Source: "measured"})
+			}
+			p := NewPipeline(st, "b1", time.UTC)
+			p.DeviceNow = func() int64 { return tc.now.UnixNano() }
+			p.EmitCrash(&analysis.Crash{Kind: "anr", Boot: "b1", TimeNs: crashAt.UnixNano(), Seq: 1, PID: 9692, Process: "com.example.app",
+				Package: "com.example.app", Headline: "ANR", Sources: []string{"logcat:crash"}})
+			out := "========================================\n" + tc.hdr + " data_app_anr (text, 100 bytes)\nProcess: com.example.app\nPID: 9692\n" +
+				"Subject: Input dispatching timed out\n\n----- pid 9692 at 2026-10-16 14:31:40 -----\nCmd line: com.example.app\n\n"
+			p.ApplyDropbox(out)
+			cs := LoadCrashes(st)
+			if len(cs) != tc.want || !hasSource(cs[0], "dropbox:data_app_anr") {
+				t.Fatalf("%d crashes, want %d merged: %+v", len(cs), tc.want, cs)
+			}
+			// a second fetch changes nothing
+			p.ApplyDropbox(out)
+			if n := len(LoadCrashes(st)); n != tc.want {
+				t.Fatalf("after second fetch %d crashes", n)
+			}
+		})
+	}
+}
+
+// the retention cutoff uses the body time: an entry whose body says it is
+// older than retention stays out even when the device stamped it recently
+func TestDropboxCutoffUsesANRBodyTime(t *testing.T) {
+	t.Parallel()
+	p, st, _ := retimePipe(t) // device now 2026-10-11 19:40, retention 1 day
+	out := "========================================\n2026-10-11 19:39:00 data_app_anr (text, 100 bytes)\nProcess: com.example.app\nPID: 5\n" +
+		"Subject: x\n\n----- pid 5 at 2026-10-01 00:00:00 -----\nCmd line: com.example.app\n\n"
+	p.ApplyDropbox(out)
+	if n := len(LoadCrashes(st)); n != 0 {
+		t.Fatalf("old-by-body entry imported: %d crashes", n)
+	}
+}
