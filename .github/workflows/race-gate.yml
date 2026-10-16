@@ -6,6 +6,8 @@ name: race-gate
 # to get the summary as a comment) and nightly with count=20.
 
 on:
+  push:
+    branches: [feature/release-race-gate]   # TEMP: prove the run before the workflow exists on main
   workflow_dispatch:
     inputs:
       count:
@@ -27,7 +29,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  COUNT: ${{ inputs.count || '20' }}
+  COUNT: ${{ inputs.count || (github.event_name == 'push' && '1') || '20' }}
 
 jobs:
   race:
