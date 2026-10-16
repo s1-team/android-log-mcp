@@ -155,8 +155,10 @@ func logTail(ctrl Control) string {
 }
 
 func TestSilentHolderIsReplaced(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"silent", "silent,ignoreterm", "nolistener"} {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			ctrl := testControl(t)
 			h := startHolder(t, ctrl, "", mode)
 			c := newRepairClient(ctrl)
@@ -186,8 +188,10 @@ func TestSilentHolderIsReplaced(t *testing.T) {
 }
 
 func TestForeignHolderIsNotSignalled(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"silent,badexe", "silent,badstart"} {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			ctrl := testControl(t)
 			h := startHolder(t, ctrl, "", mode)
 			c := newRepairClient(ctrl)
@@ -218,6 +222,7 @@ func TestForeignHolderIsNotSignalled(t *testing.T) {
 // holder that is not provably this service: a reused pid (other image or other
 // start time) or an in-process service (its pid is an MCP process).
 func TestStopRefusesReusedPidAndEmbedded(t *testing.T) {
+	t.Parallel()
 	cases := []struct{ mode, msg string }{
 		{"silent,badexe", "not recognised"},
 		{"silent,badstart", "not recognised"},
@@ -228,6 +233,7 @@ func TestStopRefusesReusedPidAndEmbedded(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.mode, func(t *testing.T) {
+			t.Parallel()
 			ctrl := testControl(t)
 			h := startHolder(t, ctrl, "", tc.mode)
 			for _, force := range []bool{false, true} {
@@ -263,6 +269,7 @@ func TestStopRefusesReusedPidAndEmbedded(t *testing.T) {
 }
 
 func TestConcurrentClientsShareOneRepair(t *testing.T) {
+	t.Parallel()
 	ctrl := testControl(t)
 	h := startHolder(t, ctrl, "", "silent")
 	const n = 3
@@ -306,6 +313,7 @@ func TestConcurrentClientsShareOneRepair(t *testing.T) {
 }
 
 func TestReplaceRateLimit(t *testing.T) {
+	t.Parallel()
 	ctrl := testControl(t)
 	h := startHolder(t, ctrl, "", "silent")
 	now := time.Now()
@@ -325,6 +333,7 @@ func TestReplaceRateLimit(t *testing.T) {
 }
 
 func TestStoppingServiceIsWaitedFor(t *testing.T) {
+	t.Parallel()
 	ctrl := testControl(t)
 	root := t.TempDir()
 	os.MkdirAll(LogDir(root), 0o755)
@@ -344,6 +353,7 @@ func TestStoppingServiceIsWaitedFor(t *testing.T) {
 }
 
 func TestStopForce(t *testing.T) {
+	t.Parallel()
 	ctrl := testControl(t)
 	var out, errb bytes.Buffer
 	if code := RunStop(ctrl, "0.5.0", false, &out, &errb); code != 0 || !strings.Contains(out.String(), "not running") {
@@ -369,6 +379,7 @@ func TestStopForce(t *testing.T) {
 }
 
 func TestSocketWatchRecreatesSocket(t *testing.T) {
+	t.Parallel()
 	ctrl := testControl(t)
 	s, err := Start(Options{Control: ctrl, Version: "0.5.0", Drain: time.Second, SocketWatch: 100 * time.Millisecond})
 	if err != nil {
@@ -393,6 +404,7 @@ func TestSocketWatchRecreatesSocket(t *testing.T) {
 }
 
 func TestIdentify(t *testing.T) {
+	t.Parallel()
 	start, exe, ok := inspectProc(os.Getpid())
 	if !ok || exe == "" {
 		t.Skipf("no process inspection on this OS (ok=%v exe=%q)", ok, exe)

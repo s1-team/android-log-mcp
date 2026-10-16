@@ -36,6 +36,7 @@ func readZip(t *testing.T, p string) map[string]string {
 // --logs-only: diagnostics only (service log redacted, lock diagnosis,
 // adb devices -l), no recorded data; works with no service running.
 func TestReportLogsOnly(t *testing.T) {
+	t.Parallel()
 	adb := fakeADBFor(t, "FAKEA")
 	ctrl := testControl(t)
 	root := t.TempDir()
@@ -129,6 +130,7 @@ func TestReportRedactsUserPaths(t *testing.T) {
 
 // A hung lock holder shows up in the diagnosis of an offline report.
 func TestReportDiagnosesHungHolder(t *testing.T) {
+	t.Parallel()
 	ctrl := testControl(t)
 	startHolder(t, ctrl, "", "silent")
 	out := filepath.Join(t.TempDir(), "r.zip")
@@ -147,8 +149,10 @@ func TestReportDiagnosesHungHolder(t *testing.T) {
 
 // The reporting hint is off by default and only changes the error text.
 func TestReportHintInErrors(t *testing.T) {
+	t.Parallel()
 	for _, on := range []string{"", "0", "1", "true"} {
 		t.Run("env="+on, func(t *testing.T) {
+			t.Parallel()
 			ctrl := testControl(t)
 			h := startHolder(t, ctrl, "", "silent,badexe")
 			c := NewClient(ClientOptions{Control: ctrl, Version: "0.5.0", Role: "mcp", StartTimeout: 3 * time.Second, NoDetach: true, Repair: fastRepair(),
@@ -190,6 +194,7 @@ func TestReportHintInErrors(t *testing.T) {
 // No network code anywhere in the program: nothing imports an HTTP, SMTP or
 // RPC client (the service speaks only over its local socket).
 func TestNoNetworkImports(t *testing.T) {
+	t.Parallel()
 	err := filepath.WalkDir("../..", func(p string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
 			return err

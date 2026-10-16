@@ -12,6 +12,7 @@ import (
 )
 
 func TestFirstStatusAfterHandoffStartsDevice(t *testing.T) {
+	t.Parallel()
 	e, withADB := installFake(t, "FAKEA")
 	ctrl := testControl(t)
 	old := startTest(t, ctrl, "0.4.0", withADB)
