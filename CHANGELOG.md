@@ -14,7 +14,7 @@ Output format `fmt=1` ([#85](https://github.com/s1crab/android-log-mcp/issues/85
 
 | # | Breaking change | What to do |
 |---|---|---|
-| B1 | `logcat_search` has a `summary of=N ...` head line when more matches exist than shown; the `top tags in ...` tail line is gone | read the head line |
+| B1 | `logcat_search` has a `summary sampled=N top3_share=P% tags=... msgs=...` head line when more matches exist than shown (`sampled` is the number of matches the digest was computed from, at most 2000, not `matched`; `~` before a percentage means `sampled` < `matched`); the `top tags in ...` tail line is gone | read the head line |
 | B2 | Every truncation is one `truncated <what>=N exact=0\|1 ... next: param=value` line (replaces `[truncated: ...]`, `[output cap: ...]`, `more:`, `raise limit`); crashes, launches and status gain markers | follow `next:` |
 | B3 | The `clock:` prose line is gone; `clock_jumps=N ... next: after=...` appears only when a jump splits the matches | parse the one line |
 | B4 | Header is `key=value` with ISO times; `host now`, `format:` and `count:` lines are gone (`host_now`, `tz` with `verbose=true`); `fmt=1` | match on the first token and keys |
@@ -22,9 +22,12 @@ Output format `fmt=1` ([#85](https://github.com/s1crab/android-log-mcp/issues/85
 | B6 | Empty results and errors are `empty ... scanned= range=` and `error code=<code> ... next:`; `call` maps JSON/usage mistakes to the same shape | match `code=`, not message text |
 | B7 | `logcat_crashes` detail shows 20 lines before a crash (was 40) | pass `before_lines=40` (max 100) for the old amount |
 | B8 | CLI: `call` writes nothing to stderr normally; `service status`, `record`, `report` stderr and `set-root` print `key=value` lines; usage errors are one `error code=usage ... next:` line | use `--json` (unchanged, numeric fields added) or parse `key=value` |
+| B9 | `logcat_search view="summary"` is `levels` / `tags` / `procs` / `msgs` / `crashes=N anrs=N next: logcat_crashes ...` / `latest_errors=N` lines instead of the prose block (`total ... · by level`, `top tags:`, `top processes:`, `top repeated messages`, `crashes in range`) | parse the key lines; counts are over the whole range |
+| B10 | Header values: a string is bare unless it is empty or contains a space, control character, `"`, `=` or `\`; otherwise a JSON string (a Windows path is always `"C:\\x"`). `next:` commands quote paths for the host shell, one per line | read quoted values with a JSON string parser |
 
 ### Changed
 
+- `tools/list` (sent at the start of every session) is **smaller**: 10,378 bytes on 0.7.x, 10,230 bytes now (-1%), although every tool gained the `verbose` parameter and a one-line description of the fmt=1 response (the full format is in [docs/reference.md](docs/reference.md)).
 - **Breaking:** `logcat_search` responses start with one header line `ok`, `empty` or `error`, then `key=value` fields (`view device matched exact shown order range dev_now clock offset_s clock_age_s fmt=1`). Times are ISO-8601 with offset, numbers are plain integers (no thousands separators), durations are seconds (`_s`). The old prose header (`device … · device time … · device now … · host now …`), the `format:` line and the `count:` line are gone. `host now` is no longer printed by default; pass `verbose=true` to get `host_now`, `tz` and the column legend. Upgrade: parse the first line as `ok|empty|error k=v …`; read the count from `matched`/`exact` (`exact=0` means a lower bound, with `counted_from`/`counted_to`).
 - **Breaking:** rows of `logcat_search` use one-token columns `time level pid/tid process tag: message`: the process is never `?(uid system)` any more but `uid:system` (`?` = unknown); continuation lines of a multi-line message start with `| `; `↳ ×N identical until T` became `^ rep=N until=T`; Java stack markers became `^ frames_hidden=K` and `^ same_frames=K as=T`. Upgrade: split a row on whitespace into 5 tokens, the rest is the message.
 - **Breaking:** every cut is one line `truncated <what>=N exact=0|1 … next: param=value`, replacing `[truncated: …]`, `[output cap: …]`, `more:`, `more/wait:`, `stacks: … shortened` and the `…[+N chars; …]` per-line marker (now `...[line_cut=N more_chars=M next: …]`). The next step is always executable; the page cursors are `next: before=…` (older) and `newer: after=…`.
