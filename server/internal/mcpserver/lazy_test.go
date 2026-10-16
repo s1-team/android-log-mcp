@@ -311,6 +311,7 @@ func TestStatusShowsLateHandover(t *testing.T) {
 // identity is still pending, not answer idle / not connected from the
 // stored data.
 func TestNamedStoredDeviceStartsWhileIdentityPending(t *testing.T) {
+	t.Parallel()
 	l := newLazy(t, 5, "FAKEA")
 	if out, isErr := l.call(t, "logcat_status", `{"device":"FAKEA"}`); isErr || !strings.Contains(out, "FAKEA") {
 		t.Fatalf("first service:\n%s", out)
@@ -351,6 +352,7 @@ func TestNamedStoredDeviceStartsWhileIdentityPending(t *testing.T) {
 // A name that matches no stored data and no listed device still starts
 // nothing while an identity is pending.
 func TestUnknownNameDoesNotStartWhileIdentityPending(t *testing.T) {
+	t.Parallel()
 	l := newLazy(t, 5, "FAKEA")
 	l.e.SetIdentDelay("FAKEA", 3*time.Second)
 	l.m.Track(0)
@@ -365,6 +367,7 @@ func TestUnknownNameDoesNotStartWhileIdentityPending(t *testing.T) {
 // Issue #109: a device never recorded before, named by its adb serial, is
 // started by the first call when its identity is still pending.
 func TestNamedAdbSerialStartsWhileIdentityPending(t *testing.T) {
+	t.Parallel()
 	l := newLazy(t, 5, "FAKEB")
 	l.e.SetIdentDelay("FAKEB", 2*time.Second)
 	l.m.Track(0)
