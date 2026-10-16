@@ -87,7 +87,7 @@ func toolDefs() []toolDef {
 				"Times are device time. After a device clock jump, a `clock_jumps=N splitting=S ... next: after=...` line appears when it splits the matches; with no from/to the newest lines by arrival are shown.",
 			schema: `{"type":"object","properties":{
 "device":{"type":"string","description":"adb serial. Omit when only one device has logs."},
-"filter":{"type":"string","description":"Android Studio Logcat query, e.g. ` + "`tag=:OkHttp level:warn -message:heartbeat`" + `. Optional."},
+"filter":{"type":"string","description":"Android Studio Logcat query, e.g. ` + "`tag=:OkHttp level:warn -message:heartbeat`" + `. | binds tighter than a space; quote values with spaces. Optional."},
 "package":{"type":"string","description":"Exact application id; matches ALL its processes (com.foo, com.foo:remote), including dead ones."},
 "tags":{"type":"array","items":{"type":"string"},"maxItems":20,"description":"Exact tag names, ORed together, e.g. [\"OkHttp\",\"MyRepo\"]."},
 "min_level":{"type":"string","enum":["verbose","debug","info","warn","error","fatal"],"description":"Minimum priority."},

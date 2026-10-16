@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -268,5 +269,32 @@ func TestMCPInMemory(t *testing.T) {
 	res, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: "logcat_search", Arguments: map[string]any{"filter": "(tag:Net"}})
 	if err != nil || !res.IsError {
 		t.Errorf("expected tool error, got %v %+v", err, res)
+	}
+}
+
+// Issue #86: a filter-syntax hint is a `note code=filter hint=…` line with the
+// fixed filter in `next:`; the fix pasted back gives no note.
+func TestSearchFilterHints(t *testing.T) {
+	t.Parallel()
+	tl := fixture(t)
+	for _, c := range []struct{ filter, hint, fix string }{
+		{"tag:Net OR tag:Noise", "or_word", `next: filter="tag:Net | tag:Noise"`},
+		{"tag:Net message:request ok", "multi_word_value", `next: filter="tag:Net message:'request ok'"`},
+		{"tag:Net level:error | tag:Noise", "mixed_or", `next: filter="(tag:Net & level:error) | tag:Noise"`},
+	} {
+		out, e := call(t, tl, "logcat_search", `{"filter":`+strconv.Quote(c.filter)+`}`)
+		must(t, out, e, "note code=filter hint="+c.hint+" msg=", c.fix)
+		fixed := strings.TrimSuffix(strings.SplitN(c.fix, `filter="`, 2)[1], `"`)
+		out, e = call(t, tl, "logcat_search", `{"filter":`+strconv.Quote(fixed)+`}`)
+		must(t, out, e)
+		if strings.Contains(out, "hint=or_word") || strings.Contains(out, "hint=multi_word_value") || strings.Contains(out, "hint=mixed_or") {
+			t.Errorf("fix %q still hints:\n%s", fixed, out)
+		}
+	}
+	// a correct query costs nothing
+	out, e := call(t, tl, "logcat_search", `{"filter":"tag:Net | tag:Noise"}`)
+	must(t, out, e)
+	if strings.Contains(out, "code=filter") {
+		t.Errorf("unexpected note:\n%s", out)
 	}
 }

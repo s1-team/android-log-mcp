@@ -21,6 +21,7 @@ type Options struct {
 type Parsed struct {
 	Root  Node     // nil for an empty filter
 	Notes []string // warnings (never errors)
+	Hints []Hint   // syntax-misuse hints (issue #86); never change Root
 }
 
 // Interpretation renders the normalized predicate.
@@ -70,7 +71,7 @@ func ParseWith(s string, opts Options) (*Parsed, error) {
 		tops = append(tops, item{node: n, isValue: start.kind == tkValue && p.toks[p.i-1].pos == start.pos, tok: start})
 	}
 	root := p.combineTop(tops)
-	return &Parsed{Root: root, Notes: p.notes}, nil
+	return &Parsed{Root: root, Notes: p.notes, Hints: p.hints(root, len(tops))}, nil
 }
 
 type item struct {
