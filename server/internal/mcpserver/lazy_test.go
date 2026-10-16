@@ -26,6 +26,11 @@ type lazyEnv struct {
 	linger *atomic.Int64
 }
 
+// lazyWait bounds the waits on fake adb (a process per call, run under -race
+// with the package's tests in parallel): it only limits a hang, waitUntil
+// returns as soon as the condition holds (#158).
+const lazyWait = 60 * time.Second
+
 type fakePins struct {
 	mu    sync.Mutex
 	until map[string]time.Time
@@ -249,11 +254,7 @@ func TestSlowIdentity(t *testing.T) {
 	l := newLazy(t, 5, "FAKEA")
 	l.e.SetIdentDelay("FAKEA", 3*time.Second)
 	l.m.Track(0) // adb lists it; its identity takes 3 s
-	for end := time.Now().Add(10 * time.Second); len(l.m.Identifying()) == 0; time.Sleep(10 * time.Millisecond) {
-		if time.Now().After(end) {
-			t.Fatal("device never listed")
-		}
-	}
+	waitUntil(t, "the device to be listed", lazyWait, func() bool { return len(l.m.Identifying()) != 0 })
 	l.m.CatchUpWait = 300 * time.Millisecond
 	out, isErr := l.call(t, "logcat_status", `{}`)
 	if isErr || !strings.Contains(out, "code=device_identifying devices=FAKEA") || cursorOf(out) != "" {
@@ -339,11 +340,12 @@ func TestNamedStoredDeviceStartsWhileIdentityPending(t *testing.T) {
 		t.Fatalf("search (error):\n%s", out)
 	}
 	// once the identity is read, fakeadb sees logcat start for the device
-	for end := time.Now().Add(15 * time.Second); !l.e.LogcatRunning("FAKEA") || len(l.e.CallsMatching("logcat")) == 0; time.Sleep(20 * time.Millisecond) {
-		if time.Now().After(end) {
-			t.Fatalf("fakeadb never saw logcat start for FAKEA: %q", l.e.Calls())
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("fakeadb calls: %q", l.e.Calls())
 		}
-	}
+	})
+	waitUntil(t, "fakeadb to see logcat start for FAKEA", lazyWait, func() bool { return l.e.LogcatRunning("FAKEA") && len(l.e.CallsMatching("logcat")) != 0 })
 }
 
 // A name that matches no stored data and no listed device still starts
@@ -352,11 +354,7 @@ func TestUnknownNameDoesNotStartWhileIdentityPending(t *testing.T) {
 	l := newLazy(t, 5, "FAKEA")
 	l.e.SetIdentDelay("FAKEA", 3*time.Second)
 	l.m.Track(0)
-	for end := time.Now().Add(10 * time.Second); len(l.m.Identifying()) == 0; time.Sleep(10 * time.Millisecond) {
-		if time.Now().After(end) {
-			t.Fatal("device never listed")
-		}
-	}
+	waitUntil(t, "the device to be listed", lazyWait, func() bool { return len(l.m.Identifying()) != 0 })
 	l.m.CatchUpWait = 300 * time.Millisecond
 	l.call(t, "logcat_status", `{"device":"NOSUCH"}`)
 	if ids := l.m.WantedIDs(); len(ids) != 0 {
@@ -370,16 +368,13 @@ func TestNamedAdbSerialStartsWhileIdentityPending(t *testing.T) {
 	l := newLazy(t, 5, "FAKEB")
 	l.e.SetIdentDelay("FAKEB", 2*time.Second)
 	l.m.Track(0)
-	for end := time.Now().Add(10 * time.Second); len(l.m.Identifying()) == 0; time.Sleep(10 * time.Millisecond) {
-		if time.Now().After(end) {
-			t.Fatal("device never listed")
-		}
-	}
+	waitUntil(t, "the device to be listed", lazyWait, func() bool { return len(l.m.Identifying()) != 0 })
 	l.m.CatchUpWait = 300 * time.Millisecond
 	l.call(t, "logcat_status", `{"device":"FAKEB"}`)
-	for end := time.Now().Add(15 * time.Second); !l.m.Wanted("FAKEB") || !l.e.LogcatRunning("FAKEB"); time.Sleep(20 * time.Millisecond) {
-		if time.Now().After(end) {
-			t.Fatalf("FAKEB not started after its identity was read; calls %q", l.e.Calls())
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("fakeadb calls: %q", l.e.Calls())
 		}
-	}
+	})
+	waitUntil(t, "FAKEB to start after its identity was read", lazyWait, func() bool { return l.m.Wanted("FAKEB") && l.e.LogcatRunning("FAKEB") })
 }
