@@ -221,10 +221,14 @@ func TestVersionHandoff(t *testing.T) {
 	p1, v1 := servicePID(t, out)
 	out, errOut, code = call("0.4.1")
 	p2, v2 := servicePID(t, out)
-	if code != 0 || p2 == p1 || v1 != "0.4.0" || v2 != "0.4.1" || !strings.Contains(serviceLog(env), "older than this MCP or CLI process") || strings.Contains(errOut, "older than this MCP or CLI process") {
+	// A changed version proves the old service was replaced; the pid may
+	// legitimately be the same: Windows reuses a freed pid at once (#103).
+	if code != 0 || v1 != "0.4.0" || v2 != "0.4.1" || !strings.Contains(serviceLog(env), "older than this MCP or CLI process") || strings.Contains(errOut, "older than this MCP or CLI process") {
 		t.Fatalf("0.4.1: %d %d/%s %d/%s\n%s", code, p1, v1, p2, v2, errOut)
 	}
-	waitGone(t, p1)
+	if p2 != p1 { // with a reused pid, p1 names the new service
+		waitGone(t, p1)
+	}
 	out, _, code = call("0.4.0")
 	p3, v3 := servicePID(t, out)
 	if code != 0 || p3 != p2 || v3 != "0.4.1" || !strings.Contains(out, "code=version_skew") || !strings.Contains(out, "compatible=1") {
