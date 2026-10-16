@@ -15,3 +15,7 @@ Build: `main` 3b9038f + the release commit (version 0.8.0), binary `0.8.0`. Loca
 | perf | `scripts/perf.sh --check` and `--check --pr`: 136 metrics, 0 regressions | perf-check.txt, perf-check-pr.txt |
 
 Finding (not a regression proof, see the release PR): after the back-jump the device DropBox re-dated 14 older ANR entries to the same time; the store lists two extra ANRs (`anr22`, `anr23`) from them, one with the pid of an ANR that was already listed (`anr10`).
+
+## ANR duplicate finding (#152): v0.7.1 comparison
+
+`anrdup.sh` runs the v0.7.1 tag build and the 0.8.0 build **at the same time against the same device** (separate scratch stores): 3 real ANRs, `date` back one day, one more real ANR, clock restored. Result in `anrdup/anr-71.txt` / `anr-80.txt`: v0.7.1 lists the re-dated DropBox entries as extra ANRs (`anr25`..`anr31`); 0.8.0 lists none in this run, but only because the 0.8.0 fetch ran after the clock was restored and skipped them as older than the retention cutoff (`dropbox_seen.jsonl` of the 0.8.0 store has 1 key, v0.7.1 has 19). The earlier `clockjump080` run (fetch while the clock was still set back) shows the 2 extras on 0.8.0. `anrdup/dropbox-body-times.txt`: the real time of every entry is in its body (`----- pid N at <time>`) even when the entry header time was re-dated.

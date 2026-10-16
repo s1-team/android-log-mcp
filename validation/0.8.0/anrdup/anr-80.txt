@@ -1,0 +1,48 @@
+ok view=list device=avd-api29 groups=15 events=15 shown=15 order=newest_first history_from=2026-10-16T10:10:21.905+08:00 dev_now=2026-10-16T15:34:43+08:00 clock=estimated offset_s=-79.2 clock_age_s=25 fmt=1
+crash id=anr15 time=2026-10-15T15:27:11.600+08:00 kind=anr pid=12755 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  traces=unavailable next: id="anr15"
+crash id=anr14 time=2026-10-16T15:20:21.977+08:00 kind=anr pid=12407 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  traces=unavailable next: id="anr14"
+crash id=anr13 time=2026-10-16T15:18:11.206+08:00 kind=anr pid=12262 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  traces=unavailable next: id="anr13"
+crash id=anr12 time=2026-10-16T15:16:01.002+08:00 kind=anr pid=12146 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  main_thread: "main" prio=5 tid=1 Sleeping | at java.lang.Thread.sleep(Native method) | traces=data_app_anr
+crash id=anr11 time=2026-10-15T14:48:00.739+08:00 kind=anr pid=10807 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  traces=unavailable next: id="anr11"
+crash id=anr10 time=2026-10-16T14:31:39.171+08:00 kind=anr pid=9692 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  traces=unavailable next: id="anr10"
+crash id=anr9 time=2026-10-16T14:04:35.393+08:00 kind=anr pid=7814 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  traces=unavailable next: id="anr9"
+crash id=anr8 time=2026-10-16T13:53:52.296+08:00 kind=anr pid=6990 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  traces=unavailable next: id="anr8"
+crash id=anr7 time=2026-10-16T10:54:55.128+08:00 kind=anr pid=5228 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  traces=unavailable next: id="anr7"
+crash id=anr6 time=2026-10-16T10:57:47.689+08:00 kind=anr pid=5007 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  traces=unavailable next: id="anr6"
+crash id=anr5 time=2026-10-16T10:52:23.892+08:00 kind=anr pid=5007 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  traces=unavailable next: id="anr5"
+crash id=anr4 time=2026-10-16T10:50:02.486+08:00 kind=anr pid=4814 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  traces=unavailable next: id="anr4"
+crash id=anr3 time=2026-10-16T10:15:00.741+08:00 kind=anr pid=3336 process=com.google.android.ims
+  reason: Broadcast of Intent { act=android.telephony.action.CARRIER_CONFIG_CHANGED flg=0x15000010 cmp=com.google.android.ims/.receivers.CarrierConfigChangedReceiver (has extras) }
+  traces=unavailable next: id="anr3"
+crash id=anr2 time=2026-10-16T10:14:25.699+08:00 kind=anr pid=3145 process=com.google.android.ims
+  reason: Broadcast of Intent { act=android.telephony.action.CARRIER_CONFIG_CHANGED flg=0x15000010 cmp=com.google.android.ims/.receivers.CarrierConfigChangedReceiver (has extras) }
+  traces=unavailable next: id="anr2"
+crash id=anr1 time=2026-10-16T10:12:29.650+08:00 kind=anr pid=2166 process=com.android.systemui
+  reason: executing service com.android.systemui/.SystemUIService
+  traces=unavailable next: id="anr1"
+next: id="anr15"
+

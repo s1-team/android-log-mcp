@@ -1,0 +1,25 @@
+15:11:07 start auto_time=1 offset=-80s
+15:16:50 NOT caught up
+15:16:52 dropbox ANR entries before: 16
+15:17:20 ANR triggered (pre1)
+15:19:30 ANR triggered (pre2)
+15:21:41 ANR triggered (pre3)
+15:27:34 dropbox ANR entries after pre-ANRs: 2026-10-15 14:46:11 data_app_anr (compressed text, 26380 bytes);2026-10-15 14:48:26 data_app_anr (compressed text, 26607 bytes);2026-10-16 15:16:30 data_app_anr (compressed text, 26823 bytes);2026-10-16 15:18:37 data_app_anr (compressed text, 26292 bytes);2026-10-16 15:20:57 data_app_anr (compressed text, 10612 bytes);
+Thu Oct 15 15:26:20 +08 2026
+15:27:44 clock set back 1 day: device 2026-10-15_15:26:22
+15:28:32 ANR triggered (back)
+Fri Oct 16 15:28:32 +08 2026
+15:29:54 clock restored forward
+15:30:18 RESTORED auto_time=1 uid=2000 offset=-79s
+15:35:58 dropbox ANR entries now:
+2026-10-15 14:46:11 data_app_anr (compressed text, 26719 bytes)
+2026-10-15 14:46:11 data_app_anr (compressed text, 27221 bytes)
+2026-10-15 14:46:11 data_app_anr (compressed text, 26380 bytes)
+2026-10-15 14:48:26 data_app_anr (compressed text, 26607 bytes)
+2026-10-15 15:27:10 data_app_anr (compressed text, 26823 bytes)
+2026-10-15 15:27:10 data_app_anr (compressed text, 26292 bytes)
+2026-10-15 15:27:10 data_app_anr (compressed text, 10612 bytes)
+2026-10-15 15:27:44 data_app_anr (compressed text, 8105 bytes)
+service: stopped (pid 2192143)
+service: stopped (pid 2192240)
+15:36:03 done
