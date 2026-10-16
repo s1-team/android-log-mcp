@@ -115,17 +115,23 @@ func newDevice(adb *ADB, st *store.Store, serial string) *Device {
 	if d.addr == "" {
 		d.addr = serial
 	}
-	d.applyTZ(m.TZ, m.TZOffset)
+	at := time.Now() // host now: no device clock reading yet
 	if m.ClockHostNs > 0 {
 		d.lc.Set(m.ClockOffsetNs, time.Unix(0, m.ClockHostNs), "date")
+		at = at.Add(time.Duration(m.ClockOffsetNs)) // device time = host time + stored clock offset
 	}
+	d.applyTZ(m.TZ, m.TZOffset, at)
 	d.autoTime = m.AutoTime
 	d.bootID = m.LastBootID
 	return d
 }
 
-func (d *Device) applyTZ(name, zoneOffset string) {
-	loc, desc := ResolveZone(name, zoneOffset, time.Now())
+// applyTZ sets the device zone. at is a device time (or the best estimate
+// of one): the named zone's UTC offset is checked against `date +%z` read
+// from the device, so the instant must be on the device clock, not the
+// host's (#107).
+func (d *Device) applyTZ(name, zoneOffset string, at time.Time) {
+	loc, desc := ResolveZone(name, zoneOffset, at)
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if loc == nil {
@@ -410,7 +416,7 @@ func (d *Device) probe(ctx context.Context) error {
 	}
 	pr := p.Props
 	tz, zone := pr["persist.sys.timezone"], pr["zone"]
-	d.applyTZ(tz, zone)
+	d.applyTZ(tz, zone, probeDeviceNow(p, reused))
 	if now, coarse, mid, ok := p.Clock(); ok {
 		if reused {
 			// the saved probe is up to Timing.ProbeReuse old: its device clock
