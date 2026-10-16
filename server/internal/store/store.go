@@ -1269,7 +1269,7 @@ func (s *Store) CountMatch(after, before uint64, fromNs, toNs int64, ids map[uin
 			continue
 		}
 		for _, b := range ix.blocks {
-			if b.n == 0 || b.first >= hi || b.last < lo {
+			if b.n == 0 || b.first >= hi || b.last < lo || b.outside(fromNs, toNs) {
 				continue
 			}
 			// wholly inside the seq range and the time window: use counts
