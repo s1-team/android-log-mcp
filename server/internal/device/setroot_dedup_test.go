@@ -46,6 +46,7 @@ func countIn(st *store.Store, prefix string) int {
 // -T unusable): no line of the old root is stored again, on the first and
 // on the second resume in the new root, and no new line is lost.
 func TestSetRootThenWholeReadNoDuplicates(t *testing.T) {
+	t.Parallel()
 	e := fakeEnv(t)
 	addDevices(t, e, 0, "FAKEA")
 	now := time.Now()
@@ -78,7 +79,9 @@ func TestSetRootThenWholeReadNoDuplicates(t *testing.T) {
 	if strings.Contains(stream, " -T ") {
 		t.Fatalf("expected a whole-buffer read: %s", stream)
 	}
-	time.Sleep(3 * time.Second) // past the pipeline delay
+	// the pipeline stores in order: with the last new line stored the
+	// whole-buffer read before it was processed
+	waitFor(t, "new 2", 30*time.Second, func() bool { return countMsg(d.Store, "new 2") == 1 })
 	if n, o := countIn(d.Store, "new "), countIn(d.Store, "old "); n != 2 || o != 0 || len(messages(d.Store)) != 2 {
 		t.Fatalf("first resume stored %d new, %d old lines: %q", n, o, messages(d.Store))
 	}
@@ -94,7 +97,7 @@ func TestSetRootThenWholeReadNoDuplicates(t *testing.T) {
 	if strings.Contains(stream, " -T ") {
 		t.Fatalf("expected a whole-buffer read: %s", stream)
 	}
-	time.Sleep(3 * time.Second)
+	waitFor(t, "new 3", 30*time.Second, func() bool { return countMsg(d.Store, "new 3") == 1 })
 	if n, o := countIn(d.Store, "new "), countIn(d.Store, "old "); n != 3 || o != 0 || len(messages(d.Store)) != 3 {
 		t.Fatalf("second resume stored %d new, %d old lines: %q", n, o, messages(d.Store))
 	}

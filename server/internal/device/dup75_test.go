@@ -48,15 +48,19 @@ func TestWholeResumeKeepsOldestBufferLines(t *testing.T) {
 	waitFor(t, "live line", 5*time.Second, func() bool { return len(messages(d.Store)) == 44 })
 	reconnect(t, e, m, "FAKEA")
 	e.DropLines("FAKEA", "MAIN") // main rotated: 4 entries left, 3 of them the oldest stored lines
+	// a sentinel at the end of the buffer: the pipeline stores in order, so
+	// once it is stored the whole-buffer read before it was processed (the
+	// pipeline holds lines back by its delay)
+	e.Log("FAKEA", fakeadb.Line(back.Add(time.Second), 100, "LIVE", "sentinel"))
 	d, _ = resume(t, e, m, "FAKEA")
-	time.Sleep(3 * time.Second) // past the pipeline delay
+	waitFor(t, "the read to be stored up to its sentinel", 30*time.Second, func() bool { return countMsg(d.Store, "sentinel") == 1 })
 	for i := 0; i < 3; i++ {
 		if n := countMsg(d.Store, fmt.Sprintf("boot %d", i)); n != 1 {
 			t.Fatalf("boot %d stored %d times", i, n)
 		}
 	}
-	if n := len(messages(d.Store)); n != 44 {
-		t.Fatalf("stored %d lines, want 44", n)
+	if n := len(messages(d.Store)); n != 45 {
+		t.Fatalf("stored %d lines, want 45 (44 and the sentinel)", n)
 	}
 }
 
