@@ -325,8 +325,11 @@ type scanResult struct {
 	total      int             // matches counted (≥ len(matches))
 	countDone  bool            // total is exact
 	tagCount   map[string]int  // tags of the matches visited (tagN of them)
-	tmplCount  map[string]int  // message templates of the same matches (summary head)
+	tmplIdx    map[string]int  // message template -> index in tmplKeys/tmplNs of the same matches (summary head)
 	tagN       int
+	tmplKeys   []string
+	tmplNs     []int
+	tbuf       []byte
 	byRange    bool              // total counted from the store's record range (no filter), tags only of the page
 	firstNs    int64             // time of the first record scanned (desc: newest)
 	lastNs     int64             // time of the last record scanned (where counting stopped)
@@ -340,7 +343,7 @@ type scanResult struct {
 // scan runs the query. desc=true collects the newest `limit` matches.
 func (q *query) scan(limit int, desc bool) *scanResult {
 	st := q.d.Store
-	res := &scanResult{tagCount: map[string]int{}, tmplCount: map[string]int{}, countDone: true}
+	res := &scanResult{tagCount: map[string]int{}, tmplIdx: map[string]int{}, countDone: true}
 	res.upper = q.beforeSeq
 	if res.upper == 0 {
 		res.upper = st.LastSeq() + 1
@@ -386,7 +389,15 @@ func (q *query) scan(limit int, desc bool) *scanResult {
 		res.addSide(r.Seq)
 		if res.tagN < headSample { // the digest is of the first headSample matches
 			res.tagCount[r.Tag]++
-			res.tmplCount[template(r)]++
+			res.tbuf = appendTemplate(res.tbuf[:0], r)
+			if i, ok := res.tmplIdx[string(res.tbuf)]; ok { // no allocation for a known template
+				res.tmplNs[i]++
+			} else {
+				k := string(res.tbuf)
+				res.tmplIdx[k] = len(res.tmplKeys)
+				res.tmplKeys = append(res.tmplKeys, k)
+				res.tmplNs = append(res.tmplNs, 1)
+			}
 			res.tagN++
 		}
 		if len(res.matches) < limit {
@@ -640,7 +651,8 @@ func (q *query) withContext(shown []*model.Record, n int) ([]*model.Record, map[
 }
 
 // headSample bounds the matches that the wide-search summary head (#85)
-// is computed from (tags and message templates); of= says how many.
+// is computed from (tags and message templates); sampled= says how many.
+// When the sample is smaller than the matches, percentages carry a "~".
 const headSample = 2000
 
 // summaryHead is the one-line digest of a wide search (#85): the top tags
@@ -668,23 +680,35 @@ func summaryHead(res *scanResult) string {
 		}
 		return l
 	}
+	approx := ""
+	if res.total > of {
+		approx = "~"
+	}
 	pct := func(v int) string {
 		p := (100*v + of/2) / of
 		if p < 1 {
-			return "<1%"
+			return approx + "<1%"
 		}
-		return strconv.Itoa(p) + "%"
+		return approx + strconv.Itoa(p) + "%"
 	}
 	tl := top(res.tagCount, 5)
 	var ml []kv
-	for _, m := range top(res.tmplCount, 6) {
+	tc := make(map[string]int, len(res.tmplKeys))
+	for i, k := range res.tmplKeys {
+		tc[k] = res.tmplNs[i]
+	}
+	for _, m := range top(tc, 6) {
 		if m.v > 1 {
 			ml = append(ml, m)
 		}
 	}
 	build := func(nt, nm int) string {
 		var b strings.Builder
-		fmt.Fprintf(&b, "summary of=%d tags=", of)
+		top3 := 0
+		for _, t := range tl[:min(3, len(tl))] {
+			top3 += t.v
+		}
+		fmt.Fprintf(&b, "summary sampled=%d top3_share=%s tags=", of, pct(top3))
 		for i, t := range tl[:min(nt, len(tl))] {
 			if i > 0 {
 				b.WriteByte(',')
@@ -716,7 +740,8 @@ func summaryHead(res *scanResult) string {
 			return s + "\n"
 		}
 	}
-	return build(1, 0)[:headCap] + "\n"
+	s := build(1, 0)
+	return s[:cutAt(s, headCap)] + "\n"
 }
 
 func (t *Tools) renderLines(q *query, res *scanResult, a searchArgs, desc, waited bool) string {
@@ -802,7 +827,7 @@ func (t *Tools) renderLines(q *query, res *scanResult, a searchArgs, desc, waite
 	order := "arrival"
 	var extra []any
 	if len(sel) == 0 {
-		extra = []any{"matched", res.total, "exact", res.countDone, "scanned", 0}
+		extra = []any{"matched", res.total, "scanned", 0, "exact", res.countDone}
 	} else {
 		extra = []any{"matched", res.total, "exact", res.countDone}
 	}
@@ -1079,7 +1104,7 @@ func (t *Tools) summary(q *query) string {
 	extra := []any{"matched", total, "exact", !incomplete}
 	if total == 0 {
 		st := q.d.Store.Stats()
-		extra = append(extra, "scanned", n)
+		extra = []any{"matched", total, "scanned", n, "exact", !incomplete}
 		if st.Records > 0 {
 			extra = append(extra, "range", isoNs(st.OldestNs, q.loc)+"/"+isoNs(st.NewestNs, q.loc))
 		}
