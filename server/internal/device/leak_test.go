@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/s1crab/android-log-mcp/server/internal/fakeadb"
 )
 
 // Issue #194 (promoted from the blind-device probe). It kills the fake adb logcat child
@@ -41,8 +43,10 @@ func TestRecordOnceRestartDoesNotLeakWorkers(t *testing.T) {
 		}
 		streams := streamCount()
 		b, _ := os.ReadFile(filepath.Join(e.Dir, "dev", "FAKEA", "logcat"))
-		for _, f := range strings.Fields(string(b)) {
-			if pid, _ := strconv.Atoi(f); pid > 0 {
+		// only the newest stream (the file lists every earlier one too, whose
+		// pids may be reused by now)
+		if f := strings.Fields(string(b)); len(f) > 0 {
+			if pid, _ := strconv.Atoi(f[len(f)-1]); pid > 0 && fakeadb.Alive(pid) {
 				if p, err := os.FindProcess(pid); err == nil {
 					p.Kill() // adb logcat dies; the device stays attached
 				}
