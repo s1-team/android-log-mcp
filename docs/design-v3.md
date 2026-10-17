@@ -565,11 +565,11 @@ Query results are byte-for-byte identical (search, crashes and launches were com
   - A Go duration (`72h`, `90m`);
   - A day suffix (`1d`, `7d`, `1.5d`).
 - An empty value uses the default. An invalid or non-positive value prints a warning on stderr and falls back to the default. The other integer `ANDROID_LOG_MCP_*` variables now also warn on error; they used to be ignored silently.
-- Retention still deletes whole segments, and only when even the newest line of a segment (its mtime) is past retention. The original had two problems:
+- Retention still deletes whole segments, and only when even the newest line of a segment (its persisted host-time stamp in `meta.json`, not the file mtime) is past retention. The original had two problems:
   - A quiet device may not fill a 16 MiB segment for days, and the segment being written is never deleted, so a 1-day retention was meaningless;
   - Retention was checked only when switching segments.
 - What happens now:
-  1. A segment being written is replaced by a new one when, counted from when it started being written (host time), its span exceeds MaxAge/4; after a restart such an old segment is not continued either, and the start time of a segment is taken from the mtime of the previous one. Device time plays no part (#50). So logs are kept for at most about 1.25 × MaxAge;
+  1. A segment being written is replaced by a new one when, counted from when it started being written (host time), its span exceeds MaxAge/4; after a restart such an old segment is not continued either, and the start time of a segment is persisted (`seg_times`), clamped to now and re-anchored if absurdly old, so a clock set-back neither freezes nor mass-deletes segments. Device time plays no part (#50). So logs are kept for at most about 1.25 × MaxAge;
   2. The recorder (now the service process) runs `Store.Prune()` once a minute.
 - Auxiliary file cleanup uses the same retention as the logs (see 9.2).
 - The `stored …` line of `logcat_status` shows the effective retention and the per-device cap.
