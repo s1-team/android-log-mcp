@@ -17,7 +17,7 @@ Release-head runs used a clean worktree at **`53ed966`** (then tip of `release/0
 
 | item | result | evidence (in the archive) |
 |---|---|---|
-| CI (14/14) | PASS on final head `fff37eb` ([run 39016716673](https://github.com/s1crab/android-log-mcp/actions/runs/39016716673)); device rows measured on `53ed966` | Actions on this PR |
+| CI (14/14) | PASS on final head `dc15cc9` ([run 39017048452](https://github.com/s1crab/android-log-mcp/actions/runs/39017048452)); device rows measured on `53ed966` | Actions on this PR |
 | service-e2e API 29 | PASS (`RESULT: OK`, 29 PASS) | `release-rows/service-e2e-api29.txt` |
 | service-e2e API 35 | **not run**: only one TCG emulator on this box; a second would perturb timing (AVD `api35` exists). Same as 0.8.x | — |
 | e2e-report API 29 | PASS: 23 secrets of 16 kinds redacted, 29 LeakTest headers intact, offline load OK | `release-rows/e2e-report-api29.txt`, `release-rows/e2e-report-api29/` |
