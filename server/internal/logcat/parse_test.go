@@ -123,3 +123,38 @@ func TestShortUIDNames(t *testing.T) {
 		}
 	}
 }
+
+// Issue #195: seconds * 1e9 wrapped to a negative time for an epoch after
+// 2262; such a time is rejected (the line is not a record), the last
+// representable one and ordinary ones are kept.
+func TestParseEpochOverflow(t *testing.T) {
+	for _, s := range []string{"9223372037.000000", "9999999999.999999", "30000000000.000000", "9223372036.854775808", "-9223372037.000000"} {
+		if ns, ok := parseEpoch(s); ok {
+			t.Errorf("parseEpoch(%q) = %d, accepted", s, ns)
+		}
+		if l := ParseLine(s+"  1000  1  1 I T: x", nil, 0); l.OK {
+			t.Errorf("a line stamped %s was accepted: %+v", s, l)
+		}
+	}
+	for s, want := range map[string]int64{
+		"9223372036.854775807": 9223372036854775807,
+		"1791570419.946498":    1791570419946498000,
+		"0.000001":             1000,
+	} {
+		if ns, ok := parseEpoch(s); !ok || ns != want {
+			t.Errorf("parseEpoch(%q) = %d, %v; want %d", s, ns, ok, want)
+		}
+	}
+}
+
+// The `-v year` form: a date after 2262 has no int64 nanosecond time.
+func TestParseDateTimeOutOfRange(t *testing.T) {
+	for _, d := range []string{"2300-01-01", "2262-04-12", "1500-01-01"} {
+		if ns, ok := parseDateTime(d, "12:00:00.000", time.UTC, 2026); ok {
+			t.Errorf("parseDateTime(%s) = %d, accepted", d, ns)
+		}
+	}
+	if ns, ok := parseDateTime("2026-10-17", "12:00:00.000", time.UTC, 2026); !ok || ns <= 0 {
+		t.Errorf("ordinary date: %d %v", ns, ok)
+	}
+}
