@@ -284,7 +284,11 @@ func MergeFact(latest, in *Crash, m MergeMode) *Crash {
 			}
 		}
 	}
-	if m.Looked {
+	// stored sources come first when the fact was found by lookup, or (native) when
+	// the snapshot does not know all of them (a detector copy that let go
+	// of the libc line holds only the tombstone): the order of the first
+	// evidence is what lists show
+	if m.Looked || in.Kind == "native" && !hasAllSources(in.Sources, latest.Sources) {
 		add(latest.Sources)
 		add(in.Sources)
 	} else {
@@ -393,4 +397,20 @@ func (c *Crash) hasAnySource(in *Crash) bool {
 		}
 	}
 	return false
+}
+
+func hasAllSources(have, want []string) bool {
+	for _, w := range want {
+		found := false
+		for _, h := range have {
+			if h == w {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }

@@ -270,6 +270,9 @@ func TestNativeCrashSourcesBindToTheFirstRow(t *testing.T) {
 			if !hasAll(f, "logcat:crash", "logcat:tombstone", "events:am_crash", "dropbox:data_app_native_crash") {
 				t.Errorf("sources %v", f.Sources)
 			}
+			if len(f.Sources) != 4 || f.Sources[0] != "logcat:crash" {
+				t.Errorf("source order %v: the first evidence must come first", f.Sources)
+			}
 			if f.Seq != first.Seq || f.TimeNs != first.TimeNs {
 				t.Errorf("anchor moved: seq %d -> %d", first.Seq, f.Seq)
 			}
