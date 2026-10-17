@@ -57,8 +57,11 @@ type Redactor struct {
 type rule struct {
 	typ   string
 	re    *regexp.Regexp
-	group int    // submatch to replace (0 = whole match)
-	need  string // fast prefilter: text must contain one of these bytes (empty = always)
+	group int // submatch to replace (0 = whole match)
+	// gate is a cheap necessary condition for re to match anywhere in s
+	// (nil = always run the regexp). It may only return false when the
+	// regexp provably has no match; see scan.go.
+	gate func(s string, f *feat) bool
 	// ok validates the candidate value v found at s[start:end] (bounds of the replaced group).
 	ok func(s string, start, end int, v string) bool
 }
@@ -110,6 +113,7 @@ func homeRule(home string) *rule {
 		return nil
 	}
 	parts := regexp.MustCompile(`[\\/]+`).Split(h, -1)
+	raw := append([]string(nil), parts...)
 	for i, p := range parts {
 		parts[i] = regexp.QuoteMeta(p)
 	}
@@ -121,7 +125,7 @@ func homeRule(home string) *rule {
 	if err != nil {
 		return nil
 	}
-	return &rule{typ: "home_dir", re: re, group: 1}
+	return &rule{typ: "home_dir", re: re, group: 1, gate: homeGate(raw, strings.HasPrefix(expr, "(?i)"))}
 }
 
 // Enabled reports whether redaction is on.
@@ -168,8 +172,16 @@ func (r *Redactor) Text(s string) string {
 	if r.opt.Disabled || s == "" {
 		return s
 	}
+	f := scan(s)
 	for i := range r.rules {
-		s = r.apply(&r.rules[i], s)
+		ru := &r.rules[i]
+		if ru.gate != nil && !ru.gate(s, &f) {
+			continue
+		}
+		if ns, changed := r.apply(ru, s); changed {
+			s = ns
+			f = scan(s) // later gates must see the placeholders just inserted
+		}
 	}
 	return s
 }
@@ -197,15 +209,16 @@ func (r *Redactor) placeholder(typ, v string) string {
 	return prefix + typ + "#" + strconv.Itoa(n) + "]"
 }
 
-func (r *Redactor) apply(ru *rule, s string) string {
-	if ru.need != "" && !strings.ContainsAny(s, ru.need) {
-		return s
-	}
+func (r *Redactor) apply(ru *rule, s string) (string, bool) {
 	ms := ru.re.FindAllStringSubmatchIndex(s, -1)
 	if len(ms) == 0 {
-		return s
+		return s, false
 	}
+	// insidePlaceholder can only be true when s contains a placeholder
+	// prefix at all; without this check it is a backwards scan per match.
+	hasPrefix := strings.Contains(s, prefix)
 	var b strings.Builder
+	b.Grow(len(s) + 16*len(ms))
 	last := 0
 	for _, m := range ms {
 		a, e := m[2*ru.group], m[2*ru.group+1]
@@ -213,7 +226,7 @@ func (r *Redactor) apply(ru *rule, s string) string {
 			continue
 		}
 		v := s[a:e]
-		if v == "" || strings.Contains(v, prefix) || insidePlaceholder(s, a) {
+		if v == "" || strings.Contains(v, prefix) || hasPrefix && insidePlaceholder(s, a) {
 			continue
 		}
 		if ru.ok != nil && !ru.ok(s, a, e, v) {
@@ -224,10 +237,10 @@ func (r *Redactor) apply(ru *rule, s string) string {
 		last = e
 	}
 	if last == 0 {
-		return s
+		return s, false
 	}
 	b.WriteString(s[last:])
-	return b.String()
+	return b.String(), true
 }
 
 // insidePlaceholder reports whether position i lies inside "[REDACTED:...]".
@@ -355,24 +368,24 @@ func builtin(o Options) []rule {
 		// user names inside home paths: /home/<user>, /Users/<user>,
 		// C:\Users\<user> (either slash type, JSON-escaped backslashes, any
 		// case for the Windows form; a Windows name may contain spaces)
-		{typ: "username", need: "uU", re: regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9_])[A-Za-z]:[\\/]+Users[\\/]+(` + userName + `(?: ` + userName + `)+)[\\/]`), group: 1},
-		{typ: "username", need: "uU", re: regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9_])(?:[A-Za-z]:[\\/]+|\\+)Users[\\/]+(` + userName + `)`), group: 1},
-		{typ: "username", need: "/", re: regexp.MustCompile(`/(?:home|Users)/(` + userName + `)`), group: 1},
+		{typ: "username", gate: gateWinUsers, re: regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9_])[A-Za-z]:[\\/]+Users[\\/]+(` + userName + `(?: ` + userName + `)+)[\\/]`), group: 1},
+		{typ: "username", gate: gateUsers, re: regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9_])(?:[A-Za-z]:[\\/]+|\\+)Users[\\/]+(` + userName + `)`), group: 1},
+		{typ: "username", gate: gateUnixHome, re: regexp.MustCompile(`/(?:home|Users)/(` + userName + `)`), group: 1},
 		// credentials embedded in URLs: scheme://user:password@host
-		{typ: "password", need: "@", re: regexp.MustCompile(`(?i)\b[a-z][a-z0-9+.-]*://[^\s/:@]+:([^\s/@]+)@`), group: 1},
+		{typ: "password", gate: gatePassword, re: regexp.MustCompile(`(?i)\b[a-z][a-z0-9+.-]*://[^\s/:@]+:([^\s/@]+)@`), group: 1},
 		// Authorization headers (value, with or without scheme)
-		{typ: "token", need: "aA", re: regexp.MustCompile(`(?i)\b(?:proxy-)?authorization["']?\s*[:=]\s*["']?(?:(?:bearer|basic|digest|token|negotiate)\s+)?([A-Za-z0-9._~+/=-]+)`), group: 1,
+		{typ: "token", gate: gateAuthz, re: regexp.MustCompile(`(?i)\b(?:proxy-)?authorization["']?\s*[:=]\s*["']?(?:(?:bearer|basic|digest|token|negotiate)\s+)?([A-Za-z0-9._~+/=-]+)`), group: 1,
 			ok: func(s string, a, e int, v string) bool { return tokenLike(v) }},
-		{typ: "token", need: "bB", re: regexp.MustCompile(`(?i)\b(?:bearer|basic)\s+([A-Za-z0-9._~+/=-]+)`), group: 1,
+		{typ: "token", gate: gateBearer, re: regexp.MustCompile(`(?i)\b(?:bearer|basic)\s+([A-Za-z0-9._~+/=-]+)`), group: 1,
 			ok: func(s string, a, e int, v string) bool { return tokenLike(v) }},
-		{typ: "jwt", need: "e", re: regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{6,}\.eyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}`)},
+		{typ: "jwt", gate: gateJWT, re: regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{6,}\.eyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}`)},
 		// Cookie / Set-Cookie header values (whole value: several name=value pairs)
-		{typ: "cookie", need: "cC", re: regexp.MustCompile(`(?i)\b(?:set-)?cookie["']?\s*[:=]\s*["']?([^\s"'][^\n"']*)`), group: 1,
+		{typ: "cookie", gate: gateCookie, re: regexp.MustCompile(`(?i)\b(?:set-)?cookie["']?\s*[:=]\s*["']?([^\s"'][^\n"']*)`), group: 1,
 			ok: func(s string, a, e int, v string) bool { return strings.Contains(v, "=") && credentialValue(v) }},
 		// well-known key formats
-		{typ: "secret", re: regexp.MustCompile(`\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{50,}|npm_[A-Za-z0-9]{36}|sk-(?:proj-|ant-|live-|test-)?[A-Za-z0-9_-]{20,}|(?:AKIA|ASIA)[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|xox[abposr]-[A-Za-z0-9-]{10,}|glpat-[A-Za-z0-9_-]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)`)},
+		{typ: "secret", gate: gateSecret, re: regexp.MustCompile(`\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{50,}|npm_[A-Za-z0-9]{36}|sk-(?:proj-|ant-|live-|test-)?[A-Za-z0-9_-]{20,}|(?:AKIA|ASIA)[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|xox[abposr]-[A-Za-z0-9-]{10,}|glpat-[A-Za-z0-9_-]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)`)},
 		// key=value / "key": "value" with a sensitive key name (also URL query params)
-		{typ: "credential", need: ":=", re: regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9_.-])["']?[A-Za-z0-9_.-]*?(?:api[_-]?key|apikey|secret|token|passw(?:or)?d|access[_-]?key|private[_-]?key|auth[_-]?key|credentials?)s?["']?\s*[:=]\s*("[^"\n]*"|'[^'\n]*'|[^\s,;&"'}\])]+)`), group: 1,
+		{typ: "credential", gate: gateCredential, re: regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9_.-])["']?[A-Za-z0-9_.-]*?(?:api[_-]?key|apikey|secret|token|passw(?:or)?d|access[_-]?key|private[_-]?key|auth[_-]?key|credentials?)s?["']?\s*[:=]\s*("[^"\n]*"|'[^'\n]*'|[^\s,;&"'}\])]+)`), group: 1,
 			ok: func(s string, a, e int, v string) bool {
 				if !credentialValue(v) {
 					return false
@@ -384,12 +397,12 @@ func builtin(o Options) []rule {
 				return true
 			}},
 		// hardware / subscriber identifiers given as key=value (IMEI, IMSI, ICCID, MEID, serial, Android ID)
-		{typ: "device_id", re: regexp.MustCompile(`(?i)\b(?:imei|imsi|iccid|meid|esn|serial(?:no|number|_number)?|android_?id|ssaid|advertising_?id|gaid|oaid)["']?\s*[:=]\s*["']?([0-9A-Za-z-]{8,40})`), group: 1,
+		{typ: "device_id", gate: gateDeviceID, re: regexp.MustCompile(`(?i)\b(?:imei|imsi|iccid|meid|esn|serial(?:no|number|_number)?|android_?id|ssaid|advertising_?id|gaid|oaid)["']?\s*[:=]\s*["']?([0-9A-Za-z-]{8,40})`), group: 1,
 			ok: func(s string, a, e int, v string) bool { return credentialValue(v) && !strings.EqualFold(v, "unknown") }},
 		// other sensitive URL query parameters
-		{typ: "url_param", need: "?&", re: regexp.MustCompile(`(?i)[?&](?:sig|signature|code|key|auth|ticket|sid|session|otp|nonce|x-amz-signature|x-amz-credential|x-amz-security-token|x-goog-signature)=([^&#\s"'<>]+)`), group: 1,
+		{typ: "url_param", gate: gateURLParam, re: regexp.MustCompile(`(?i)[?&](?:sig|signature|code|key|auth|ticket|sid|session|otp|nonce|x-amz-signature|x-amz-credential|x-amz-security-token|x-goog-signature)=([^&#\s"'<>]+)`), group: 1,
 			ok: func(s string, a, e int, v string) bool { return credentialValue(v) }},
-		{typ: "email", need: "@", re: regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,24}\b`),
+		{typ: "email", gate: gateEmail, re: regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,24}\b`),
 			ok: func(s string, a, e int, v string) bool {
 				if a > 0 && (isAlnum(s[a-1]) || s[a-1] == '.' || s[a-1] == '/' || s[a-1] == '@') {
 					return false // part of a word or a file path
@@ -399,11 +412,11 @@ func builtin(o Options) []rule {
 				first, _, _ := strings.Cut(dom, ".")
 				return strings.Trim(first, "0123456789") != ""
 			}},
-		{typ: "id_card", re: regexp.MustCompile(`\d{17}[\dXx]`),
+		{typ: "id_card", gate: gateIDCard, re: regexp.MustCompile(`\d{17}[\dXx]`),
 			ok: func(s string, a, e int, v string) bool {
 				return numBoundary(s, a, e) && validCNID(v) && !reNumericUnit.MatchString(strings.ToLower(s[e:min(len(s), e+8)]))
 			}},
-		{typ: "bank_card", re: regexp.MustCompile(`\d{4}(?:[ -]\d{4}){2,3}(?:[ -]\d{1,3})?|\d{13,19}`),
+		{typ: "bank_card", gate: gateBankCard, re: regexp.MustCompile(`\d{4}(?:[ -]\d{4}){2,3}(?:[ -]\d{1,3})?|\d{13,19}`),
 			ok: func(s string, a, e int, v string) bool {
 				d := digitsOnly(v)
 				if !numBoundary(s, a, e) || len(d) < 13 || len(d) > 19 || !cardIIN(d) || !luhn(d) {
@@ -419,11 +432,11 @@ func builtin(o Options) []rule {
 				}
 				return true
 			}},
-		{typ: "phone", re: regexp.MustCompile(`(?:\+?86[ -]?)?1[3-9]\d(?:[ -]?\d{4}){2}`),
+		{typ: "phone", gate: gatePhoneCN, re: regexp.MustCompile(`(?:\+?86[ -]?)?1[3-9]\d(?:[ -]?\d{4}){2}`),
 			ok: func(s string, a, e int, v string) bool {
 				return numBoundary(s, a, e) && !(a > 0 && s[a-1] == '+') && !numericContext(s, a, e) && !numberColumn(s, a, e)
 			}},
-		{typ: "phone", need: "+", re: regexp.MustCompile(`\+[1-9]\d{0,2}[ -]?(?:\(\d{1,4}\)[ -]?)?\d{2,4}(?:[ -]?\d{2,4}){1,3}`),
+		{typ: "phone", gate: gatePlus, re: regexp.MustCompile(`\+[1-9]\d{0,2}[ -]?(?:\(\d{1,4}\)[ -]?)?\d{2,4}(?:[ -]?\d{2,4}){1,3}`),
 			ok: func(s string, a, e int, v string) bool {
 				n := len(digitsOnly(v))
 				if len(v) == n+1 && n < 10 { // compact "+NNNN…" needs E.164 length; "+28800000" is an offset
@@ -431,7 +444,7 @@ func builtin(o Options) []rule {
 				}
 				return numBoundary(s, a, e) && n >= 8 && n <= 15 && !numericContext(s, a, e)
 			}},
-		{typ: "mac", need: ":", re: regexp.MustCompile(`(?i)\b[0-9a-f]{2}(?::[0-9a-f]{2}){5}\b`),
+		{typ: "mac", gate: gateMAC, re: regexp.MustCompile(`(?i)\b[0-9a-f]{2}(?::[0-9a-f]{2}){5}\b`),
 			ok: func(s string, a, e int, v string) bool {
 				if e < len(s) && s[e] == ':' {
 					return false
@@ -439,7 +452,7 @@ func builtin(o Options) []rule {
 				l := strings.ToLower(v)
 				return l != "00:00:00:00:00:00" && l != "02:00:00:00:00:00" && l != "ff:ff:ff:ff:ff:ff"
 			}},
-		{typ: "ipv4", need: ".", re: regexp.MustCompile(`\d{1,3}(?:\.\d{1,3}){3}`),
+		{typ: "ipv4", gate: gateIPv4, re: regexp.MustCompile(`\d{1,3}(?:\.\d{1,3}){3}`),
 			ok: func(s string, a, e int, v string) bool {
 				if !numBoundary(s, a, e) || versionContext(s, a) {
 					return false
@@ -450,7 +463,7 @@ func builtin(o Options) []rule {
 				}
 				return !(keepIP && (ip.IsPrivate() || ip.IsLinkLocalUnicast()))
 			}},
-		{typ: "ipv6", need: ":", re: regexp.MustCompile(`(?i)[0-9a-f]{0,4}(?::[0-9a-f]{0,4}){2,7}`),
+		{typ: "ipv6", gate: gateIPv6, re: regexp.MustCompile(`(?i)[0-9a-f]{0,4}(?::[0-9a-f]{0,4}){2,7}`),
 			ok: func(s string, a, e int, v string) bool {
 				if len(v) < 6 || a > 0 && (isAlnum(s[a-1]) || s[a-1] == ':') || e < len(s) && (isAlnum(s[e]) || s[e] == ':') {
 					return false
@@ -463,7 +476,7 @@ func builtin(o Options) []rule {
 			}},
 		// hostnames — last, so that emails, URL passwords/params and IPs are already handled.
 		// 1) the host of a URL (any dotted, non-IP host; scheme, port and path are kept)
-		{typ: "domain", need: ":", re: regexp.MustCompile(`(?i)\b([a-z][a-z0-9+.-]*)://(?:[^\s/@?]*@)?([^\s/:?#\[\]@"'<>\\]+)`), group: 2,
+		{typ: "domain", gate: gateScheme, re: regexp.MustCompile(`(?i)\b([a-z][a-z0-9+.-]*)://(?:[^\s/@?]*@)?([^\s/:?#\[\]@"'<>\\]+)`), group: 2,
 			ok: func(s string, a, e int, v string) bool {
 				m := reScheme.FindStringSubmatch(s[:a])
 				if m == nil || nonNetSchemes[strings.ToLower(m[1])] {
@@ -473,7 +486,7 @@ func builtin(o Options) []rule {
 			}},
 		// 2) bare hostnames in text: lower-case labels ending in a common public TLD,
 		//    not shaped like a reverse-DNS Java/Android name
-		{typ: "domain", need: ".", re: regexp.MustCompile(`(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,12}`),
+		{typ: "domain", gate: gateBareHost, re: regexp.MustCompile(`(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,12}`),
 			ok: func(s string, a, e int, v string) bool { return bareHost(s, a, e, v) && !keptDomain(o.KeepDomains, v) }},
 	}
 }
