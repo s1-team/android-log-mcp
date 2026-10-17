@@ -201,6 +201,16 @@ func TestClientRestartsPinnedService(t *testing.T) {
 func TestHandoffKeepsPins(t *testing.T) {
 	t.Parallel()
 	env, e := lazyEnv(t)
+	// Generous bounds (#230): on a starved CI runner (Windows, other jobs in
+	// parallel) each fake adb call is a process spawn and the handoff plus
+	// the old service's stop can take far longer than on a dev box.
+	const wait = 60 * time.Second
+	t.Cleanup(func() {
+		if t.Failed() {
+			rj, _ := os.ReadFile(filepath.Join(controlDirOf(env), "run", "record.json"))
+			t.Logf("fake adb calls (tail):\n%s\nrecord.json:\n%s", e.CallsTail(60), rj)
+		}
+	})
 	e.AddDevice("FAKEB", "boot-b")
 	e.SetDevices(map[string]string{"FAKEA": "device", "FAKEB": "device"})
 	if out, errOut, code := cliEnv(t, append(env, "ALM_TEST_VERSION=0.0.1"), "record", "--device", "FAKEA", "--for", "1h"); code != 0 {
@@ -209,7 +219,7 @@ func TestHandoffKeepsPins(t *testing.T) {
 	if out, errOut, code := cliEnv(t, append(env, "ALM_TEST_VERSION=0.0.1"), "call", "logcat_status", `{"device":"FAKEB"}`); code != 0 {
 		t.Fatalf("call FAKEB: %d\n%s\n%s", code, out, errOut)
 	}
-	eventually(t, "FAKEB recorded", 10*time.Second, func() bool { return e.LogcatRunning("FAKEB") })
+	eventually(t, "FAKEB recorded", wait, func() bool { return e.LogcatRunning("FAKEB") })
 	old := statePID(t, env)
 	s := startMCP(t, append(env, "ALM_TEST_VERSION=99.0.0"))
 	st := s.status(t)
@@ -220,8 +230,8 @@ func TestHandoffKeepsPins(t *testing.T) {
 	if !strings.Contains(st, "pinned") {
 		t.Fatalf("pin lost:\n%s", st)
 	}
-	eventually(t, "recording resumes", 20*time.Second, func() bool { return e.LogcatRunning("FAKEA") })
-	eventually(t, "the call-started device is not carried over", 10*time.Second, func() bool { return !e.LogcatRunning("FAKEB") })
+	eventually(t, "recording resumes", wait, func() bool { return e.LogcatRunning("FAKEA") })
+	eventually(t, "the call-started device is not carried over", wait, func() bool { return !e.LogcatRunning("FAKEB") })
 	b, _ := os.ReadFile(filepath.Join(controlDirOf(env), "run", "record.json"))
 	if strings.Contains(string(b), "ended without shutting down") {
 		t.Fatalf("handoff counted as a crash:\n%s", b)
