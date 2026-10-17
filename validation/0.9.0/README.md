@@ -30,7 +30,7 @@ Release-head runs used a clean worktree at **`53ed966`** (then tip of `release/0
 | `date` back-jump + crash + ANR | PASS: clock set back 1 day then restored (`auto_time=1`); java / native / ANR attributed to `com.example.logtest` at body/device times | `release-rows/clockjump090.sh`, `clockjump090-run.txt`, `clockjump090/` |
 | set-root + whole-buffer re-read | PASS (inside service-e2e): boundary line not re-stored; no marker stored twice after switch-back | `release-rows/service-e2e-api29.txt` |
 | #217 meta trim + `cursor_pruned first=` | PASS on release head: covering session kept, dead session and early jumps trimmed; `note code=cursor_pruned … first=3748`; unit tests green | `release-rows/meta217c-*.txt`, `meta217-unittests.txt` |
-| race-gate `count=20` | **pending: Grok Bot will paste run link** | — |
+| race-gate `count=10` | PASS ([run 39018438987](https://github.com/s1crab/android-log-mcp/actions/runs/39018438987) on `a1edbee`; all packages × linux/windows/macos green) | Actions artifact / run link |
 | perf | EnsureIndex cold median **~1.53 s** at ~512 MiB retained (measured on `3c8b781`, see `release-rows/index-build-512mib.md`); CI `perf` job green on the release tip (same Actions run as CI) | `release-rows/index-build-512mib.md`, Actions |
 
 **Known note (F3, not a release blocker).** `android-log-mcp report -h` and `export -h` print the usage banner but no flag list: `parseFlags` sets `flag.FlagSet` output to `io.Discard` before `PrintDefaults`. Present since 0.8.1 (same code path); flags remain in `docs/reference.md`. Not opened as a blocking issue.
@@ -69,4 +69,4 @@ Local run of 2026-10-17 (Asia/Shanghai, 13:29-14:46) on **API 29** (Android 10, 
 
 ## Where the raw evidence is
 
-Raw logs, run outputs and the one-off scripts are **not in the repository** (AGENTS.md §3). They are in one archive, `0.9.0-evidence.tar.gz` (`MANIFEST.txt`, `SUMMARY.md`), sha256 `db9d837e5f74cb0337c760640deec009f6c97a738811289ba9835ebd1a1a4c0c`, to be attached to the GitHub Release `v0.9.0` after tagging. Until then it is on the release box at `/workspace/release-evidence/` (`stage090/`: `env/`, `export/`, `recovery/`, `clock/`, `release-rows/`).
+Raw logs, run outputs and the one-off scripts are **not in the repository** (AGENTS.md §3). They are in one archive, `0.9.0-evidence.tar.gz` (`MANIFEST.txt`, `SUMMARY.md`), sha256 `9d08ee00dd00d470c21162e09f2c8663539a538f16f254d5bd01995fbd4fdf9e`, to be attached to the GitHub Release `v0.9.0` after tagging. Until then it is on the release box at `/workspace/release-evidence/` (`stage090/`: `env/`, `export/`, `recovery/`, `clock/`, `release-rows/`).
