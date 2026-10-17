@@ -57,21 +57,29 @@ func created(pid int) (int64, bool) {
 // gone (within the 5 s release budget of bgStopWait, issue #73).
 const killWait = 500 * time.Millisecond
 
-// killPid terminates pid and waits (at most killWait) until it has really
-// exited: TerminateProcess is asynchronous, and a process that is still
+// killPid terminates pid and waits (at most killWait, see killPidWait) until it has
+// really exited: TerminateProcess is asynchronous, and a process that is still
 // exiting keeps its working directory and open files locked on Windows (the
 // class of problem of issue #24). A process that outlasts the wait is
 // logged, not waited for further.
-func killPid(pid int) {
+func killPid(pid int) { killPidWait(pid, killWait) }
+
+// killPidWait is killPid with the wait as a parameter (tests pass their own;
+// a package variable would race with parallel tests). It reports whether the
+// process had exited when it returned (false: could not be opened or
+// terminated, or still exiting after wait).
+func killPidWait(pid int, wait time.Duration) bool {
 	h, err := windows.OpenProcess(windows.PROCESS_TERMINATE|windows.SYNCHRONIZE, false, uint32(pid))
 	if err != nil {
-		return
+		return false
 	}
 	defer windows.CloseHandle(h)
 	if windows.TerminateProcess(h, 1) != nil {
-		return
+		return false
 	}
-	if ev, _ := windows.WaitForSingleObject(h, uint32(killWait/time.Millisecond)); ev != windows.WAIT_OBJECT_0 {
-		log.Printf("pid %d still exiting %v after TerminateProcess; continuing", pid, killWait)
+	if ev, _ := windows.WaitForSingleObject(h, uint32(wait/time.Millisecond)); ev != windows.WAIT_OBJECT_0 {
+		log.Printf("pid %d still exiting %v after TerminateProcess; continuing", pid, wait)
+		return false
 	}
+	return true
 }

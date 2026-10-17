@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -192,6 +193,9 @@ type StopOptions struct {
 	Auto     bool
 	TermWait time.Duration // wait for a graceful stop (default 10 s)
 	KillWait time.Duration // wait for the lock after the kill (default 5 s)
+	// ExitWait bounds the wait for the old pid to be gone once the lock is
+	// free (default 5 s). Expiry is logged, not an error.
+	ExitWait time.Duration
 	// Killing is called just before the process is killed (log the data loss).
 	Killing func(pid int)
 }
@@ -212,6 +216,9 @@ func StopHolder(ctrl Control, d Diagnosis, o StopOptions) (StopResult, error) {
 	if o.KillWait <= 0 {
 		o.KillWait = 5 * time.Second
 	}
+	if o.ExitWait <= 0 {
+		o.ExitWait = 5 * time.Second
+	}
 	if !d.HaveState || !d.Alive {
 		return StopResult{}, fmt.Errorf("%w: %s", ErrNotOurs, d.Why)
 	}
@@ -228,6 +235,10 @@ func StopHolder(ctrl Control, d Diagnosis, o StopOptions) (StopResult, error) {
 		return StopResult{}, fmt.Errorf("%w: %s", ErrNotOurs, why)
 	}
 	pid := d.PID
+	var held State // identity of the holder, kept: the service removes service.json when it exits
+	if d.State != nil {
+		held = *d.State
+	}
 	if hasGracefulSignal {
 		terminateProc(pid)
 	} else {
@@ -239,6 +250,7 @@ func StopHolder(ctrl Control, d Diagnosis, o StopOptions) (StopResult, error) {
 		cancel()
 	}
 	if WaitStopped(ctrl, o.TermWait) {
+		waitProcExit(&held, o.ExitWait)
 		cleanupStale(ctrl, pid)
 		return StopResult{}, nil
 	}
@@ -262,8 +274,29 @@ func StopHolder(ctrl Control, d Diagnosis, o StopOptions) (StopResult, error) {
 	if !WaitStopped(ctrl, o.KillWait) {
 		return StopResult{Killed: true}, fmt.Errorf("pid %d was killed but the lock is still held (another process may have inherited it)", pid)
 	}
+	waitProcExit(&held, o.ExitWait)
 	cleanupStale(ctrl, pid)
 	return StopResult{Killed: true}, nil
+}
+
+// waitProcExit waits up to max until the process st describes is gone. The
+// lock is released before the process has finished exiting; on Windows its
+// directory handles are only closed by then. Gone means: no such pid, a
+// zombie, or a pid that now has another start time or image (reused), so a
+// reused pid is never waited for. Returns whether it is gone; on expiry it
+// logs and returns false (the stop is not an error, as before).
+func waitProcExit(st *State, max time.Duration) bool {
+	deadline := time.Now().Add(max)
+	for {
+		if alive, ours, _, _ := identify(st); !alive || !ours {
+			return true
+		}
+		if !time.Now().Before(deadline) {
+			log.Printf("service: pid %d still exiting %s after it released the lock; continuing", st.PID, max)
+			return false
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 // cleanupStale removes the socket and service.json a stopped service left.

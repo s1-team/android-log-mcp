@@ -76,7 +76,7 @@ func (c *Client) repairHolder(ctx context.Context) (replaced bool, err error) {
 		return false, c.fail("the android-log-mcp service (pid %d) did not answer and was already replaced 3 times within a minute; not replacing it again (%s)", d.PID, d.Text(ctrl))
 	}
 	c.infof("replacing the service (pid %d): it holds the lock but has not answered for %s", d.PID, rt.SilentFor)
-	res, err := StopHolder(ctrl, d, StopOptions{Auto: true, TermWait: rt.TermWait, KillWait: rt.KillWait, Killing: func(pid int) {
+	res, err := StopHolder(ctrl, d, StopOptions{Auto: true, TermWait: rt.TermWait, KillWait: rt.KillWait, ExitWait: rt.ExitWait, Killing: func(pid int) {
 		c.warnf("the service (pid %d) did not stop gracefully and is being killed; log lines it had not flushed yet may be missing", pid)
 	}})
 	if err != nil {
