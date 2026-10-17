@@ -85,7 +85,7 @@ func ContinueIn(src, dst string, lastSeq uint64, carried []uint64) error {
 			return err
 		}
 	}
-	nb, err := json.MarshalIndent(m, "", " ")
+	nb, err := json.Marshal(m)
 	if err != nil {
 		return err
 	}
