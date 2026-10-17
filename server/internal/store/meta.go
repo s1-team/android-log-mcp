@@ -72,7 +72,8 @@ type ClockJump struct {
 	DeltaNs  int64  `json:"delta_ns"`            // size: + forward, − back
 	BeforeNs int64  `json:"before_ns,omitempty"` // device time before the jump (last line, or the clock reading)
 	AfterNs  int64  `json:"after_ns,omitempty"`  // device time after it
-	// Source: "measured" (device clock read), "live" (a live line's device
+	// Source: "set" (the line after an announced clock set, "Setting time of day"),
+	// "measured" (device clock read), "live" (a live line's device
 	// time against the host time it arrived), "lines" (device time of a
 	// line far below the lines before it) or "possible" (device time of a
 	// line more than an hour after the previous line: a forward jump, or a

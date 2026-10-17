@@ -363,7 +363,7 @@ func (q *query) scan(limit int, desc bool) *scanResult {
 	if len(res.jumps) > 0 {
 		byRange = false // per-side counts need every match
 	}
-	// Issue #37: countable filters (tag/package/process/level/uid only) get
+	// Issue #37: countable filters (tag, package, process and level terms only; uid is part of the class key, not a filter term) get
 	// an exact total from per-block class counts, with no countBudget.
 	countable := !byRange && filter.Countable(q.pred)
 	var classIDs map[uint32]bool

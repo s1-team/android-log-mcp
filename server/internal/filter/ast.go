@@ -260,7 +260,8 @@ func (n *Buffer) String() string {
 type Pred struct {
 	Desc string
 	Fn   func(r *model.Record, c *Ctx) bool
-	// ClassOnly: Match depends only on package / process / uid / tag / level
+	// ClassOnly: Match depends only on the class key (package / process / uid /
+	// tag / level; uid is not a filter term, `uid:` aliases `package`)
 	// (issue #37). Such a Pred is countable via the per-block class index.
 	ClassOnly bool
 }

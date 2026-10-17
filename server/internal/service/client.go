@@ -24,7 +24,7 @@ var NoSpawn bool
 type ClientOptions struct {
 	Control Control
 	Version string
-	Role    string // mcp, call, report, set-root
+	Role    string // mcp, call, report, set-root, record, cli (cli does not keep the service alive)
 	// StartTimeout bounds starting the service (default 10 s).
 	StartTimeout time.Duration
 	// Cfg is the store config an in-process service uses.
