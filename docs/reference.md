@@ -234,6 +234,7 @@ android-log-mcp set-root /data/alm --delete-old   # move; remove our directories
 <root>/export/             0700: export files (export-<device-id>-<host time>.txt), kept 7 days, newest 20, 256 MiB in total
 ```
 
+- **On-disk store format is internal and versioned** (`v1/…`, `seg-*.jsonl`, `meta.json`, aux jsonl). Do not parse it as a public API: fields and layout can change between minors. For a human-readable dump use `logcat_export` / `android-log-mcp export`; for a shareable package use `report` (or `--offline` on an unpacked report's `store/`).
 - **Device IDs are stable:** `ro.serialno` for a physical device (the same over USB and Wi-Fi), `avd-<name>` for an emulator. Two devices online at once that resolve to the same ID are filed separately (`<id>~<adb serial>`) and `logcat_status` explains it.
 - Anything else under the root (pre-0.4 `<serial>/` directories, `legacy/`, …) is ignored: not read, not counted, not deleted. A leftover `owners/` directory from 0.4 development builds is removed.
 - **Retention:** 1 day (`ANDROID_LOG_MCP_MAX_AGE`) and 512 MiB per device (`ANDROID_LOG_MCP_MAX_DEVICE_MB`); the oldest segments go first. A segment is deleted once its newest line is past retention, and an active segment spans at most a quarter of the retention, so logs are kept for at most about 1.25 × the retention. Crash, DropBox and ended device-process records follow the same retention. DropBox entries dated more than the retention before device now are not imported.
