@@ -7,26 +7,37 @@ Build: `main` + release commit (version **0.9.0**). Release PR: *(this PR)*. Cha
 - **Feature:** `logcat_export` tool and `android-log-mcp export` CLI, `export/` directory, `logcat_status` export line ([#172](https://github.com/s1crab/android-log-mcp/issues/172); PRs #174, #179, #203).
 - **Store:** all-or-nothing `Append` (#182, #191, PR #201); follower promotion takeover and torn tail (#180, PR #190); `AppendAux` fresh line (#181, PR #198); search reads an index snapshot (#197, PR #202); meta reload on any change and failed save stays dirty (#183, #187, PR #208); retention from persisted segment stamps, not mtimes (#184, #186, #189, PR #210); `after=MaxUint64` and nil class ids (#188, PR #211); `RewriteAux` writer check (#196, PR #214).
 - **Device / analysis / logcat:** split multi-line entry on resume (#192, PR #199); `setState` one critical section (#193, PR #200); per-iteration `recordOnce` context (#194, PR #212); times beyond int64 ns rejected (#195, PR #213); one-to-one DropBox ANR match (#176, PR #178); idempotent same-seq ANR repeat (#175, PR #215).
+- **Retention sweep:** expire unowned device dirs by `seg_times`, not file mtime ([#218](https://github.com/s1crab/android-log-mcp/issues/218), PR [#219](https://github.com/s1crab/android-log-mcp/pull/219)).
 - **Export hardening:** `--out` guard by file identity / case (#205, PR #207); `--out` temp file in `<root>/export/` (#206, PR #209).
 - No open release-blocking PRs at the time of writing; every PR above is merged to `main`.
 
 ## Verification summary
 
+Release-head runs used a clean worktree at **`53ed966`** (then tip of `release/0.9.0`, version **0.9.0**), API 29 TCG emulator-5556, 2026-10-17 15:12–16:15 Asia/Shanghai. Evidence under `release-rows/` in the archive. Emulator feature validation (export / recovery / clock) keeps earlier shas `3c8b781` / `bd656e7` as noted below.
+
 | item | result | evidence (in the archive) |
 |---|---|---|
-| CI (14/14) | *to fill: Actions on the release PR* | |
-| service-e2e API 29 / API 35 | *to fill* | |
-| e2e-report API 29 / API 35, `--logs-only` | *to fill* | |
-| SIGSTOP the service | *to fill* | |
-| upgrade handoff | *to fill* | |
-| `date` back-jump + crash + ANR | *to fill* | |
-| set-root + whole-buffer re-read | *to fill* | |
-| race-gate `count=20` | *to fill: run id* | |
-| perf | *to fill* | |
+| CI (14/14) | PASS on previous tip `53ed966` ([run 39012238060](https://github.com/s1crab/android-log-mcp/actions/runs/39012238060)); re-check on the final head after this docs push | Actions on this PR |
+| service-e2e API 29 | PASS (`RESULT: OK`, 29 PASS) | `release-rows/service-e2e-api29.txt` |
+| service-e2e API 35 | **not run**: only one TCG emulator on this box; a second would perturb timing (AVD `api35` exists). Same as 0.8.x | — |
+| e2e-report API 29 | PASS: 23 secrets of 16 kinds redacted, 29 LeakTest headers intact, offline load OK | `release-rows/e2e-report-api29.txt`, `release-rows/e2e-report-api29/` |
+| e2e-report API 35 | **not run** (same reason as service-e2e API 35) | — |
+| `--logs-only` | PASS via service and `--offline` (small zips) | `release-rows/logs-only.txt`, `logs-only.zip`, `logs-only-offline.zip` |
+| app-e2e API 29 (incl. export / `--out`) | PASS (24 checks, 0 FAIL) | `release-rows/app-e2e-api29.txt`, `release-rows/app-e2e-api29/` |
+| app-e2e API 35 | **not run** (same reason) | — |
+| SIGSTOP the service | PASS: auto-replace after >10 s hang (client call 42.9 s); `service stop --force` 13.4 s; five markers each stored exactly once | `release-rows/hung090.sh`, `hung090-run.txt` |
+| upgrade handoff | PASS: 0.6.0 and 0.7.0 services replaced by 0.9.0 client; first status ~11.1 s; `caught_up=1`; marker once | `release-rows/upgrade090.sh`, `upgrade090-run.txt` |
+| `date` back-jump + crash + ANR | PASS: clock set back 1 day then restored (`auto_time=1`); java / native / ANR attributed to `com.example.logtest` at body/device times | `release-rows/clockjump090.sh`, `clockjump090-run.txt`, `clockjump090/` |
+| set-root + whole-buffer re-read | PASS (inside service-e2e): boundary line not re-stored; no marker stored twice after switch-back | `release-rows/service-e2e-api29.txt` |
+| #217 meta trim + `cursor_pruned first=` | PASS on release head: covering session kept, dead session and early jumps trimmed; `note code=cursor_pruned … first=3748`; unit tests green | `release-rows/meta217c-*.txt`, `meta217-unittests.txt` |
+| race-gate `count=20` | **pending: Grok Bot will paste run link** | — |
+| perf | EnsureIndex cold median **~1.53 s** at ~512 MiB retained (measured on `3c8b781`, see `release-rows/index-build-512mib.md`); CI `perf` job green on the release tip (same Actions run as CI) | `release-rows/index-build-512mib.md`, Actions |
+
+**Known note (F3, not a release blocker).** `android-log-mcp report -h` and `export -h` print the usage banner but no flag list: `parseFlags` sets `flag.FlagSet` output to `io.Discard` before `PrintDefaults`. Present since 0.8.1 (same code path); flags remain in `docs/reference.md`. Not opened as a blocking issue.
 
 ## Emulator validation
 
-Local run of 2026-10-17 (Asia/Shanghai, 13:29-14:46) on **API 29** (Android 10, `google_apis/x86_64`), emulator-5556, software emulation (**TCG**, no KVM), started with `validation/scripts/emu-start.sh`; one emulator, strictly serial; `auto_time=1` restored afterwards. Binary: built from `main` at **`3c8b781`** (before #217, #219 and the release commit; the binary still printed `0.8.1`); the sweep/retention parts were re-run on `bd656e7` (see F2). Not re-run on the release commit; #217 (meta trim, `cursor_pruned` first=) is not covered.
+Local run of 2026-10-17 (Asia/Shanghai, 13:29-14:46) on **API 29** (Android 10, `google_apis/x86_64`), emulator-5556, software emulation (**TCG**, no KVM), started with `validation/scripts/emu-start.sh`; one emulator, strictly serial; `auto_time=1` restored afterwards. Binary: built from `main` at **`3c8b781`** (before #217, #219 and the release commit; the binary still printed `0.8.1`); the sweep/retention parts were re-run on `bd656e7` (see F2). AGENTS.md §3 rows (service-e2e, report, app-e2e, SIGSTOP, upgrade, clockjump, set-root, #217) were run on release tip **`53ed966`**; see the table above.
 
 | part | case | result |
 |---|---|---|
@@ -53,8 +64,9 @@ Local run of 2026-10-17 (Asia/Shanghai, 13:29-14:46) on **API 29** (Android 10, 
 
 ## API 35 / Windows / macOS
 
-*To fill.* Windows / macOS: CI only (**unverified** with a real or emulator-attached adb), same as 0.8.x.
+- **API 35:** not exercised on this box (single TCG API 29 emulator; a second would perturb timing checks). AVD `api35` exists. CI covers unit tests on all OSes.
+- **Windows / macOS:** CI only (**unverified** with a real or emulator-attached adb), same as 0.8.x; noted in CHANGELOG.
 
 ## Where the raw evidence is
 
-Raw logs, run outputs and the one-off scripts are **not in the repository** (AGENTS.md §3). The emulator part is in one archive, `0.9.0-evidence.tar.gz` (`MANIFEST.txt`, `SUMMARY.md`), sha256 `82c36a6cd9ea447468f03ce6bd08c51860b7fe14f4fc12dcaeb8b3aff7a1d1cb`, to be attached to the GitHub Release `v0.9.0` after tagging. Until then it is on the release box at `/workspace/release-evidence/`. The other rows of the table above are not covered by that archive and are still to fill.
+Raw logs, run outputs and the one-off scripts are **not in the repository** (AGENTS.md §3). They are in one archive, `0.9.0-evidence.tar.gz` (`MANIFEST.txt`, `SUMMARY.md`), sha256 `db9d837e5f74cb0337c760640deec009f6c97a738811289ba9835ebd1a1a4c0c`, to be attached to the GitHub Release `v0.9.0` after tagging. Until then it is on the release box at `/workspace/release-evidence/` (`stage090/`: `env/`, `export/`, `recovery/`, `clock/`, `release-rows/`).
