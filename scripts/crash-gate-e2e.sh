@@ -72,7 +72,8 @@ trig() {
 
 # run NAME TRIGGER KIND restart|control [clock]
 run() {
-  local N=$1 T=$2 K=$3 M=$4 CK=${5:-} R="$SCR/$N" F="$OUT/$N" i seen=0 PRE SP
+  local N=$1 T=$2 K=$3 M=$4 CK=${5:-} i seen=0 PRE SP R F
+  R="$SCR/$N"; F="$OUT/$N"
   export XDG_CACHE_HOME="$R"; rm -rf "$R"; mkdir -p "$R" "$F"
   local ROOTD="$R/android-log-mcp"
   "$B" call logcat_status "{\"device\":\"$SERIAL\"}" >/dev/null 2>&1
