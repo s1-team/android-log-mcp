@@ -40,6 +40,10 @@ type Crash struct {
 	// jumps seen so far (continuous time). Windows compare adj, never TimeNs
 	// (issue #55). Not stored.
 	adj int64
+	// eventSeq and blockSeq are the seqs of the am_anr event and of the "ANR
+	// in" block that formed an ANR: the same record fed again is a repeat
+	// (issue #175).
+	eventSeq, blockSeq uint64
 }
 
 // MaxTombstone caps the stored SYSTEM_TOMBSTONE text per crash.
@@ -153,7 +157,26 @@ const anrPairWindow = 120e9
 // different ANRs of one process). needEvent: the caller is am_anr and
 // wants an ANR without an events:am_anr source; otherwise the caller is the
 // block and wants one without a Body.
-func (d *Detector) findAnr(pid int, boot string, ns int64, needEvent bool) *Crash {
+//
+// The same record fed again (same pid and the same seq as the one that
+// already supplied that source) is a repeat: the ANR is returned with
+// repeat=true and must be left unchanged, not paired with a new one (issue
+// #175). Repeats of the same text under another seq are not recognised here.
+func (d *Detector) findAnr(pid int, boot string, ns int64, seq uint64, needEvent bool) (c *Crash, repeat bool) {
+	if seq != 0 {
+		for i := len(d.recent) - 1; i >= 0; i-- {
+			c := d.recent[i]
+			if c.Kind != "anr" || c.PID != pid || abs(c.adj-ns) > anrPairWindow {
+				continue
+			}
+			if c.Boot != "" && boot != "" && c.Boot != boot {
+				continue
+			}
+			if needEvent && c.eventSeq == seq || !needEvent && c.blockSeq == seq {
+				return c, true
+			}
+		}
+	}
 	for i := len(d.recent) - 1; i >= 0; i-- {
 		c := d.recent[i]
 		if c.Kind != "anr" || c.PID != pid || abs(c.adj-ns) > anrPairWindow {
@@ -163,10 +186,10 @@ func (d *Detector) findAnr(pid int, boot string, ns int64, needEvent bool) *Cras
 			continue
 		}
 		if needEvent && !c.hasSource("events:am_anr") || !needEvent && c.Body == "" {
-			return c
+			return c, false
 		}
 	}
-	return nil
+	return nil, false
 }
 
 func (c *Crash) hasSource(s string) bool {
@@ -367,13 +390,17 @@ func (d *Detector) Feed(r *model.Record) {
 		f := logcat.EventFields(r.Msg, 5)
 		if len(f) >= 5 {
 			pid, _ := strconv.Atoi(f[1])
-			c := d.findAnr(pid, r.Boot, u, true)
+			c, repeat := d.findAnr(pid, r.Boot, u, r.Seq, true)
+			if repeat {
+				break // the same record again: nothing changes
+			}
 			if c == nil {
 				c = &Crash{Kind: "anr", Boot: r.Boot, TimeNs: r.TimeNs, adj: u, Seq: r.Seq, PID: pid, Process: f[2], Package: d.pkgOf(f[2]), Headline: f[4]}
 				d.remember(c)
 			} else if c.Headline == "" {
 				c.Headline = f[4]
 			}
+			c.eventSeq = r.Seq
 			c.addSource("events:am_anr")
 			emit = append(emit, c)
 			dropbox = append(dropbox, "data_app_anr")
@@ -386,7 +413,10 @@ func (d *Detector) Feed(r *model.Record) {
 		if pm := reANRPid.FindStringSubmatch(r.Msg); pm != nil {
 			pid, _ = strconv.Atoi(pm[1])
 		}
-		c := d.findAnr(pid, r.Boot, u, false)
+		c, repeat := d.findAnr(pid, r.Boot, u, r.Seq, false)
+		if repeat {
+			break // the same record again: nothing changes
+		}
 		if c == nil {
 			c = &Crash{Kind: "anr", Boot: r.Boot, TimeNs: r.TimeNs, adj: u, Seq: r.Seq, PID: pid, Process: proc, Package: d.pkgOf(proc)}
 			d.remember(c)
@@ -394,7 +424,7 @@ func (d *Detector) Feed(r *model.Record) {
 		if rm := reANRReason.FindStringSubmatch(r.Msg); rm != nil && c.Headline == "" {
 			c.Headline = rm[1]
 		}
-		c.Body = r.Msg
+		c.Body, c.blockSeq = r.Msg, r.Seq
 		if i := strings.Index(r.Msg, "CPU usage"); i >= 0 {
 			c.CPU = firstLines(r.Msg[i:], 10)
 		}
