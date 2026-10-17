@@ -4,8 +4,9 @@
 // through a byte-capped LRU (history.go); caches are released when idle.
 //
 // One process per device directory is the writer (holds writer.lock); other
-// processes open the same directory as followers and tail the files. This
-// lets several MCP stdio servers share one recording without a daemon.
+// processes open the same directory read-only as followers and tail the files.
+// In production only the service process writes; followers are used by
+// --offline and tests.
 package store
 
 import (

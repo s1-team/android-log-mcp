@@ -25,8 +25,10 @@ go test -run '^$' -bench . ./internal/perf               # ad-hoc micro-benchmar
 | `internal/analysis` | 崩溃、ANR、tombstone 识别和 DropBox 合并；启动时间线 |
 | `internal/filter` | Android Studio Logcat 过滤语法的解析器（移植，含 AS 测试） |
 | `internal/layout` | Data root: `v1/<device-id>/` layout, the removed-HOME error, set-root validation / old-root removal, and the sweep (retention + total cap over every `v<N>/` format, `tmp/`, `run/`, `bin/`, `log/`; stale sockets; legacy `owners/`). Anything else under the root (pre-0.4 dirs) is ignored |
+| `internal/fakeadb` | Scriptable fake adb for unit and multi-process tests (devices, log buffers, `date`, per-line delay, invocation log); a test binary that is started as `adb` runs it |
+| `internal/timeparse` | Parser for the device-time parameters (`from`, `to`, relative values such as `30m`) |
 | `internal/testhome` | `TestMain` helper that redirects the per-user cache dir so tests never touch the real control dir, service or data root |
-| `internal/store` | JSONL 分段存储；单写者多读者（flock / Windows LockFileEx）；最近窗口和按块的历史缓存（条数 / 字节上限，空闲释放）；保留期（`ANDROID_LOG_MCP_MAX_AGE`）、目录总量上限和低剩余空间暂停 |
+| `internal/store` | JSONL 分段存储；单写者多读者（flock / Windows LockFileEx）；最近窗口和按块的历史缓存（条数 / 字节上限，空闲释放）；保留期（`ANDROID_LOG_MCP_MAX_AGE`）、目录总量上限和低剩余空间暂停；历史块索引除 `minT`/`maxT` 外还有按块的类别计数（#37，类别 = package / process / uid / tag / level；可精确计数的过滤只用 tag / package / process / level 项）|
 | `internal/mcpserver` | 4 个工具的实现、渲染，以及回归测试（含 replay-from-report） |
 | `internal/compat` | `compat` 子命令：只读探测设备的 logcat / ps / pm / dumpsys 功能，并用录制时的解析器评估 |
 | `internal/redact` | 敏感信息打码规则（`[REDACTED:<类型>#n]`，同值同号，HMAC 随机密钥） |

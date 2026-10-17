@@ -19,7 +19,9 @@ type classCount struct {
 }
 
 // classKey is the countable identity of a record: the fields a filter on
-// tag / package / process / level / uid can see (issue #37).
+// tag / package / process / level terms can see (issue #37). uid is part of the
+// key so a shared-uid package match stays countable; there is no uid filter term
+// (the key `uid:` is an alias for `package`).
 type classKey struct {
 	pkg, proc, tag string
 	uid            int
@@ -297,7 +299,6 @@ func addClass(counts map[uint32]uint32, id uint32) map[uint32]uint32 {
 	counts[id]++
 	return counts
 }
-
 
 // classProcLabel mirrors mcpserver.procLabel for summary process counts.
 func classProcLabel(r *model.Record) string {
