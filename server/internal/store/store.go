@@ -1193,7 +1193,7 @@ func (s *Store) scanTime(after, before uint64, desc bool, fromNs, toNs int64, id
 	if before == 0 || before > last+1 {
 		before = last + 1
 	}
-	if after+1 >= before {
+	if after >= before-1 { // before >= 1 here; avoids after+1 wrapping at MaxUint64
 		return
 	}
 	memFirst := uint64(0)
@@ -1318,7 +1318,7 @@ func (s *Store) Count(after, before uint64) uint64 {
 	if before == 0 || before > last+1 {
 		before = last + 1
 	}
-	if after+1 >= before {
+	if after >= before-1 { // before >= 1 here; avoids after+1 wrapping at MaxUint64
 		return 0
 	}
 	lo, hi := after+1, before
@@ -1367,7 +1367,9 @@ func (s *Store) Count(after, before uint64) uint64 {
 // match a countable class filter (ids) and lie in [fromNs, toNs) (0 =
 // unbounded). Blocks wholly inside the window contribute their class sums;
 // straddling, uncounted, or jump-straddling blocks are decoded. The
-// in-memory window is always scanned. Issue #37.
+// in-memory window is always scanned. ids==nil means no class filter (every
+// class counts, as in ScanTimeClass), so match must accept every record then.
+// Issue #37, #188.
 func (s *Store) CountMatch(after, before uint64, fromNs, toNs int64, ids map[uint32]bool, match func(*model.Record) bool) uint64 {
 	s.touch()
 	s.mu.RLock()
@@ -1388,7 +1390,7 @@ func (s *Store) CountMatch(after, before uint64, fromNs, toNs int64, ids map[uin
 	if before == 0 || before > last+1 {
 		before = last + 1
 	}
-	if after+1 >= before {
+	if after >= before-1 { // before >= 1 here; avoids after+1 wrapping at MaxUint64
 		return 0
 	}
 	lo, hi := after+1, before
