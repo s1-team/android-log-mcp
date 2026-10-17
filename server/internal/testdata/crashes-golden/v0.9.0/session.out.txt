@@ -1,0 +1,134 @@
+=== list
+ok view=list device=emulator-5556 groups=3 events=3 shown=3 package=com.example.logtest order=newest_first history_from=2026-10-10T03:01:27.320+08:00 dropbox=data_app_crash:not_fetched_yet,data_app_native_crash:not_fetched_yet,data_app_anr:not_fetched_yet dev_now=2026-10-10T03:06:43+08:00 clock=unknown offset_s=N fmt=1
+crash id=anr1 time=2026-10-10T03:05:53.236+08:00 kind=anr pid=7815 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  main_thread: "main" prio=5 tid=1 Sleeping | at java.lang.Thread.sleep(Native method) | traces=data_app_anr
+crash id=cr2 time=2026-10-10T03:02:39.901+08:00 kind=native pid=7736 process=com.example.logtest thread=example.logtest
+  SIGSEGV (SEGV_MAPERR) fault addr 0x0 in liblogtest.so [#00 pc 7fc]
+crash id=cr1 time=2026-10-10T03:01:32.402+08:00 kind=java pid=7182 process=com.example.logtest thread=main
+  java.lang.RuntimeException: LogTest wrapped crash
+    at com.example.logtest.Triggers.run(Triggers.java:22)
+    at com.example.logtest.MainActivity.lambda$onResume$1$com-example-logtest-MainActivity(MainActivity.java:42)
+    at com.example.logtest.MainActivity$$ExternalSyntheticLambda0.run(D8$$SyntheticClass:0)
+    ^ root_cause: java.lang.IllegalStateException: repo not ready
+    ^ frames_hidden=9 next: id="cr1"
+next: id="anr1"
+
+=== all
+ok view=list device=emulator-5556 groups=3 events=3 shown=3 order=newest_first history_from=2026-10-10T03:01:27.320+08:00 dropbox=data_app_crash:not_fetched_yet,data_app_native_crash:not_fetched_yet,data_app_anr:not_fetched_yet dev_now=2026-10-10T03:06:43+08:00 clock=unknown offset_s=N fmt=1
+crash id=anr1 time=2026-10-10T03:05:53.236+08:00 kind=anr pid=7815 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  main_thread: "main" prio=5 tid=1 Sleeping | at java.lang.Thread.sleep(Native method) | traces=data_app_anr
+crash id=cr2 time=2026-10-10T03:02:39.901+08:00 kind=native pid=7736 process=com.example.logtest thread=example.logtest
+  SIGSEGV (SEGV_MAPERR) fault addr 0x0 in liblogtest.so [#00 pc 7fc]
+crash id=cr1 time=2026-10-10T03:01:32.402+08:00 kind=java pid=7182 process=com.example.logtest thread=main
+  java.lang.RuntimeException: LogTest wrapped crash
+    at com.example.logtest.Triggers.run(Triggers.java:22)
+    at com.example.logtest.MainActivity.lambda$onResume$1$com-example-logtest-MainActivity(MainActivity.java:42)
+    at com.example.logtest.MainActivity$$ExternalSyntheticLambda0.run(D8$$SyntheticClass:0)
+    ^ root_cause: java.lang.IllegalStateException: repo not ready
+    ^ frames_hidden=9 next: id="cr1"
+next: id="anr1"
+
+=== detail anr1
+ok view=detail device=emulator-5556 id=anr1 kind=anr time=2026-10-10T03:05:53.236+08:00 pid=7815 process=com.example.logtest package=com.example.logtest sources=events:am_anr,logcat:system,dropbox:data_app_anr order=arrival before_lines=20 dev_now=2026-10-10T03:06:43+08:00 clock=unknown offset_s=N fmt=1
+reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+main_thread traces=data_app_anr:
+  "main" prio=5 tid=1 Sleeping
+    | group="main" sCount=1 dsCount=0 flags=1 obj=0x71ce73c8 self=0x7ef862cd4000
+    | sysTid=7815 nice=-10 cgrp=default sched=0/0 handle=0x7ef86325ded8
+    | state=S schedstat=( 5129089942 1498071918 573 ) utm=410 stm=102 core=3 HZ=100
+    | stack=0x7fffa604b000-0x7fffa604d000 stackSize=8192KB
+    | held mutexes=
+    at java.lang.Thread.sleep(Native method)
+    - sleeping on <0x09c4526e> (a java.lang.Object)
+    at java.lang.Thread.sleep(Thread.java:440)
+    - locked <0x09c4526e> (a java.lang.Object)
+    at java.lang.Thread.sleep(Thread.java:356)
+    at android.os.SystemClock.sleep(SystemClock.java:131)
+    at com.example.logtest.TriggerReceiver.onReceive(TriggerReceiver.java:15)
+    at android.app.ActivityThread.handleReceiver(ActivityThread.java:3788)
+    at android.app.ActivityThread.access$1400(ActivityThread.java:219)
+    at android.app.ActivityThread$H.handleMessage(ActivityThread.java:1870)
+    at android.os.Handler.dispatchMessage(Handler.java:107)
+    at android.os.Looper.loop(Looper.java:214)
+    at android.app.ActivityThread.main(ActivityThread.java:7356)
+    at java.lang.reflect.Method.invoke(Native method)
+    at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+    at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+before_crash pid=7815 lines=1 columns="time level pid/tid tag: message"
+  03:05:42.896 I 7815/7815 LogTest: TriggerReceiver what=anr_broadcast
+
+=== detail cr2
+ok view=detail device=emulator-5556 id=cr2 kind=native time=2026-10-10T03:02:39.901+08:00 pid=7736 process=com.example.logtest thread=example.logtest package=com.example.logtest sources=logcat:crash,logcat:tombstone,events:am_crash,dropbox:data_app_native_crash,dropbox:SYSTEM_TOMBSTONE order=arrival before_lines=20 dev_now=2026-10-10T03:06:43+08:00 clock=unknown offset_s=N fmt=1
+signal: SIGSEGV (SEGV_MAPERR) fault addr 0x0 in liblogtest.so [#00 pc 7fc]
+crash_location: liblogtest.so [#00 pc 7fc]
+tombstone source=logcat:
+  *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+  Build fingerprint: 'google/sdk_gphone_x86_64/generic_x86_64:10/QSR1.211112.011/13135432:userdebug/dev-keys'
+  Revision: '0'
+  ABI: 'x86_64'
+  Timestamp: 2026-10-10 03:02:41+0800
+  pid: 7736, tid: 7736, name: example.logtest  >>> com.example.logtest <<<
+  uid: 10146
+  signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0
+  Cause: null pointer dereference
+      rax 0000000000000000  rbx 00007ef862cd4000  rcx 81c28a362e54aee9  rdx 0000000000000004
+      r8  0000000000000000  r9  0000000000000007  r10 00007ef8605d3050  r11 0000000000000206
+      r12 00007fffa68447d0  r13 00007ef7d5f027db  r14 0000000000000000  r15 00007fffa68449b8
+      rdi 0000000000000000  rsi 00007fffa6843e30
+      rbp 00007fffa68444f0  rsp 00007fffa68444f0  rip 00007ef787efc7fc
+  
+  backtrace:
+        #00 pc 00000000000007fc  /data/app/com.example.logtest-EXHrd52nNpS4jel8iYKCOQ==/lib/x86_64/liblogtest.so
+tombstone_full threads=1 next: adb shell dumpsys dropbox --print SYSTEM_TOMBSTONE
+before_crash pid=7736 lines=20 columns="time level pid/tid tag: message"
+  03:02:36.770 D 7736/7736 LogTest: onStart
+  03:02:36.775 I 7736/7736 am_on_start_called: [0,com.example.logtest.MainActivity,handleStartActivity]
+  03:02:36.929 I 7736/7736 LogTest: onResume
+  03:02:36.934 I 7736/7736 am_on_resume_called: [0,com.example.logtest.MainActivity,RESUME_ACTIVITY]
+  03:02:37.294 I 7736/7736 am_on_top_resumed_gained_called: [0,com.example.logtest.MainActivity,topStateChangedWhenResumed]
+  03:02:37.940 D 7736/7758 HostConnection: HostConnection::get() New Host Connection established 0x7ef7d1714c20, tid 7758
+  03:02:38.076 D 7736/7758 HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_hwc_color_transform GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+  03:02:38.183 D 7736/7758 EGL_emulation: eglCreateContext: 0x7ef7d1715a80: maj 3 min 0 rcv 3
+  03:02:38.201 D 7736/7758 EGL_emulation: eglMakeCurrent: 0x7ef7d1715a80: ver 3 0 (tinfo 0x7ef862d28dc0)
+  03:02:38.333 W 7736/7758 Gralloc3: mapper 3.x is not supported
+  03:02:38.379 D 7736/7758 HostConnection: createUnique: call
+  03:02:38.383 D 7736/7758 HostConnection: HostConnection::get() New Host Connection established 0x7ef7d1715bc0, tid 7758
+  03:02:38.395 D 7736/7758 HostConnection: HostComposition ext ANDROID_EMU_CHECKSUM_HELPER_v1 ANDROID_EMU_native_sync_v2 ANDROID_EMU_dma_v1 ANDROID_EMU_direct_mem ANDROID_EMU_host_composition_v1 ANDROID_EMU_host_composition_v2 ANDROID_EMU_vulkan ANDROID_EMU_deferred_vulkan_commands ANDROID_EMU_vulkan_null_optional_strings ANDROID_EMU_vulkan_create_resources_with_requirements ANDROID_EMU_YUV_Cache ANDROID_EMU_vulkan_ignored_handles ANDROID_EMU_vulkan_free_memory_sync ANDROID_EMU_vulkan_shader_float16_int8 ANDROID_EMU_vulkan_async_queue_submit ANDROID_EMU_sync_buffer_data ANDROID_EMU_vulkan_async_qsri ANDROID_EMU_hwc_color_transform GL_OES_EGL_image_external_essl3 GL_OES_vertex_array_object GL_KHR_texture_compression_astc_ldr ANDROID_EMU_host_side_tracing ANDROID_EMU_gles_max_version_3_0 
+  03:02:38.406 D 7736/7758 eglCodecCommon: allocate: Ask for block of size 0x1000
+  03:02:38.407 D 7736/7758 eglCodecCommon: allocate: ioctl allocate returned offset 0x3ff70a000 size 0x2000
+  03:02:38.859 D 7736/7758 EGL_emulation: eglMakeCurrent: 0x7ef7d1715a80: ver 3 0 (tinfo 0x7ef862d28dc0)
+  03:02:39.062 I 7736/7749 example.logtes: NativeAlloc concurrent copying GC freed 2019(159KB) AllocSpace objects, 3(60KB) LOS objects, 55% free, 1207KB/2743KB, paused 2.126ms total 533.472ms
+  03:02:39.741 I 7736/7758 OpenGLRenderer: Davey! duration=2555ms; Flags=1, IntendedVsync=1660948797892, Vsync=1661098797886, OldestInputEvent=9223372036854775807, NewestInputEvent=0, HandleInputStart=1661115930556, AnimationStart=1661118409684, PerformTraversalsStart=1661118890630, DrawStart=1662259446160, SyncQueued=1662650011411, SyncStart=1662687149456, IssueDrawCommandsStart=1662696331787, SwapBuffers=1663456244296, FrameCompleted=1663541214929, DequeueBufferDuration=897000, QueueBufferDuration=7721000, 
+  03:02:39.808 I 7736/7736 LogTest: trigger what=native pid=7736
+  03:02:39.885 E 7736/7736 LogTestNative: about to SIGSEGV
+truncated before_lines=20 exact=0 next: before_lines=40
+
+=== detail cr1
+ok view=detail device=emulator-5556 id=cr1 kind=java time=2026-10-10T03:01:32.402+08:00 pid=7182 process=com.example.logtest thread=main package=com.example.logtest sources=logcat:crash,events:am_crash,dropbox:data_app_crash order=arrival before_lines=20 dev_now=2026-10-10T03:06:43+08:00 clock=unknown offset_s=N fmt=1
+stack:
+  java.lang.RuntimeException: LogTest wrapped crash
+  	at com.example.logtest.Triggers.run(Triggers.java:22)
+  	at com.example.logtest.MainActivity.lambda$onResume$1$com-example-logtest-MainActivity(MainActivity.java:42)
+  	at com.example.logtest.MainActivity$$ExternalSyntheticLambda0.run(D8$$SyntheticClass:0)
+  	at android.os.Handler.handleCallback(Handler.java:883)
+  	at android.os.Handler.dispatchMessage(Handler.java:100)
+  	at android.os.Looper.loop(Looper.java:214)
+  	at android.app.ActivityThread.main(ActivityThread.java:7356)
+  	at java.lang.reflect.Method.invoke(Native Method)
+  	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+  	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+  Caused by: java.lang.IllegalStateException: repo not ready
+  	at com.example.logtest.Triggers$Repo.load(Triggers.java:53)
+  	at com.example.logtest.Triggers.run(Triggers.java:21)
+  	... 9 more
+before_crash pid=7182 lines=7 columns="time level pid/tid tag: message"
+  03:01:31.852 I 7182/7182 am_on_top_resumed_lost_called: [0,com.example.logtest.MainActivity,pausing]
+  03:01:31.884 I 7182/7182 am_on_paused_called: [0,com.example.logtest.MainActivity,performPause]
+  03:01:31.921 I 7182/7182 LogTest: onResume
+  03:01:31.933 I 7182/7182 am_on_resume_called: [0,com.example.logtest.MainActivity,LIFECYCLER_RESUME_ACTIVITY]
+  03:01:31.947 I 7182/7182 am_on_top_resumed_gained_called: [0,com.example.logtest.MainActivity,topWhenResuming]
+  03:01:32.308 I 7182/7182 LogTest: trigger what=crash_caused pid=7182
+  03:01:32.344 D 7182/7182 AndroidRuntime: Shutting down VM
+
