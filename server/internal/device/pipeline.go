@@ -194,6 +194,12 @@ func NewPipeline(st *store.Store, boot string, loc *time.Location) *Pipeline {
 		}
 	}
 	p.Det.Emit = p.EmitCrash
+	p.Det.Lifetime = func(pid int, devNs int64, seq uint64) string {
+		if x := p.resolveAnchor(pid, devNs, seq); x != nil {
+			return x.ID
+		}
+		return ""
+	}
 	p.Det.PackageOf = p.Procs.OwnerOf // dotted process names (issue #41)
 	p.Det.NeedDropbox = func(tag string) {
 		if p.NeedDropbox != nil {
@@ -332,37 +338,148 @@ func (p *Pipeline) Drain(all bool, now time.Time) error {
 func (p *Pipeline) Tick(deviceNs int64) { p.Det.Tick(deviceNs) }
 
 // EmitCrash assigns an ID (crN / anrN) to new crashes and persists the
-// current version (later lines with the same ID supersede earlier ones).
+// current version (later lines with the same ID supersede earlier ones). The
+// snapshot c is merged into the latest stored version of its fact, under
+// crashMu, by the one attach function (attachLocked).
 func (p *Pipeline) EmitCrash(c *analysis.Crash) {
 	p.crashMu.Lock()
 	defer p.crashMu.Unlock()
-	if c.ID == "" && !strings.HasPrefix(firstSource(c), "dropbox:") {
-		// pick the DropBox-only crash to adopt from the summaries, then
-		// adopt from its full version (one decode, not the whole file)
+	p.attachLocked(c, false)
+}
+
+// attachLocked is the only writer of a fact version (issue #225, design
+// 3.2.1): it finds the fact the snapshot in belongs to (its own ID, a
+// DropBox-only twin to adopt, or an open fact in the persisted index, so a
+// restart of the service process between two sources of one crash does not
+// split it), re-reads the latest stored version, merges the snapshot into
+// it and appends one line. The snapshot is never the version to write: a
+// detector or DropBox update written since it was built is not lost. A
+// snapshot that adds nothing is not appended. crashMu is held.
+func (p *Pipeline) attachLocked(in *analysis.Crash, fromDropbox bool) {
+	mode := analysis.MergeMode{}
+	if in.ID == "" && !fromDropbox {
 		jumps := p.dropboxJumps()
-		probe := *c
-		if analysis.AdoptDropbox(CrashSummaries(p.Store), &probe, jumps) {
-			if full := CrashFull(p.Store, probe.ID)[0]; full != nil {
-				analysis.AdoptDropbox([]*analysis.Crash{full}, c, jumps)
+		if !strings.HasPrefix(firstSource(in), "dropbox:") {
+			// pick the DropBox-only crash to adopt from the summaries, then
+			// adopt from its full version (one decode, not the whole file)
+			probe := *in
+			if analysis.AdoptDropbox(CrashSummaries(p.Store), &probe, jumps) {
+				if full := CrashFull(p.Store, probe.ID)[0]; full != nil {
+					analysis.AdoptDropbox([]*analysis.Crash{full}, in, jumps)
+					mode.NoDropboxFill = true
+				}
 			}
 		}
-	} else if c.ID != "" {
-		if old := CrashFull(p.Store, c.ID)[0]; old != nil {
-			analysis.KeepDropbox(c, old)
+		if in.ID == "" {
+			pid := in.PID
+			if in.Kind == "native" {
+				pid = 0
+			}
+			cands := OpenFacts(p.Store, in.Boot, in.Kind, pid)
+			if f, _ := analysis.FindOpenFact(cands, in, jumps, func(f *analysis.Crash) bool { return p.incCompatible(f, in) }); f != nil {
+				in.ID = f.ID
+				mode.Looked = true
+			}
 		}
 	}
-	if c.ID == "" {
+	var latest *analysis.Crash
+	if in.ID != "" {
+		latest = CrashFull(p.Store, in.ID)[0]
+	}
+	out := analysis.MergeFact(latest, in, mode)
+	now := time.Now().UnixNano()
+	for i := range out.Ev {
+		if out.Ev[i].HT == 0 {
+			out.Ev[i].HT = now
+		}
+	}
+	p.bindInc(out, latest, fromDropbox)
+	if latest != nil && sameVersion(latest, out) {
+		return // nothing new: a repeat of evidence already attached
+	}
+	if out.ID == "" {
 		p.Store.UpdateMeta(func(m *store.Meta) {
-			if c.Kind == "anr" {
+			if out.Kind == "anr" {
 				m.AnrSeq++
-				c.ID = "anr" + strconv.Itoa(m.AnrSeq)
+				out.ID = "anr" + strconv.Itoa(m.AnrSeq)
 			} else {
 				m.CrashSeq++
-				c.ID = "cr" + strconv.Itoa(m.CrashSeq)
+				out.ID = "cr" + strconv.Itoa(m.CrashSeq)
 			}
 		})
 	}
-	p.Store.AppendAux("crashes", crashAuxLine{Crash: c, HostNs: time.Now().UnixNano()})
+	in.ID = out.ID
+	p.Store.AppendAux("crashes", crashAuxLine{Crash: out, HostNs: now})
+}
+
+// sameVersion reports that b carries nothing a (the stored version) lacks.
+func sameVersion(a, b *analysis.Crash) bool {
+	x, err1 := json.Marshal(a)
+	y, err2 := json.Marshal(b)
+	return err1 == nil && err2 == nil && string(x) == string(y)
+}
+
+// weakInc is the incarnation token of a fact whose lifetime is unknown.
+func weakInc(pid int, seq uint64) string {
+	return "p" + strconv.Itoa(pid) + "@" + strconv.FormatUint(seq, 10)
+}
+
+// resolveAnchor is the lifetime the record (pid, device time ns, seq)
+// belongs to in the current process table (nil: unknown).
+func (p *Pipeline) resolveAnchor(pid int, ns int64, seq uint64) *procs.Proc {
+	if pid <= 0 || seq == 0 {
+		return nil // no arrival position: no reliable lookup (design 3.1.1)
+	}
+	return p.Procs.LookupSeq(pid, ns, seq)
+}
+
+// incCompatible: the snapshot's source and the stored fact f belong to the
+// same process lifetime (design 3.1.1 rule 2): both resolve to the same
+// lifetime, or one side is unknown (weak) and the process names are
+// compatible. Re-resolved at every attempt, never from the stored Inc alone.
+func (p *Pipeline) incCompatible(f, in *analysis.Crash) bool {
+	a := p.resolveAnchor(f.PID, f.TimeNs, f.Seq)
+	b := p.resolveAnchor(in.PID, in.TimeNs, in.Seq)
+	if a != nil && b != nil {
+		return a.ID == b.ID
+	}
+	return analysis.ProcCompatible(f.Process, in.Process)
+}
+
+// bindInc sets the incarnation binding of the version about to be written
+// (design 3.1.1): bound at creation to the lifetime of the anchor, a weak
+// token when none is known; a legacy fact is bound on its first rewrite; an
+// open fact whose binding is weak, or real but not what its anchor resolves
+// to now, is re-bound forward to that lifetime (same pid, compatible
+// name, later start), never to a weak token or nil, never when complete.
+func (p *Pipeline) bindInc(out, latest *analysis.Crash, fromDropbox bool) {
+	a := p.resolveAnchor(out.PID, out.TimeNs, out.Seq)
+	bind := func() {
+		if a != nil {
+			out.Inc, out.IncWeak = a.ID, false
+		} else {
+			out.Inc, out.IncWeak = weakInc(out.PID, out.Seq), true
+		}
+	}
+	if latest == nil || latest.Inc == "" {
+		bind() // new fact, or a legacy one rewritten for the first time
+		return
+	}
+	out.Inc, out.IncWeak = latest.Inc, latest.IncWeak
+	if a == nil || a.ID == latest.Inc || a.PID != out.PID || !analysis.ProcCompatible(a.Name, out.Process) {
+		return
+	}
+	const all = analysis.ClassEvents | analysis.ClassLogcat | analysis.ClassDropbox
+	if latest.Classes()&all == all {
+		return // a complete fact keeps its binding
+	}
+	if !latest.IncWeak {
+		cur := p.Procs.ByID(latest.Inc)
+		if cur != nil && (cur.PID != a.PID || cur.StartSeq >= a.StartSeq) {
+			return // forward only
+		}
+	}
+	out.Inc, out.IncWeak = a.ID, false
 }
 
 // dropboxJumps are the stored clock jumps of this pipeline's boot session
@@ -434,32 +551,42 @@ func (p *Pipeline) ApplyDropbox(out string) {
 				continue
 			}
 		}
-		// match against the summaries; for an existing crash, merge into
-		// its full version (MatchDropbox copies the match and keeps its
-		// traces / DropBox text)
-		c, isNew := analysis.MatchDropboxBoot(CrashSummaries(p.Store), e, p.Boot, p.dropboxJumps())
-		if c != nil && !isNew {
-			full := CrashFull(p.Store, c.ID)[0]
-			if full == nil {
-				continue
-			}
-			c, isNew = analysis.MatchDropboxBoot([]*analysis.Crash{full}, e, p.Boot, p.dropboxJumps())
-		}
-		p.Store.AppendAux("dropbox_seen", seenLine{Key: key, HostNs: time.Now().UnixNano()})
-		if c == nil {
-			continue
-		}
-		if isNew {
-			c.ID = ""
-			if c.Boot == "" {
-				c.Boot = p.Boot
-			}
-		}
-		if c.Process != "" && (c.Package == "" || c.Package == analysis.PackageOfName(c.Process)) {
-			c.Package = p.Procs.OwnerOf(c.Process) // dotted process names (issue #41)
-		}
-		p.EmitCrash(c)
+		p.attachDropbox(e, key)
 	}
+}
+
+// attachDropbox matches one DropBox entry against the stored facts and
+// attaches it, all under crashMu: the candidate is chosen from the
+// summaries and re-checked on the re-read full version, and the merge is
+// onto the latest stored version, so a detector update written meanwhile is
+// kept (issue #225, design 3.2.1).
+func (p *Pipeline) attachDropbox(e analysis.DropboxEntry, key string) {
+	p.crashMu.Lock()
+	defer p.crashMu.Unlock()
+	jumps := p.dropboxJumps()
+	c, isNew := analysis.MatchDropboxBoot(CrashSummaries(p.Store), e, p.Boot, jumps)
+	if c != nil && !isNew {
+		full := CrashFull(p.Store, c.ID)[0]
+		if full == nil {
+			return
+		}
+		c, isNew = analysis.MatchDropboxBoot([]*analysis.Crash{full}, e, p.Boot, jumps)
+	}
+	p.Store.AppendAux("dropbox_seen", seenLine{Key: key, HostNs: time.Now().UnixNano()})
+	if c == nil {
+		return
+	}
+	if isNew {
+		c.ID = ""
+		if c.Boot == "" {
+			c.Boot = p.Boot
+		}
+	}
+	if c.Process != "" && (c.Package == "" || c.Package == analysis.PackageOfName(c.Process)) {
+		c.Package = p.Procs.OwnerOf(c.Process) // dotted process names (issue #41)
+	}
+	c.AddEvidence(analysis.Evidence{S: "dropbox:" + e.Tag, T: e.RealTimeNs(), CK: key})
+	p.attachLocked(c, true)
 }
 
 // SeedPS reconciles processes with `ps -A -o PID,UID,NAME` output taken at device time atNs.

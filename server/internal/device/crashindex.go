@@ -36,6 +36,15 @@ type crashIndex struct {
 	ents   map[string]*crashEnt
 	order  []string          // ids in order of first appearance
 	sorted []*analysis.Crash // cached summaries, newest first (nil: rebuild)
+	// open-fact lookup (issue #225): ids per (boot, kind, pid) and per
+	// (boot, kind), in order of first appearance
+	byKey  map[openKey][]string
+	byKind map[openKey][]string
+}
+
+type openKey struct {
+	boot, kind string
+	pid        int
 }
 
 type crashEnt struct {
@@ -61,6 +70,10 @@ type crashSummary struct {
 	Signature string   `json:"sig,omitempty"`
 	Sources   []string `json:"sources,omitempty"`
 	Location  string   `json:"location,omitempty"`
+	// persisted-fact fields (issue #225): small, kept for the open-fact lookup
+	Inc     string              `json:"inc,omitempty"`
+	IncWeak bool                `json:"incw,omitempty"`
+	Ev      []analysis.Evidence `json:"ev,omitempty"`
 }
 
 const crashTailBytes = 64
@@ -86,6 +99,7 @@ func crashIndexOf(st *store.Store) *crashIndex {
 func (x *crashIndex) resetLocked() {
 	x.fi, x.off, x.tail = nil, 0, nil
 	x.ents, x.order, x.sorted = map[string]*crashEnt{}, nil, nil
+	x.byKey, x.byKind = map[openKey][]string{}, map[openKey][]string{}
 }
 
 // refreshLocked brings the index up to date and returns the open file
@@ -154,18 +168,66 @@ func (x *crashIndex) addLocked(data []byte, base int64) {
 		if len(line) > 0 && json.Unmarshal(line, &s) == nil && s.ID != "" {
 			c := &analysis.Crash{ID: s.ID, Kind: s.Kind, Boot: s.Boot, TimeNs: s.TimeNs, Seq: s.Seq, PID: s.PID,
 				Process: s.Process, Package: s.Package, Thread: s.Thread, Headline: s.Headline, Signature: s.Signature,
-				Sources: s.Sources[:len(s.Sources):len(s.Sources)], Location: s.Location} // full slice: appends by callers copy
+				Sources: s.Sources[:len(s.Sources):len(s.Sources)], Location: s.Location, // full slice: appends by callers copy
+				Inc: s.Inc, IncWeak: s.IncWeak, Ev: s.Ev[:len(s.Ev):len(s.Ev)]}
 			e := x.ents[s.ID]
 			if e == nil {
 				e = &crashEnt{}
 				x.ents[s.ID] = e
 				x.order = append(x.order, s.ID)
+				x.keyLocked(c, s.ID)
+			} else if e.sum.Boot != c.Boot || e.sum.Kind != c.Kind || e.sum.PID != c.PID {
+				x.unkeyLocked(e.sum, s.ID)
+				x.keyLocked(c, s.ID)
 			}
 			e.sum, e.off, e.n = c, base+int64(pos), len(line)
 			x.sorted = nil
 		}
 		pos += i + 1
 	}
+}
+
+func (x *crashIndex) keyLocked(c *analysis.Crash, id string) {
+	k := openKey{c.Boot, c.Kind, c.PID}
+	x.byKey[k] = append(x.byKey[k], id)
+	bk := openKey{c.Boot, c.Kind, 0}
+	x.byKind[bk] = append(x.byKind[bk], id)
+}
+
+func (x *crashIndex) unkeyLocked(c *analysis.Crash, id string) {
+	drop := func(m map[openKey][]string, k openKey) {
+		l := m[k]
+		for i, v := range l {
+			if v == id {
+				m[k] = append(l[:i:i], l[i+1:]...)
+				return
+			}
+		}
+	}
+	drop(x.byKey, openKey{c.Boot, c.Kind, c.PID})
+	drop(x.byKind, openKey{c.Boot, c.Kind, 0})
+}
+
+// openFor returns the newest versions' summaries of the facts of boot and
+// kind with this pid (pid 0: every pid), newest first by arrival. The
+// index is refreshed first. Shared: callers must not modify them.
+func (x *crashIndex) openFor(boot, kind string, pid int) []*analysis.Crash {
+	x.mu.Lock()
+	defer x.mu.Unlock()
+	if f := x.refreshLocked(); f != nil {
+		f.Close()
+	}
+	ids := x.byKey[openKey{boot, kind, pid}]
+	if pid == 0 {
+		ids = x.byKind[openKey{boot, kind, 0}]
+	}
+	out := make([]*analysis.Crash, 0, len(ids))
+	for i := len(ids) - 1; i >= 0; i-- {
+		if e := x.ents[ids[i]]; e != nil {
+			out = append(out, e.sum)
+		}
+	}
+	return out
 }
 
 func (x *crashIndex) summariesLocked() []*analysis.Crash {
@@ -237,6 +299,13 @@ func CrashSummaries(st *store.Store) []*analysis.Crash {
 // (nil for ids that are not stored).
 func CrashFull(st *store.Store, ids ...string) []*analysis.Crash {
 	return crashIndexOf(st).full(ids...)
+}
+
+// OpenFacts returns the stored facts of boot and kind with this pid (0:
+// every pid), newest first, as summaries (no stack or DropBox text), found
+// through the index and not through detector memory (issue #225).
+func OpenFacts(st *store.Store, boot, kind string, pid int) []*analysis.Crash {
+	return crashIndexOf(st).openFor(boot, kind, pid)
 }
 
 // LoadCrashes reads all crashes in full (newest version of each ID, newest

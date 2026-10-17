@@ -1,0 +1,59 @@
+=== list
+ok view=list device=emulator-5556 groups=2 events=2 shown=2 package=com.example.logtest order=newest_first history_from=2026-10-10T03:05:37.970+08:00 dropbox=data_app_crash:not_fetched_yet,data_app_native_crash:not_fetched_yet,data_app_anr:not_fetched_yet dev_now=2026-10-10T03:06:43+08:00 clock=unknown offset_s=N fmt=1
+crash id=anr2 time=2026-10-10T03:08:20.819+08:00 kind=anr pid=7815 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  main_thread: "main" prio=5 tid=1 Sleeping | at java.lang.Thread.sleep(Native method) | traces=data_app_anr
+crash id=anr1 time=2026-10-10T03:05:53.236+08:00 kind=anr pid=7815 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  traces=unavailable next: id="anr1"
+next: id="anr2"
+
+=== all
+ok view=list device=emulator-5556 groups=2 events=2 shown=2 order=newest_first history_from=2026-10-10T03:05:37.970+08:00 dropbox=data_app_crash:not_fetched_yet,data_app_native_crash:not_fetched_yet,data_app_anr:not_fetched_yet dev_now=2026-10-10T03:06:43+08:00 clock=unknown offset_s=N fmt=1
+crash id=anr2 time=2026-10-10T03:08:20.819+08:00 kind=anr pid=7815 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  main_thread: "main" prio=5 tid=1 Sleeping | at java.lang.Thread.sleep(Native method) | traces=data_app_anr
+crash id=anr1 time=2026-10-10T03:05:53.236+08:00 kind=anr pid=7815 process=com.example.logtest
+  reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+  traces=unavailable next: id="anr1"
+next: id="anr2"
+
+=== detail anr2
+ok view=detail device=emulator-5556 id=anr2 kind=anr time=2026-10-10T03:08:20.819+08:00 pid=7815 process=com.example.logtest package=com.example.logtest sources=logcat:system,dropbox:data_app_anr order=arrival before_lines=20 dev_now=2026-10-10T03:06:43+08:00 clock=unknown offset_s=N fmt=1
+reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+main_thread traces=data_app_anr:
+  "main" prio=5 tid=1 Sleeping
+    | group="main" sCount=1 dsCount=0 flags=1 obj=0x71ce73c8 self=0x7ef862cd4000
+    | sysTid=7815 nice=-10 cgrp=default sched=0/0 handle=0x7ef86325ded8
+    | state=S schedstat=( 5129089942 1498071918 573 ) utm=410 stm=102 core=3 HZ=100
+    | stack=0x7fffa604b000-0x7fffa604d000 stackSize=8192KB
+    | held mutexes=
+    at java.lang.Thread.sleep(Native method)
+    - sleeping on <0x09c4526e> (a java.lang.Object)
+    at java.lang.Thread.sleep(Thread.java:440)
+    - locked <0x09c4526e> (a java.lang.Object)
+    at java.lang.Thread.sleep(Thread.java:356)
+    at android.os.SystemClock.sleep(SystemClock.java:131)
+    at com.example.logtest.TriggerReceiver.onReceive(TriggerReceiver.java:15)
+    at android.app.ActivityThread.handleReceiver(ActivityThread.java:3788)
+    at android.app.ActivityThread.access$1400(ActivityThread.java:219)
+    at android.app.ActivityThread$H.handleMessage(ActivityThread.java:1870)
+    at android.os.Handler.dispatchMessage(Handler.java:107)
+    at android.os.Looper.loop(Looper.java:214)
+    at android.app.ActivityThread.main(ActivityThread.java:7356)
+    at java.lang.reflect.Method.invoke(Native method)
+    at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:492)
+    at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:930)
+before_crash pid=7815 lines=4 columns="time level pid/tid tag: message"
+  03:05:42.896 I 7815/7815 LogTest: TriggerReceiver what=anr_broadcast
+  03:05:55.911 I 7815/7826 example.logtes: Thread[7,tid=7826,WaitingInMainSignalCatcherLoop,Thread*=0x7ef7d16d7400,peer=0x12d41d50,"Signal Catcher"]: reacting to signal 3
+  03:05:55.912 I 7815/7826 example.logtes: 
+  03:05:56.371 I 7815/7826 example.logtes: Wrote stack traces to tombstoned
+
+=== detail anr1
+ok view=detail device=emulator-5556 id=anr1 kind=anr time=2026-10-10T03:05:53.236+08:00 pid=7815 process=com.example.logtest package=com.example.logtest sources=events:am_anr order=arrival before_lines=20 dev_now=2026-10-10T03:06:43+08:00 clock=unknown offset_s=N fmt=1
+reason: Broadcast of Intent { flg=0x10400010 cmp=com.example.logtest/.TriggerReceiver (has extras) }
+traces state=unavailable reason=no_dropbox_entry dropbox="not fetched yet" retry_after_s=5 next: id="anr1" | adb shell dumpsys dropbox --print data_app_anr
+before_crash pid=7815 lines=1 columns="time level pid/tid tag: message"
+  03:05:42.896 I 7815/7815 LogTest: TriggerReceiver what=anr_broadcast
+

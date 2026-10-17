@@ -111,6 +111,31 @@ func (t *Tracker) Restore(ps []Proc) {
 		}
 		t.upsertLocked(&p)
 	}
+	// Minted IDs end in ".<nextID>": never restart the counter below the
+	// number of restored lifetimes, so a lifetime minted after a restore
+	// cannot reuse the suffix of a restored one (issue #225).
+	if n := t.created; uint64(t.nextID) < n {
+		t.nextID = int(n)
+	}
+}
+
+// ByID returns a copy of the lifetime with this Proc.ID (nil: unknown, e.g.
+// an entry of another boot or one dropped by retention).
+func (t *Tracker) ByID(id string) *Proc {
+	if id == "" {
+		return nil
+	}
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	for _, l := range t.byPID {
+		for _, q := range l {
+			if q.ID == id {
+				c := *q
+				return &c
+			}
+		}
+	}
+	return nil
 }
 
 func (t *Tracker) upsertLocked(p *Proc) {

@@ -260,3 +260,26 @@ func TestLookupSeqAfterForwardJump(t *testing.T) {
 		t.Fatalf("old: %+v", old)
 	}
 }
+
+// Issue #225 (design 3.1.1, case "nextID after Restore"): a lifetime minted
+// after Restore must not reuse the ID of a restored one, even when boot, pid
+// and start time are equal.
+func TestRestoreDoesNotReuseMintedIDs(t *testing.T) {
+	t.Parallel()
+	tr := New()
+	tr.Reset("b1")
+	tr.Restore([]Proc{{ID: "b1/100/10.1", Boot: "b1", PID: 100, UID: -1, Name: "com.foo", StartNs: 10, EndNs: 20, Source: "am_proc_start"}})
+	p := &Proc{Boot: "b1", PID: 100, UID: -1, Name: "com.bar", StartNs: 10, Source: "am_proc_start"}
+	tr.mu.Lock()
+	tr.upsertLocked(p)
+	tr.mu.Unlock()
+	if p.ID == "" || p.ID == "b1/100/10.1" {
+		t.Fatalf("minted %q after restoring b1/100/10.1", p.ID)
+	}
+	if got := tr.ByID("b1/100/10.1"); got == nil || got.Name != "com.foo" {
+		t.Fatalf("restored lifetime clobbered: %+v", got)
+	}
+	if tr.ByID(p.ID) == nil || tr.ByID("") != nil || tr.ByID("b1/9/9.9") != nil {
+		t.Error("ByID")
+	}
+}
