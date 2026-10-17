@@ -1546,6 +1546,9 @@ func (s *Store) ReadAux(name string) [][]byte {
 
 // RewriteAux atomically replaces an aux file (writer only), e.g. to trim it.
 func (s *Store) RewriteAux(name string, lines [][]byte) error {
+	if !s.IsWriter() {
+		return errors.New("store: not the writer")
+	}
 	s.auxMu.Lock()
 	defer s.auxMu.Unlock()
 	return s.rewriteAuxLocked(name, lines)
@@ -1559,9 +1562,14 @@ func (s *Store) rewriteAuxLocked(name string, lines [][]byte) error {
 		buf.WriteByte('\n')
 	}
 	if err := os.WriteFile(tmp, buf.Bytes(), 0o644); err != nil {
+		os.Remove(tmp) // a partial file (disk full) would keep eating space
 		return err
 	}
-	return os.Rename(tmp, filepath.Join(s.Dir, name+".jsonl"))
+	if err := os.Rename(tmp, filepath.Join(s.Dir, name+".jsonl")); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // DataFormat is the on-disk format version: device data lives in
