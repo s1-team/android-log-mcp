@@ -1719,8 +1719,10 @@ var hostNow = time.Now
 // the stamp is distrusted: a host clock that was far off while recording
 // (RTC not set, dead battery) and was then corrected makes every stamp look
 // ancient, and deleting by it would silently drop recent data (issue #184).
-func (s *Store) staleHostSpan() int64 {
-	return max(int64(30*24*time.Hour), 10*int64(s.cfg.MaxAge))
+func (s *Store) staleHostSpan() int64 { return staleSpan(s.cfg.MaxAge) }
+
+func staleSpan(maxAge time.Duration) int64 {
+	return max(int64(30*24*time.Hour), 10*int64(maxAge))
 }
 
 // stampFor returns the stamp of the segment with this first seq (a copy; zero
@@ -1748,10 +1750,20 @@ func (s *Store) ensureStampsLocked(now int64) {
 	if !s.writer {
 		return
 	}
-	old := s.meta.SegTimes
-	out := make([]SegTime, 0, len(s.segs))
-	changed := len(old) != len(s.segs)
-	for i, sg := range s.segs {
+	out, changed := normalizeStamps(s.meta.SegTimes, s.segs, now, s.cfg.MaxAge)
+	if changed {
+		s.meta.SegTimes = out
+		s.dirty = true
+	}
+}
+
+// normalizeStamps applies the stamp rules of ensureStampsLocked to old for
+// the given segments (oldest first) and reports whether anything changed.
+func normalizeStamps(old []SegTime, segs []segment, now int64, maxAge time.Duration) ([]SegTime, bool) {
+	stale := staleSpan(maxAge)
+	out := make([]SegTime, 0, len(segs))
+	changed := len(old) != len(segs)
+	for i, sg := range segs {
 		var t SegTime
 		found := false
 		for _, o := range old {
@@ -1767,14 +1779,14 @@ func (s *Store) ensureStampsLocked(now int64) {
 				t.StartNs = t.EndNs
 			}
 			if i > 0 {
-				if fi, err := os.Stat(s.segs[i-1].path); err == nil {
+				if fi, err := os.Stat(segs[i-1].path); err == nil {
 					t.StartNs = fi.ModTime().UnixNano()
 				}
 			}
 			changed = true
 		}
 		n := t
-		if n.EndNs == 0 && n.StartNs == 0 || n.StartNs > now || n.EndNs > now || now-n.EndNs > s.staleHostSpan() {
+		if n.EndNs == 0 && n.StartNs == 0 || n.StartNs > now || n.EndNs > now || now-n.EndNs > stale {
 			n.StartNs, n.EndNs = now, now
 		}
 		if n.StartNs > n.EndNs {
@@ -1785,10 +1797,49 @@ func (s *Store) ensureStampsLocked(now int64) {
 		}
 		out = append(out, n)
 	}
-	if changed {
-		s.meta.SegTimes = out
-		s.dirty = true
+	return out, changed
+}
+
+// SegmentStamp is a segment file with the host-time stamps the store's age
+// rule uses (EndNs: when it was last written).
+type SegmentStamp struct {
+	SegmentFile
+	StartNs, EndNs int64
+}
+
+// StampSegments returns the segments of a device directory, oldest first,
+// with their age stamps under the same rule the store applies itself
+// (meta.json seg_times; a missing stamp from the file mtimes; a future
+// stamp, or one older than max(30 days, 10 x maxAge), set to now) so
+// directory sweeps do not trust file mtimes (#218). With persist the
+// normalized stamps are written back to meta.json (atomically; a failed
+// write is ignored): only when the caller holds the directory's writer.lock.
+func StampSegments(dir string, maxAge time.Duration, now time.Time, persist bool) []SegmentStamp {
+	segs, err := (&Store{Dir: dir}).listSegments()
+	if err != nil || len(segs) == 0 {
+		return nil
 	}
+	var m Meta
+	mp := filepath.Join(dir, "meta.json")
+	haveMeta := false
+	if b, err := os.ReadFile(mp); err == nil && json.Unmarshal(b, &m) == nil {
+		haveMeta = true
+	}
+	out, changed := normalizeStamps(m.SegTimes, segs, now.UnixNano(), maxAge)
+	if persist && changed && haveMeta {
+		m.SegTimes = out
+		if b, err := json.Marshal(&m); err == nil {
+			tmp := mp + ".tmp"
+			if os.WriteFile(tmp, b, 0o644) == nil && os.Rename(tmp, mp) != nil {
+				os.Remove(tmp)
+			}
+		}
+	}
+	res := make([]SegmentStamp, len(segs))
+	for i, sg := range segs {
+		res[i] = SegmentStamp{SegmentFile{Path: sg.path, First: sg.first, Size: sg.size}, out[i].StartNs, out[i].EndNs}
+	}
+	return res
 }
 
 // firstRecordNs is the time of the first complete line of a segment (0 if none).

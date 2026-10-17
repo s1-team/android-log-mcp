@@ -160,12 +160,11 @@ func Sweep(o SweepOptions) SweepResult {
 	dirs := deviceDirs(o.Base)
 	// age expiry
 	if o.MaxAge > 0 {
-		cut := o.Now.Add(-o.MaxAge)
 		for _, dd := range dirs {
 			if busy(dd) {
 				continue
 			}
-			res.expireDir(dd, cut)
+			res.expireDir(dd, o.MaxAge, o.Now)
 		}
 	}
 	// total cap
@@ -177,19 +176,19 @@ func Sweep(o SweepOptions) SweepResult {
 			dd   dataDir
 			path string
 			size int64
-			mod  time.Time
+			mod  int64 // host-time stamp (ns), the mtime where the store has none
 		}
 		var cands []cand
 		for _, dd := range deviceDirs(o.Base) {
-			segs := store.ListSegments(dd.path)
+			segs := store.StampSegments(dd.path, o.MaxAge, o.Now, false)
 			if dd.current || o.Owned[dd.path] != nil {
 				if len(segs) > 0 {
 					segs = segs[:len(segs)-1] // keep each recorded device's newest segment
 				}
 			}
 			for _, sg := range segs {
-				if fi, err := os.Stat(sg.Path); err == nil {
-					cands = append(cands, cand{dd, sg.Path, sg.Size, fi.ModTime()})
+				if _, err := os.Stat(sg.Path); err == nil {
+					cands = append(cands, cand{dd, sg.Path, sg.Size, sg.EndNs})
 				}
 			}
 		}
@@ -205,12 +204,12 @@ func Sweep(o SweepOptions) SweepResult {
 					return nil
 				}
 				if fi, err := e.Info(); err == nil {
-					cands = append(cands, cand{path: p, size: fi.Size(), mod: fi.ModTime()})
+					cands = append(cands, cand{path: p, size: fi.Size(), mod: fi.ModTime().UnixNano()})
 				}
 				return nil
 			})
 		}
-		sort.SliceStable(cands, func(i, j int) bool { return cands[i].mod.Before(cands[j].mod) })
+		sort.SliceStable(cands, func(i, j int) bool { return cands[i].mod < cands[j].mod })
 		skip := map[string]bool{}
 		for _, c := range cands {
 			if total <= o.MaxTotal {
@@ -282,29 +281,43 @@ func (r *SweepResult) addAll(n int64, files int) {
 // expireDir deletes the segments of an unrecorded device directory whose
 // last write is older than cut (including the newest one), and removes the
 // directory once nothing in it is newer than cut.
-func (r *SweepResult) expireDir(dd dataDir, cut time.Time) {
+// expireDir removes the expired segments of a device directory that no live
+// process writes. Age is the store's own rule (store.StampSegments: the
+// host-time stamps in meta.json, with the file mtime only as the fallback
+// for a store written before they existed, and clamp / re-anchor of absurd
+// stamps), not the file mtime: after a host clock correction the mtimes can
+// be far in the past while the data is recent (#218). Segments go oldest
+// first and the walk stops at the first one that has not expired; the
+// newest segment goes only when every segment has expired.
+func (r *SweepResult) expireDir(dd dataDir, maxAge time.Duration, now time.Time) {
 	f, ok := store.TryLock(filepath.Join(dd.path, "writer.lock"))
 	if !ok {
 		return
 	}
+	cut := now.Add(-maxAge)
+	segs := store.StampSegments(dd.path, maxAge, now, false)
+	expired := 0
+	for expired < len(segs) && segs[expired].EndNs < cut.UnixNano() {
+		expired++
+	}
+	for _, sg := range segs[:expired] {
+		if os.Remove(sg.Path) == nil {
+			r.Freed += sg.Size
+			r.Files++
+		}
+	}
+	if expired < len(segs) {
+		// something stays: persist the normalized stamps of the survivors
+		// (we hold the lock) so a re-anchored stamp stays re-anchored
+		store.StampSegments(dd.path, maxAge, now, true)
+	}
 	newest := time.Time{}
 	ents, _ := os.ReadDir(dd.path)
 	for _, e := range ents {
-		if e.IsDir() || e.Name() == "writer.lock" {
+		if e.IsDir() || e.Name() == "writer.lock" || (strings.HasPrefix(e.Name(), "seg-") && strings.HasSuffix(e.Name(), ".jsonl")) {
 			continue
 		}
-		fi, err := e.Info()
-		if err != nil {
-			continue
-		}
-		if strings.HasPrefix(e.Name(), "seg-") && strings.HasSuffix(e.Name(), ".jsonl") && fi.ModTime().Before(cut) {
-			if os.Remove(filepath.Join(dd.path, e.Name())) == nil {
-				r.Freed += fi.Size()
-				r.Files++
-			}
-			continue
-		}
-		if fi.ModTime().After(newest) {
+		if fi, err := e.Info(); err == nil && fi.ModTime().After(newest) {
 			newest = fi.ModTime()
 		}
 	}

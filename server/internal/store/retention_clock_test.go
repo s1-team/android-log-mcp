@@ -174,3 +174,46 @@ func TestRetentionStoreWithoutSegTimes(t *testing.T) {
 
 func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }
 func jsonMarshal(v any) ([]byte, error)   { return json.Marshal(v) }
+
+// #218: StampSegments gives directory sweeps the store's stamps without
+// opening the store, and persists only on request.
+func TestStampSegmentsMatchesStoreRule(t *testing.T) {
+	base := t.TempDir()
+	cfg := Config{SegmentBytes: 3000, MaxAge: time.Hour}
+	dir := writeSegments(t, base, cfg, time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC), 6)
+	now := time.Now()
+	got := StampSegments(dir, cfg.MaxAge, now, false)
+	if len(got) != nSegs(dir) || len(got) < 3 {
+		t.Fatalf("%d stamps for %d segments", len(got), nSegs(dir))
+	}
+	for _, g := range got {
+		if g.EndNs != now.UnixNano() { // 2000-01-01 is older than the stale span: re-anchored to now
+			t.Fatalf("stamp %+v not re-anchored", g)
+		}
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "meta.json"))
+	var before Meta
+	json.Unmarshal(b, &before)
+	StampSegments(dir, cfg.MaxAge, now, false)
+	b2, _ := os.ReadFile(filepath.Join(dir, "meta.json"))
+	if string(b) != string(b2) {
+		t.Fatal("read-only call changed meta.json")
+	}
+	StampSegments(dir, cfg.MaxAge, now, true)
+	var after Meta
+	b3, _ := os.ReadFile(filepath.Join(dir, "meta.json"))
+	json.Unmarshal(b3, &after)
+	if len(after.SegTimes) != len(got) || after.SegTimes[0].EndNs != now.UnixNano() {
+		t.Fatalf("persisted stamps %+v", after.SegTimes)
+	}
+	// the store opened afterwards agrees (nothing is pruned)
+	setHost(t, now)
+	s, err := Open(base, "x", cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if nSegs(dir) != len(got) {
+		t.Fatalf("store prune disagrees: %d of %d segments", nSegs(dir), len(got))
+	}
+}
