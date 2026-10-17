@@ -1,7 +1,7 @@
 package analysis
 
 // Issue #111: the two sources of one ANR (am_anr event, "ANR in" block) and
-// the DropBox entry are paired one-to-one within anrPairWindow (120 s).
+// the DropBox entry are paired one-to-one within legacyAnrWindow (120 s).
 // Tests go through Feed and MatchDropbox only.
 
 import (

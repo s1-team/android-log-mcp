@@ -315,14 +315,13 @@ func ProcCompatible(a, b string) bool {
 	return pkgOf(a) == pkgOf(b) || shortProc(a) == shortProc(b)
 }
 
-// Windows of the pairing of a detector source with a stored fact. PR1 of
-// issue #225 keeps the windows the detector used; later PRs replace the
-// ones for facts that carry evidence. A fact without "ev" (legacy) is
-// always paired inside these.
+// Windows that only a legacy fact (no "ev": written by 0.9.x, or rewritten
+// by an old binary, design 3.3) is still paired inside. A fact with "ev"
+// is bounded by anrEvidenceCap and the incarnation, never by these.
 const (
-	legacyAnrWindow   = anrPairWindow
+	legacyAnrWindow   = int64(120e9)
 	legacyCrashWindow = int64(60e9)
-	javaMergeWindow   = int64(15e9)
+	legacyJavaWindow  = int64(15e9)
 )
 
 // FindOpenFact looks for the stored fact that the detector snapshot in
@@ -362,10 +361,20 @@ func FindOpenFact(cands []*Crash, in *Crash, jumps []ClockShift, compat func(*Cr
 		if !ok(x) || dropboxOnly(x) {
 			continue
 		}
+		fresh := x.HasEvidence() && !x.synthOnly()
 		win := legacyCrashWindow
+		if in.Kind == "java" {
+			win = legacyJavaWindow
+		}
+		if fresh {
+			// a fact with "ev": one-to-one by source and the incarnation
+			// (compat) decide; the cap only vetoes a lost-source pairing
+			win = anrEvidenceCap
+			if x.hasAnySource(in) {
+				continue
+			}
+		}
 		switch in.Kind {
-		case "java":
-			win = javaMergeWindow
 		case "native":
 			// one fact per source of a native crash: the libc line
 			// (logcat:crash), the tombstone lines (logcat:tombstone) and

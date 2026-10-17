@@ -281,17 +281,38 @@ func TestFindOpenFact(t *testing.T) {
 			t.Error("took a DropBox-only fact")
 		}
 	})
-	t.Run("java within 15 s, any class", func(t *testing.T) {
+	t.Run("java: a fact with ev is paired by source and incarnation, up to the cap (PR3)", func(t *testing.T) {
 		j := &Crash{ID: "cr1", Kind: "java", Boot: "b1", PID: 7, TimeNs: 100e9, Seq: 3}
 		j.AddEvidence(Evidence{S: "logcat:crash", Q: 3, CK: "a"})
+		x := &Crash{Kind: "java", Boot: "b1", PID: 7, TimeNs: 116e9, Seq: 4}
+		x.AddEvidence(Evidence{S: "events:am_crash", Q: 4, CK: "b"})
+		if got, _ := FindOpenFact([]*Crash{j}, x, nil, nil); got != j {
+			t.Error("a source 16 s later is not paired (the 15 s window is gone)")
+		}
+		if got, _ := FindOpenFact([]*Crash{j}, x, nil, func(*Crash) bool { return false }); got != nil {
+			t.Error("paired against the incarnation veto")
+		}
+		x.TimeNs = 100e9 + anrEvidenceCap + 1e9
+		if got, _ := FindOpenFact([]*Crash{j}, x, nil, nil); got != nil {
+			t.Error("paired beyond the cap")
+		}
+		// one-to-one by source: a second logcat crash is another crash
+		y := &Crash{Kind: "java", Boot: "b1", PID: 7, TimeNs: 110e9, Seq: 5}
+		y.AddEvidence(Evidence{S: "logcat:crash", Q: 5, CK: "c"})
+		if got, _ := FindOpenFact([]*Crash{j}, y, nil, nil); got != nil {
+			t.Error("a second source of the same kind joined the fact")
+		}
+	})
+	t.Run("java legacy fact keeps 15 s", func(t *testing.T) {
+		j := &Crash{ID: "cr1", Kind: "java", Boot: "b1", PID: 7, TimeNs: 100e9, Seq: 3, Sources: []string{"logcat:crash"}}
 		x := &Crash{Kind: "java", Boot: "b1", PID: 7, TimeNs: 110e9, Seq: 4}
 		x.AddEvidence(Evidence{S: "events:am_crash", Q: 4, CK: "b"})
 		if got, _ := FindOpenFact([]*Crash{j}, x, nil, nil); got != j {
-			t.Error("not paired")
+			t.Error("not paired inside the legacy window")
 		}
 		x.TimeNs = 116e9
 		if got, _ := FindOpenFact([]*Crash{j}, x, nil, nil); got != nil {
-			t.Error("paired beyond 15 s")
+			t.Error("paired beyond the legacy window")
 		}
 	})
 	t.Run("native by process and class", func(t *testing.T) {

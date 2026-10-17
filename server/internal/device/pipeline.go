@@ -364,9 +364,10 @@ func (p *Pipeline) attachLocked(in *analysis.Crash, fromDropbox bool) {
 			// pick the DropBox-only crash to adopt from the summaries, then
 			// adopt from its full version (one decode, not the whole file)
 			probe := *in
-			if analysis.AdoptDropbox(CrashSummaries(p.Store), &probe, jumps) {
+			same := func(x, c *analysis.Crash) bool { return p.twinCompatible(x, c, jumps) }
+			if analysis.AdoptDropboxIn(CrashSummaries(p.Store), &probe, jumps, same) {
 				if full := CrashFull(p.Store, probe.ID)[0]; full != nil {
-					analysis.AdoptDropbox([]*analysis.Crash{full}, in, jumps)
+					analysis.AdoptDropboxIn([]*analysis.Crash{full}, in, jumps, same)
 					mode.NoDropboxFill = true
 				}
 			}
@@ -468,6 +469,49 @@ func (p *Pipeline) incCompatible(f, in *analysis.Crash) bool {
 		return a.ID == b.ID
 	}
 	return analysis.ProcCompatible(f.Process, in.Process)
+}
+
+// entryCompatible is the incarnation veto for a DropBox entry (design
+// 3.1.1, issue #225 PR3): the entry names a pid and a device time but has
+// no seq, so its lifetime is the one that owned pid at that time, and the
+// stored fact x is re-resolved from its anchor. Two different lifetimes
+// veto the pairing. An unknown side (no table entry, weak binding) does
+// not veto: the name, order, reason and cap checks of the matcher decide.
+// With clock jumps stored for the boot a device time cannot be placed
+// against the table, so nothing is vetoed here either.
+func (p *Pipeline) entryCompatible(x *analysis.Crash, pid int, ns int64, jumps []analysis.ClockShift) bool {
+	if len(jumps) > 0 || pid <= 0 || ns == 0 {
+		return true
+	}
+	return p.sameLifetime(x, p.Procs.Lookup(pid, ns))
+}
+
+// twinCompatible is the same veto for the adoption of a DropBox-only fact x
+// by the logcat crash c.
+func (p *Pipeline) twinCompatible(x, c *analysis.Crash, jumps []analysis.ClockShift) bool {
+	if len(jumps) > 0 || x.PID <= 0 {
+		return true
+	}
+	var b *procs.Proc
+	if x.TimeNs != 0 {
+		b = p.Procs.Lookup(x.PID, x.TimeNs)
+	}
+	return p.sameLifetime(c, b)
+}
+
+// sameLifetime reports that fact f is not known to belong to another
+// lifetime than b (nil b: unknown, no veto).
+func (p *Pipeline) sameLifetime(f *analysis.Crash, b *procs.Proc) bool {
+	if b == nil {
+		return true
+	}
+	if a := p.resolveAnchor(f.PID, f.TimeNs, f.Seq); a != nil {
+		return a.ID == b.ID
+	}
+	if f.Inc != "" && !f.IncWeak {
+		return f.Inc == b.ID
+	}
+	return true
 }
 
 // bindInc sets the incarnation binding of the version about to be written
@@ -588,13 +632,14 @@ func (p *Pipeline) attachDropbox(e analysis.DropboxEntry, key string) {
 	p.crashMu.Lock()
 	defer p.crashMu.Unlock()
 	jumps := p.dropboxJumps()
-	c, isNew := analysis.MatchDropboxBoot(CrashSummaries(p.Store), e, p.Boot, jumps)
+	same := func(x *analysis.Crash, pid int, ns int64) bool { return p.entryCompatible(x, pid, ns, jumps) }
+	c, isNew := analysis.MatchDropboxIn(CrashSummaries(p.Store), e, p.Boot, jumps, same)
 	if c != nil && !isNew {
 		full := CrashFull(p.Store, c.ID)[0]
 		if full == nil {
 			return
 		}
-		c, isNew = analysis.MatchDropboxBoot([]*analysis.Crash{full}, e, p.Boot, jumps)
+		c, isNew = analysis.MatchDropboxIn([]*analysis.Crash{full}, e, p.Boot, jumps, same)
 	}
 	p.Store.AppendAux("dropbox_seen", seenLine{Key: key, HostNs: time.Now().UnixNano()})
 	if c == nil {
