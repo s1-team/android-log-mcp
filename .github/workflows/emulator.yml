@@ -5,7 +5,7 @@ name: emulator
 # runner or the dev box: nested KVM crashes that host (AGENTS.md §6).
 # Not a required check. Steps and evidence: scripts/emulator-ci.sh
 # (compat, service-e2e, report-e2e, app-e2e, clock-e2e, crash-gate,
-# crash-gate-control (informational until #235), fixtures).
+# crash-gate-control, fixtures).
 on:
   schedule:
     - cron: "41 20 * * *"   # nightly, 04:41 Asia/Shanghai (after the perf nightly in ci.yml)
@@ -163,7 +163,7 @@ jobs:
           cat "$OUT/results.tsv"
           {
             echo "### Crash gate, API ${{ matrix.api }}"
-            echo "Required: native + native_abort + Java crash (clock back) + ANR (clock back), each with a service SIGKILL between sources: exactly one row per crash, earlier ids kept. Informational until #235 (#233): uninterrupted native/native_abort give exactly one row."
+            echo "Required: native + native_abort + Java crash (clock back) + ANR (clock back), each with a service SIGKILL between sources: exactly one row per crash, earlier ids kept. Also required (#233, fixed in #235): uninterrupted native/native_abort give exactly one row."
             for g in crash-gate crash-gate-control; do
               [ -s "$OUT/$g/verdicts.tsv" ] || continue
               echo; echo "**$g**"; echo; echo "| scenario | verdict | detail |"; echo "|---|---|---|"
