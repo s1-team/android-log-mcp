@@ -352,3 +352,47 @@ func TestNewestExport(t *testing.T) {
 		t.Fatalf("%+v", f)
 	}
 }
+
+// A different letter case on a case-insensitive file system (Windows, macOS)
+// names the same entry (issue #205).
+func TestProtectedOutDifferentCase(t *testing.T) {
+	t.Parallel()
+	root, ctrl := t.TempDir(), t.TempDir()
+	for _, d := range []string{"v1", "run", "tmp", "bin", "log", "export"} {
+		os.MkdirAll(filepath.Join(root, d), 0o755)
+	}
+	os.MkdirAll(filepath.Join(ctrl, "run"), 0o755)
+	os.WriteFile(filepath.Join(ctrl, "config.json"), []byte("{}"), 0o600)
+	// is the temp dir's file system case-insensitive?
+	insensitive := false
+	if _, err := os.Stat(filepath.Join(root, "RUN")); err == nil {
+		insensitive = true
+	}
+	for _, c := range []struct{ base, path string }{
+		{root, filepath.Join(root, "V1", "dev", "x.txt")},
+		{root, filepath.Join(root, "Run", "x.txt")},
+		{root, filepath.Join(root, "EXPORT", "export-x.txt")},
+		{root, filepath.Join(root, "Tmp", "x")},
+		{ctrl, filepath.Join(ctrl, "RUN", "service.lock")},
+		{ctrl, filepath.Join(ctrl, "Config.JSON")},
+	} {
+		_, bad := ProtectedOut(c.path, root, ctrl)
+		if want := insensitive || foldNames; bad != want {
+			t.Errorf("%s: protected=%v, want %v (case-insensitive fs=%v)", c.path, bad, want, insensitive)
+		}
+	}
+	// the base itself spelled in another case
+	if insensitive {
+		up := strings.ToUpper(root)
+		if _, bad := ProtectedOut(filepath.Join(up, "run", "x.txt"), root); !bad {
+			t.Errorf("upper-cased base %s not recognised", up)
+		}
+		if _, bad := ProtectedOut(filepath.Join(strings.ToUpper(root), "notes", "x.txt"), root); bad {
+			t.Error("notes/ is not ours")
+		}
+	}
+	// other names stay allowed whatever the case
+	if _, bad := ProtectedOut(filepath.Join(root, "Notes", "x.txt"), root, ctrl); bad {
+		t.Error("Notes/ is not ours")
+	}
+}

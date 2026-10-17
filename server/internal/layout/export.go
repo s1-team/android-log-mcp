@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -211,8 +212,12 @@ func SweepExport(dir string, now time.Time, maxAge time.Duration, maxFiles int, 
 // ProtectedOut reports whether an export written to path (`export --out`)
 // would land in android-log-mcp's own structure under one of the bases (the
 // data root, the control directory): a version directory, run/, tmp/, bin/,
-// log/, export/ or config.json. Symlinks are resolved on both sides. The
-// returned name is the protected entry.
+// log/, export/ or config.json. Symlinks are resolved, and the comparison is
+// by file identity (os.SameFile) wherever the entries exist, so a different
+// letter case on a case-insensitive file system (Windows, macOS) or an 8.3
+// short name cannot get around it; where the entry does not exist yet the
+// names are compared case-insensitively on those systems. The returned name
+// is the protected entry.
 func ProtectedOut(path string, bases ...string) (string, bool) {
 	p, err := ResolvePath(path)
 	if err != nil {
@@ -223,13 +228,66 @@ func ProtectedOut(path string, bases ...string) (string, bool) {
 			continue
 		}
 		rb, err := ResolvePath(b)
-		if err != nil || !Within(p, rb) {
+		if err != nil {
 			continue
 		}
-		rel, _ := filepath.Rel(rb, p)
-		first := strings.Split(rel, string(filepath.Separator))[0]
-		if first == "run" || first == "config.json" || OwnEntry(first, true, false) {
-			return filepath.Join(rb, first), true
+		bi, err := os.Stat(rb)
+		if err != nil {
+			continue
+		}
+		// walk up from p to the directory that is the base (by identity)
+		var comps []string
+		cur := p
+		for {
+			parent := filepath.Dir(cur)
+			if parent == cur {
+				break
+			}
+			comps = append([]string{filepath.Base(cur)}, comps...)
+			cur = parent
+			if fi, err := os.Stat(cur); err == nil && os.SameFile(fi, bi) {
+				if name, ok := protectedEntry(rb, comps[0]); ok {
+					return name, true
+				}
+				break
+			}
+		}
+	}
+	return "", false
+}
+
+var foldNames = runtime.GOOS == "windows" || runtime.GOOS == "darwin"
+
+// protectedEntry reports whether first, a name directly under base, is (or on
+// a case-insensitive system could be) one of our own entries.
+func protectedEntry(base, first string) (string, bool) {
+	own := func(n string, dir bool) bool {
+		return n == "run" || n == "config.json" || OwnEntry(n, dir, false)
+	}
+	if own(first, true) {
+		return filepath.Join(base, first), true
+	}
+	if foldNames {
+		for _, n := range []string{"run", "config.json", "tmp", "bin", "log", ExportDirName} {
+			if strings.EqualFold(n, first) {
+				return filepath.Join(base, first), true
+			}
+		}
+		if m := versionDir.MatchString(strings.ToLower(first)); m {
+			return filepath.Join(base, first), true
+		}
+	}
+	fi, err := os.Stat(filepath.Join(base, first))
+	if err != nil {
+		return "", false
+	}
+	ents, _ := os.ReadDir(base)
+	for _, e := range ents {
+		if !own(e.Name(), e.IsDir()) {
+			continue
+		}
+		if ei, err := os.Stat(filepath.Join(base, e.Name())); err == nil && os.SameFile(ei, fi) {
+			return filepath.Join(base, e.Name()), true
 		}
 	}
 	return "", false
