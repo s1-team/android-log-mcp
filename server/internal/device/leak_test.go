@@ -11,6 +11,11 @@ import (
 	"github.com/s1crab/android-log-mcp/server/internal/fakeadb"
 )
 
+// leakWait bounds waits on fake adb under a starved CI runner (Windows,
+// many packages at once): spawning the fake logcat child alone can take
+// more than 30 s (#222, same class as #220 / #221).
+const leakWait = 60 * time.Second
+
 // Issue #194 (promoted from the blind-device probe). It kills the fake adb logcat child
 // with os.Process.Kill, which works on every OS.
 // Every in-session restart of the recorder (logcat stream dies, device stays "device")
@@ -35,6 +40,23 @@ func TestRecordOnceRestartDoesNotLeakWorkers(t *testing.T) {
 		}
 		return n
 	}
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		st := d.Status()
+		d.bg.mu.Lock()
+		workers := make(map[uint64]string, len(d.bg.run))
+		for k, v := range d.bg.run {
+			workers[k] = v
+		}
+		d.bg.mu.Unlock()
+		t.Logf("recording=%v state=%q owned=%v lastErr=%q workers=%v\nstream calls exec-out=%d logcat=%d\nfake adb calls (tail):\n%s",
+			st.Recording, st.State, st.Owned, st.LastErr, workers,
+			len(e.CallsMatching("-s FAKEA exec-out logcat -b")),
+			len(e.CallsMatching("-s FAKEA logcat -b")),
+			e.CallsTail(60))
+	})
 	for i := 1; i <= 3; i++ {
 		// a stream killed before its first line is retried without exec-out, so
 		// count both forms of the logcat start
@@ -52,8 +74,8 @@ func TestRecordOnceRestartDoesNotLeakWorkers(t *testing.T) {
 				}
 			}
 		}
-		waitFor(t, "the new logcat stream", 30*time.Second, func() bool { return streamCount() > streams })
-		waitFor(t, "recording again", 30*time.Second, func() bool { return d.Status().Recording })
+		waitFor(t, "the new logcat stream after kill (restart "+strconv.Itoa(i)+")", leakWait, func() bool { return streamCount() > streams })
+		waitFor(t, "recording again after kill (restart "+strconv.Itoa(i)+")", leakWait, func() bool { return d.Status().Recording })
 	}
 	time.Sleep(500 * time.Millisecond)
 	if n := count("reconcile"); n != 1 {
