@@ -110,6 +110,8 @@ func (l *lazyEnv) call(t *testing.T, name, args string) (string, bool) {
 func TestFirstCallBackfills(t *testing.T) {
 	t.Parallel()
 	l := newLazy(t, 5, "FAKEA")
+	// negative observation (nothing may run adb before the first call); a
+	// starved runner only shortens it, it cannot make it fail
 	time.Sleep(200 * time.Millisecond)
 	if c := l.e.Calls(); len(c) != 0 {
 		t.Fatalf("adb ran before the first call: %q", c)
@@ -299,7 +301,6 @@ func TestStatusShowsLateHandover(t *testing.T) {
 		if strings.Contains(out, "note code=handoff") {
 			return true
 		}
-		time.Sleep(40 * time.Millisecond)
 		return false
 	})
 	t.Logf("logcat_status:\n%s", out)

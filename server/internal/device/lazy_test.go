@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -26,8 +28,14 @@ func fakeEnv(t *testing.T) fakeadb.Env {
 		t.Fatal(err)
 	}
 	testADBs.Store(t.Name(), adb)
-	t.Cleanup(func() { testADBs.Delete(t.Name()) })
-	return fakeadb.Env{Dir: dir}
+	e := fakeadb.Env{Dir: dir}
+	// what waitFor dumps on timeout (#226): the fake adb invocation log and
+	// whether any fake child is alive
+	testDiags.Store(t.Name(), func() string {
+		return fmt.Sprintf("fake adb calls (tail):\n%s\nany child running: %v\n", e.CallsTail(60), e.AnyChildRunning())
+	})
+	t.Cleanup(func() { testADBs.Delete(t.Name()); testDiags.Delete(t.Name()) })
+	return e
 }
 
 // Per-test fake adb paths and Timings (#26): fakeEnv and testTiming
@@ -142,15 +150,44 @@ func lazyManager(t *testing.T, linger time.Duration) *Manager {
 	return m
 }
 
+// waitFor polls cond with its own budget per stage, scaled by
+// ALM_TEST_TIMEOUT_FACTOR (default 1, 2 on Windows and macOS runners; #226),
+// and on timeout dumps the fake adb state and all goroutines.
 func waitFor(t *testing.T, what string, timeout time.Duration, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for !cond() {
+	// a floor of 30 s per stage: short budgets tuned on fast Linux flaked on
+	// starved runners
+	budget := time.Duration(float64(max(timeout, 30*time.Second)) * waitFactor())
+	deadline := time.Now().Add(budget)
+	for delay := 10 * time.Millisecond; !cond(); {
 		if time.Now().After(deadline) {
-			t.Fatalf("timed out waiting for %s", what)
+			var diag string
+			if v, ok := lookupTest(&testDiags, t); ok {
+				diag = v.(func() string)()
+			}
+			buf := make([]byte, 1<<16)
+			buf = buf[:runtime.Stack(buf, true)]
+			t.Fatalf("timed out after %s waiting for %s\n%s\n--- goroutines\n%s", budget, what, diag, buf)
 		}
-		time.Sleep(20 * time.Millisecond)
+		time.Sleep(delay)
+		if delay < 50*time.Millisecond {
+			delay += 10 * time.Millisecond
+		}
 	}
+}
+
+var testDiags sync.Map // test name -> func() string
+
+func waitFactor() float64 {
+	if s := os.Getenv("ALM_TEST_TIMEOUT_FACTOR"); s != "" {
+		if f, err := strconv.ParseFloat(s, 64); err == nil && f > 0 {
+			return f
+		}
+	}
+	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
+		return 2
+	}
+	return 1
 }
 
 func messages(st *store.Store) []string {
@@ -401,14 +438,17 @@ func TestPinnedDeviceStays(t *testing.T) {
 	until := time.Now().Add(time.Hour)
 	m.PinnedUntil = func(string) time.Time { mu.Lock(); defer mu.Unlock(); return until }
 	startDevice(t, m, "FAKEA")
-	mu.Lock()
-	until = time.Now().Add(800 * time.Millisecond)
-	mu.Unlock()
+	// Observe the device across several lingers (100 ms) while the pin is
+	// still in force; the pin is then ended explicitly (in the past) instead
+	// of by a deadline that a starved runner could pass mid-observation.
 	time.Sleep(500 * time.Millisecond)
 	if !m.Wanted("FAKEA") {
 		t.Fatal("stopped while pinned")
 	}
-	waitFor(t, "stop after the pin", 5*time.Second, func() bool { return !m.Wanted("FAKEA") })
+	mu.Lock()
+	until = time.Now().Add(-time.Second)
+	mu.Unlock()
+	waitFor(t, "stop after the pin", 30*time.Second, func() bool { return !m.Wanted("FAKEA") })
 }
 
 func TestMaxDevices(t *testing.T) {

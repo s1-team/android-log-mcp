@@ -55,19 +55,13 @@ func readPID(dir, name string) int {
 
 func waitFile(t *testing.T, dir, name string) int {
 	t.Helper()
-	deadline := time.Now().Add(20 * time.Second)
-	for time.Now().Before(deadline) {
-		if pid := readPID(dir, name); pid > 0 {
-			return pid
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	t.Fatalf("%s not written", name)
-	return 0
+	var pid int
+	waitUntil(t, name+" to be written", 60*time.Second, func() bool { pid = readPID(dir, name); return pid > 0 })
+	return pid
 }
 
 func waitGoneQuiet(pid int) bool {
-	deadline := time.Now().Add(20 * time.Second)
+	deadline := time.Now().Add(scaled(60 * time.Second))
 	for time.Now().Before(deadline) {
 		if !processAlive(pid) {
 			return true
@@ -127,9 +121,12 @@ func TestServiceExitsAfterLastClient(t *testing.T) {
 	env = isoEnv(t, "ALM_TEST_EXIT_GRACE=1s", "ANDROID_LOG_MCP_LINGER=0")
 	s := startMCP(t, env)
 	pid, _ := servicePID(t, s.status(t))
-	time.Sleep(2500 * time.Millisecond)
-	if !processAlive(pid) {
-		t.Fatal("service stopped while an MCP client was connected")
+	// longer than the 1s grace while the client is connected (a negative
+	// observation: it ends at once if the service exits)
+	select {
+	case <-exited(pid):
+		t.Fatalf("service stopped while an MCP client was connected\n%s", dumpDiags(t))
+	case <-time.After(2500 * time.Millisecond):
 	}
 	s.cs.Close()
 	waitGone(t, pid)
@@ -156,4 +153,17 @@ func controlDirOf(env []string) string {
 		return filepath.Join(get("HOME"), "Library", "Caches", "android-log-mcp")
 	}
 	return filepath.Join(get("XDG_CACHE_HOME"), "android-log-mcp")
+}
+
+// exited closes when pid is no longer running (polled; the goroutine ends
+// with the test binary, bounded by the process lifetime check).
+func exited(pid int) <-chan struct{} {
+	ch := make(chan struct{})
+	go func() {
+		for processAlive(pid) {
+			time.Sleep(20 * time.Millisecond)
+		}
+		close(ch)
+	}()
+	return ch
 }

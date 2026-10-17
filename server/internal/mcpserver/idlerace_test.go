@@ -1,6 +1,9 @@
 package mcpserver
 
 import (
+	"os"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -85,13 +88,30 @@ func cursorOf(status string) string {
 	return ""
 }
 
+// waitUntil polls cond with its own budget per stage, scaled by
+// ALM_TEST_TIMEOUT_FACTOR (default 1, 2 on Windows and macOS runners; #226)
+// with a floor of 30 s, and on timeout dumps all goroutines.
 func waitUntil(t *testing.T, what string, timeout time.Duration, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for !cond() {
-		if time.Now().After(deadline) {
-			t.Fatalf("timed out waiting for %s", what)
+	f := 1.0
+	if s := os.Getenv("ALM_TEST_TIMEOUT_FACTOR"); s != "" {
+		if v, err := strconv.ParseFloat(s, 64); err == nil && v > 0 {
+			f = v
 		}
-		time.Sleep(10 * time.Millisecond)
+	} else if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
+		f = 2
+	}
+	budget := time.Duration(float64(max(timeout, 30*time.Second)) * f)
+	deadline := time.Now().Add(budget)
+	for delay := 10 * time.Millisecond; !cond(); {
+		if time.Now().After(deadline) {
+			buf := make([]byte, 1<<16)
+			buf = buf[:runtime.Stack(buf, true)]
+			t.Fatalf("timed out after %s waiting for %s\n--- goroutines\n%s", budget, what, buf)
+		}
+		time.Sleep(delay)
+		if delay < 50*time.Millisecond {
+			delay += 10 * time.Millisecond
+		}
 	}
 }
