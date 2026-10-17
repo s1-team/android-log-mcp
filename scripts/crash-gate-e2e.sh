@@ -13,8 +13,8 @@
 #     Asserts: >=1 row of the kind, exactly one row per crashed pid, ids
 #     written before the kill still present afterwards.
 #   control: the same native / native_abort crashes with NO restart; exactly
-#     one row each (#233, fixed by PR #235). Informational in CI until #235
-#     merges (env CRASH_GATE_CONTROL_REQUIRED=1 makes it required).
+#     one row each (#233, fixed by PR #235). Required since #235
+#     merged (required).
 #
 # Changes the device clock (auto_time off, adb root); a trap restores it. Own
 # XDG_CACHE_HOME per scenario under OUT_DIR/scratch. CI only (AGENTS.md §6).
