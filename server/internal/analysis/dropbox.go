@@ -188,13 +188,25 @@ func (c *Crash) hasDropboxSource() bool {
 // For an ANR the time of the entry is the one in its body when it has one
 // (issue #152), else the header time; the header time stays a candidate.
 //
-// Kind, pid, process and boot must agree; the window (60 s, ANR
-// anrPairWindow) is checked against the raw time difference and against
+// Kind, pid, process and boot must agree; the window (legacy facts: 60 s, ANR 120 s; else
+// anrEvidenceCap) is checked against the raw time difference and against
 // the one shifted by the clock jumps stored after the crash (jumps, issue
 // #93). When two different crashes are equally near and one of them got
 // there through a shift, the entry stays unmatched: a missing attachment
 // beats a wrong merge.
 func MatchDropboxBoot(list []*Crash, e DropboxEntry, boot string, jumps []ClockShift) (c *Crash, isNew bool) {
+	return MatchDropboxIn(list, e, boot, jumps, nil)
+}
+
+// MatchDropboxIn is MatchDropboxBoot with the incarnation veto of issue
+// #225 (design 3.1.1): same(x, pid, ns) reports whether the stored fact x
+// and the process lifetime that the entry (pid, device time ns) belongs to
+// can be the same lifetime; false vetoes the pairing whatever the time
+// says (nil: no veto). The time windows only remain for a legacy fact (no
+// "ev", written by 0.9.x): legacyAnrWindow, legacyCrashWindow; a fact with
+// "ev" is bounded by anrEvidenceCap and, for a Java or native crash, by
+// the incarnation alone.
+func MatchDropboxIn(list []*Crash, e DropboxEntry, boot string, jumps []ClockShift, same func(x *Crash, pid int, ns int64) bool) (c *Crash, isNew bool) {
 	kind := ""
 	switch {
 	case e.Tag == "SYSTEM_TOMBSTONE":
@@ -246,6 +258,10 @@ func MatchDropboxBoot(list []*Crash, e DropboxEntry, boot string, jumps []ClockS
 		if proc != "" && x.Process != "" && x.Process != proc && pkgOf(x.Process) != pkgOf(proc) {
 			continue
 		}
+		if same != nil && !same(x, pid, firstNonZero(e.BodyTimeNs, e.TimeNs)) {
+			continue // another lifetime of that pid (design 3.1.1)
+		}
+		fresh := x.HasEvidence() && !x.synthOnly()
 		d, shifted := dropboxDelta(x.TimeNs, x.Seq, e.TimeNs, jumps)
 		if e.BodyTimeNs != 0 {
 			// the body time is the real one, the header time may have been
@@ -254,18 +270,21 @@ func MatchDropboxBoot(list []*Crash, e DropboxEntry, boot string, jumps []ClockS
 				d, shifted = db, sb
 			}
 		}
-		win := int64(60e9)
+		win := legacyCrashWindow
+		if fresh {
+			win = anrEvidenceCap // veto cap, not the matcher
+		}
 		inWin := d < win
 		if kind == "anr" {
-			inWin = d < anrPairWindow
-			win = anrPairWindow
-			if fresh := x.HasEvidence() && !x.synthOnly(); fresh {
+			if !fresh {
+				win = legacyAnrWindow
+				inWin = d < win
+			}
+			if fresh {
 				// a fact written by the ordinal pairing (issue #225): the
 				// 120 s window gives way to the veto cap, a different
 				// reason is a different ANR, and an ANR logged after the
 				// entry (or of a later fact of the process) is not its source
-				win = anrEvidenceCap
-				inWin = d < win
 				if ok, _ := ReasonCompatible(x.Headline, headerField(e.Body, "Subject")); !ok {
 					continue
 				}
@@ -420,6 +439,14 @@ func crashingThread(tomb string) string {
 // an entry was adopted. jumps are the stored clock jumps (see
 // MatchDropboxBoot); the same boot, kind and pid still have to agree.
 func AdoptDropbox(list []*Crash, c *Crash, jumps []ClockShift) bool {
+	return AdoptDropboxIn(list, c, jumps, nil)
+}
+
+// AdoptDropboxIn is AdoptDropbox with the incarnation veto: same(x, c)
+// reports whether the DropBox-only fact x and the logcat crash c can be one
+// process lifetime. A twin that carries "ev" is bounded by anrEvidenceCap
+// (an ANR also by its reason); a legacy twin (0.9.x) keeps the old window.
+func AdoptDropboxIn(list []*Crash, c *Crash, jumps []ClockShift, same func(x, c *Crash) bool) bool {
 	if c.ID != "" || c.PID == 0 {
 		return false
 	}
@@ -430,9 +457,20 @@ func AdoptDropbox(list []*Crash, c *Crash, jumps []ClockShift) bool {
 		if x.Kind != c.Kind || x.PID != c.PID || x.Boot != "" && c.Boot != "" && x.Boot != c.Boot || !dropboxOnly(x) {
 			continue
 		}
-		win := int64(60e9)
+		if same != nil && !same(x, c) {
+			continue
+		}
+		win := legacyCrashWindow
 		if c.Kind == "anr" {
-			win = anrPairWindow
+			win = legacyAnrWindow
+		}
+		if x.HasEvidence() && !x.synthOnly() {
+			win = anrEvidenceCap
+			if c.Kind == "anr" {
+				if ok, _ := ReasonCompatible(x.Headline, c.Headline); !ok {
+					continue
+				}
+			}
 		}
 		d, shifted := dropboxDelta(c.TimeNs, c.Seq, x.TimeNs, jumps)
 		if d < win && d < bestD {

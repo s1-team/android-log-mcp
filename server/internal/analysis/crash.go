@@ -175,13 +175,7 @@ func (d *Detector) remember(c *Crash) {
 	}
 }
 
-// anrPairWindow is how far apart the sources of one ANR may be logged:
-// am_anr (events) when the ANR is declared, the "ANR in" block after the
-// ANR dump finished, which takes 30+ s on a loaded system_server or a TCG
-// emulator. The DropBox entry of an ANR is matched with the same window.
-const anrPairWindow = 120e9
-
-// findAnr finds the ANR of pid within anrPairWindow of ns that still lacks
+// findAnr finds the ANR of pid (within anrEvidenceCap of ns) that still lacks
 // the source being added (one-to-one pairing: a complete ANR is never
 // joined by a second am_anr or block, so the long window cannot merge two
 // different ANRs of one process). needEvent: the caller is am_anr and

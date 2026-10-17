@@ -37,7 +37,7 @@ func TestDropboxClockJumpMatch(t *testing.T) {
 	for _, kind := range []string{"java", "anr"} {
 		win := 60 * s
 		if kind == "anr" {
-			win = anrPairWindow
+			win = legacyAnrWindow
 		}
 		for _, tc := range []struct {
 			name   string
