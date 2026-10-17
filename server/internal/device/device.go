@@ -512,6 +512,11 @@ func (d *Device) pipeline() *Pipeline {
 }
 
 func (d *Device) recordOnce(ctx context.Context) error {
+	// every iteration has its own context, cancelled on return: the workers it
+	// starts (sideWork, reconcile, measureTotal, ...) end with it instead of
+	// piling up per in-session restart until the session ends (issue #194)
+	ctx, endIter := context.WithCancel(ctx)
+	defer endIter()
 	sess := sessionOf(ctx)
 	if err := d.probe(ctx); err != nil {
 		return fmt.Errorf("probe: %w", err)
