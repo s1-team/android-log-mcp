@@ -79,8 +79,30 @@ func (f *frameConn) send(v any) error {
 	f.wm.Lock()
 	defer f.wm.Unlock()
 	f.c.SetWriteDeadline(time.Now().Add(30 * time.Second))
-	_, err = f.c.Write(append(b, '\n'))
-	return err
+	if _, err = f.c.Write(append(b, '\n')); err != nil {
+		return &writeError{err}
+	}
+	return nil
+}
+
+// writeError is a failed write to the socket (as opposed to a message that
+// could not be encoded).
+type writeError struct{ err error }
+
+func (e *writeError) Error() string { return e.err.Error() }
+func (e *writeError) Unwrap() error { return e.err }
+
+// peerGone reports whether a failed write means the peer went away (EPIPE,
+// ECONNRESET, WSAECONNRESET/ERROR_BROKEN_PIPE on Windows, closed socket):
+// every write error except a timeout. The reader notices the same loss a
+// moment later, so the write may fail first; the frame was not delivered.
+func peerGone(err error) bool {
+	var we *writeError
+	if !errors.As(err, &we) {
+		return false
+	}
+	var ne net.Error
+	return !(errors.As(we.err, &ne) && ne.Timeout())
 }
 
 func (f *frameConn) recv(v any) error {
@@ -111,9 +133,13 @@ func Dial(path string, timeout time.Duration) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	return newClient(c), nil
+}
+
+func newClient(c net.Conn) *Client {
 	cl := &Client{fc: newFrameConn(c), pending: map[uint64]chan Response{}, done: make(chan struct{})}
 	go cl.readLoop()
-	return cl, nil
+	return cl
 }
 
 func (c *Client) readLoop() {
@@ -179,6 +205,13 @@ func (c *Client) Do(ctx context.Context, op string, in, out any) error {
 		case <-c.done:
 			return ErrClosed
 		default:
+		}
+		if peerGone(err) {
+			// The write failed before the reader saw the EOF: the service
+			// is closing. Same outcome as a lost connection (the request
+			// was not delivered), so callers reconnect (#237).
+			c.Close()
+			return ErrClosed
 		}
 		return err
 	}
