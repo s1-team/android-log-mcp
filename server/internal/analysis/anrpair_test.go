@@ -34,7 +34,7 @@ func TestANRPairGaps(t *testing.T) {
 	for _, tc := range []struct {
 		gap  float64
 		want int
-	}{{5, 1}, {33, 1}, {100, 1}, {130, 2}} {
+	}{{5, 1}, {33, 1}, {100, 1}, {130, 1}, {300, 1}, {590, 1}, {600, 1}, {601, 2}} {
 		r := newJumpRig(t)
 		r.amANR(1000, 4321)
 		r.anrBlock(1000+tc.gap, 4321)
@@ -103,9 +103,14 @@ func TestANRDropboxWindow(t *testing.T) {
 	if isNew || c == nil || !strings.Contains(strings.Join(c.Sources, ","), "dropbox:data_app_anr") {
 		t.Fatalf("dropbox entry 70 s after am_anr: new=%v c=%v", isNew, c)
 	}
+	// the 120 s window is gone (issue #225 PR2): a slow dump pairs up to the cap
 	e.TimeNs = got[0].TimeNs + 130e9
+	if c, isNew := MatchDropbox(got, e); isNew || c == nil {
+		t.Fatalf("dropbox entry 130 s after am_anr: new=%v", isNew)
+	}
+	e.TimeNs = got[0].TimeNs + anrEvidenceCap + 1e9
 	if _, isNew := MatchDropbox(got, e); !isNew {
-		t.Fatalf("dropbox entry 130 s after am_anr must be new")
+		t.Fatalf("dropbox entry beyond the cap must be new")
 	}
 }
 

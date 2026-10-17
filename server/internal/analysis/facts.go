@@ -199,7 +199,7 @@ func MergeFact(latest, in *Crash, m MergeMode) *Crash {
 	// anchor (first evidence): an ANR keeps the stored one; Java and native
 	// take the logcat record's, which upgrades an events-only version
 	switch {
-	case latest.Kind != "anr" && inLogcat && in.TimeNs != 0:
+	case latest.Kind != "anr" && inLogcat && in.TimeNs != 0 && latest.Classes()&ClassLogcat == 0:
 	case latest.Seq != 0 || in.Seq == 0 && latest.TimeNs != 0:
 		out.TimeNs, out.Seq = latest.TimeNs, latest.Seq
 	}
@@ -297,6 +297,7 @@ func MergeFact(latest, in *Crash, m MergeMode) *Crash {
 	out.Sources = src
 	// incoming binding fields are decided by the caller (design 3.1.1)
 	out.Inc, out.IncWeak = latest.Inc, latest.IncWeak
+	out.N = latest.N // the ordinal is fixed at creation
 	return &out
 }
 
@@ -327,7 +328,6 @@ const (
 // check of the caller (nil: all). DropBox-only facts are left to
 // AdoptDropbox.
 func FindOpenFact(cands []*Crash, in *Crash, jumps []ClockShift, compat func(*Crash) bool) (f *Crash, repeat bool) {
-	inCl := in.Classes()
 	ok := func(x *Crash) bool {
 		if x.Kind != in.Kind || x.ID == "" {
 			return false
@@ -350,21 +350,24 @@ func FindOpenFact(cands []*Crash, in *Crash, jumps []ClockShift, compat func(*Cr
 			return x, true
 		}
 	}
+	if in.Kind == "anr" {
+		// ordinal / interval pairing (anrfact.go); legacy facts keep the window
+		return PickAnrFact(cands, in, func(x *Crash) int64 { return signedDelta(x.TimeNs, x.Seq, in.TimeNs, jumps) }, compat)
+	}
 	for _, x := range cands {
 		if !ok(x) || dropboxOnly(x) {
 			continue
 		}
 		win := legacyCrashWindow
 		switch in.Kind {
-		case "anr":
-			win = legacyAnrWindow
-			if x.Classes()&inCl != 0 {
-				continue // one-to-one: the fact has that source already
-			}
 		case "java":
 			win = javaMergeWindow
 		case "native":
-			if x.Classes()&inCl&(ClassEvents|ClassLogcat) != 0 {
+			// one fact per source of a native crash: the libc line
+			// (logcat:crash), the tombstone lines (logcat:tombstone) and
+			// am_crash are three different sources of one crash (issue
+			// #233), a second one of the same source is another crash
+			if x.hasAnySource(in) {
 				continue
 			}
 		}
@@ -377,4 +380,17 @@ func FindOpenFact(cands []*Crash, in *Crash, jumps []ClockShift, compat func(*Cr
 		return x, false
 	}
 	return nil, false
+}
+
+// hasAnySource reports that c already holds a source string of in's
+// evidence.
+func (c *Crash) hasAnySource(in *Crash) bool {
+	for _, e := range in.Ev {
+		for _, s := range c.Sources {
+			if s == e.S {
+				return true
+			}
+		}
+	}
+	return false
 }
