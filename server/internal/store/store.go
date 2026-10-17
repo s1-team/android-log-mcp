@@ -224,12 +224,30 @@ func (s *Store) TryPromote() bool {
 	if !ok {
 		return false
 	}
+	// The old writer is gone: take over what it left on disk exactly as
+	// OpenDir does for a writer (re-list the segments, cut a torn last
+	// line, reload the window and the newest seq), before the first
+	// Append. Refresh does nothing for a writer, so a follower that only
+	// switched the flag would reuse seqs the old writer had already
+	// written and append to its partial last line (issue #180).
+	segs, err := s.listSegments()
+	if err != nil {
+		f.Close()
+		return false
+	}
 	s.writer = true
 	s.lockF = f
-	s.mu.Unlock()
-	s.Refresh() // catch up with whatever the old writer flushed
-	s.mu.Lock()
+	s.metaMod = time.Time{} // meta.json is reloaded whatever its mtime
 	s.loadMetaLocked()
+	s.tailSeg, s.tailOff = "", 0
+	if err := s.loadSegmentsLocked(segs, true); err != nil {
+		// stay a follower: give the lock back so a later TryPromote retries
+		s.writer = false
+		s.releaseLockLocked()
+		return false
+	}
+	close(s.notify)
+	s.notify = make(chan struct{})
 	return true
 }
 
@@ -337,6 +355,13 @@ func (s *Store) loadSegments() error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.loadSegmentsLocked(segs, false)
+}
+
+// loadSegmentsLocked is loadSegments for the listed segments, with s.mu held.
+// With strict, a torn last line that cannot be cut is an error (a promoted
+// follower must not write behind it); OpenDir keeps going as before.
+func (s *Store) loadSegmentsLocked(segs []segment, strict bool) error {
 	s.segs = segs
 	if len(segs) == 0 {
 		s.loaded = true
@@ -349,6 +374,8 @@ func (s *Store) loadSegments() error {
 			if st, err := os.Stat(last.path); err == nil {
 				s.segs[len(s.segs)-1].size = st.Size()
 			}
+		} else if strict {
+			return err
 		}
 		s.loadWindowLocked()
 		return nil
@@ -716,14 +743,7 @@ func (s *Store) Close() {
 		s.cur.Close()
 		s.cur = nil
 	}
-	if s.lockF != nil {
-		name := s.lockF.Name()
-		s.lockF.Close()
-		if runtime.GOOS == "windows" {
-			os.Remove(name)
-		}
-		s.lockF = nil
-	}
+	s.releaseLockLocked()
 	s.writer = false
 	s.closed.Store(true)
 	s.hmu.Lock()
@@ -732,6 +752,19 @@ func (s *Store) Close() {
 		s.idleT = nil
 	}
 	s.hmu.Unlock()
+}
+
+// releaseLockLocked releases writer.lock (s.mu held).
+func (s *Store) releaseLockLocked() {
+	if s.lockF == nil {
+		return
+	}
+	name := s.lockF.Name()
+	s.lockF.Close()
+	if runtime.GOOS == "windows" {
+		os.Remove(name)
+	}
+	s.lockF = nil
 }
 
 // segmentTooOld (nowNs: host time): the active segment already spans a quarter of the
