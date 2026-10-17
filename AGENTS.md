@@ -47,6 +47,7 @@ Release only after **explicit sign-off from the user or maintainer**.
 - [ ] CI green on all OSes for the release commit.
 - [ ] `scripts/service-e2e.sh` on API 29 and API 35.
 - [ ] `scripts/e2e-report.sh` on API 29 and API 35, including `--logs-only`.
+- [ ] `scripts/app-e2e.sh` on API 29 and API 35, including its `logcat_export` and `android-log-mcp export --out` checks.
 - [ ] SIGSTOP the real service process: automatic replacement, `service stop --force`, no data loss (production timings).
 - [ ] Upgrade: old-version service process + new MCP process or CLI process (version handoff, socket directory migration).
 - [ ] `adb shell date -s` back-jump plus a real app crash and ANR: attribution still correct.

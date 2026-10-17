@@ -648,3 +648,26 @@ func TestToolAnnotations(t *testing.T) {
 		t.Errorf("%s", b)
 	}
 }
+
+// logcat_status lists the newest export file: name, size, age and whether it
+// is complete; nothing without one.
+func TestStatusListsNewestExport(t *testing.T) {
+	// not parallel: changes package variables
+	fx := newExFx(t, 14000)
+	st, _ := fx.tools.Call(context.Background(), "logcat_status", json.RawMessage(`{"device":"emu-x"}`))
+	if strings.Contains(st, "\n  export ") {
+		t.Fatalf("no export yet:\n%s", st)
+	}
+	out := fx.ok(t, `{"max_mb":1}`) // truncated: incomplete
+	p := respFile(t, out)
+	st, _ = fx.tools.Call(context.Background(), "logcat_status", json.RawMessage(`{"device":"emu-x"}`))
+	want := "  export file=" + p + " bytes="
+	if !strings.Contains(st, want) || !strings.Contains(st, " complete=0\n") || !strings.Contains(st, " age_s=") {
+		t.Fatalf("status lacks %q complete=0:\n%s", want, st)
+	}
+	fx.ok(t, `{"after":"`+regexp.MustCompile(`next: after="([^"]+)"`).FindStringSubmatch(out)[1]+`","max_mb":64}`) // the rest: complete
+	st, _ = fx.tools.Call(context.Background(), "logcat_status", json.RawMessage(`{"device":"emu-x"}`))
+	if strings.Count(st, "\n  export ") != 1 || !strings.Contains(st, " complete=1\n") {
+		t.Fatalf("newest file is complete:\n%s", st)
+	}
+}

@@ -5,9 +5,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -58,6 +61,64 @@ type exportArgs struct {
 	RedactExtra []string `json:"redact_extra"`
 	MaxMB       int      `json:"max_mb"`
 	Verbose     bool     `json:"verbose"`
+
+	// The CLI's destination (ExportToFile); never decoded from tool
+	// arguments, so a model cannot choose where the file goes.
+	out     string   // absolute file path; "" = <root>/export/
+	force   bool     // overwrite out
+	protect []string // bases whose own entries out must not be inside
+
+	keepPrivateIP bool     // --keep-private-ip
+	keepDomains   []string // --keep-domain
+}
+
+// checkExportOut validates the CLI's --out before anything is scanned.
+func checkExportOut(a exportArgs) error {
+	next := []string{"--out /abs/dir/export.txt"}
+	if !filepath.IsAbs(a.out) {
+		return errc("bad_param", next, "param", "--out", "value", a.out, "msg", "must be an absolute path")
+	}
+	if name, bad := layout.ProtectedOut(a.out, a.protect...); bad {
+		return errc("bad_param", next, "param", "--out", "value", a.out, "msg", "inside android-log-mcp's own data ("+name+"): choose another directory")
+	}
+	if fi, err := os.Stat(filepath.Dir(a.out)); err != nil || !fi.IsDir() {
+		return errc("bad_param", next, "param", "--out", "value", a.out, "msg", "the directory does not exist")
+	}
+	if fi, err := os.Lstat(a.out); err == nil {
+		if fi.IsDir() {
+			return errc("bad_param", next, "param", "--out", "value", a.out, "msg", "is a directory")
+		}
+		if !a.force {
+			return errc("exists", []string{"--force to overwrite it, or another --out"}, "file", a.out)
+		}
+	}
+	return nil
+}
+
+// ExportTarget is where the CLI's export goes.
+type ExportTarget struct {
+	Out     string   // absolute file path
+	Force   bool     // overwrite an existing Out
+	Protect []string // bases (data root, control dir) whose own entries Out must not be inside
+
+	KeepPrivateIP bool     // do not redact private IP addresses (with redact=true)
+	KeepDomains   []string // domains left unredacted (with redact=true)
+}
+
+// ExportToFile is `android-log-mcp export`: the logcat_export tool with the
+// file written to tgt.Out instead of <root>/export/ (also without a data
+// root, for --offline). args are the tool arguments as JSON. Like Call it
+// returns the text and whether it is an error.
+func (t *Tools) ExportToFile(ctx context.Context, args json.RawMessage, tgt ExportTarget) (string, bool) {
+	var a exportArgs
+	err := decodeArgs(args, &a)
+	var out string
+	if err == nil {
+		a.out, a.force, a.protect = tgt.Out, tgt.Force, tgt.Protect
+		a.keepPrivateIP, a.keepDomains = tgt.KeepPrivateIP, tgt.KeepDomains
+		out, err = t.export(ctx, a)
+	}
+	return toolResult(out, err)
 }
 
 const unredactedWarning = "not redacted. Lines are exactly as recorded and may contain tokens, passwords or personal data. Re-export with redact=true (CLI: --redact) before sharing."
@@ -75,12 +136,16 @@ func (t *Tools) export(ctx context.Context, a exportArgs) (out string, err error
 	if len(a.RedactExtra) > exportMaxExtra {
 		return "", errc("bad_param", []string{"redact_extra=[first 8 patterns]"}, "param", "redact_extra", "value", len(a.RedactExtra), "valid", "max "+strconv.Itoa(exportMaxExtra))
 	}
-	red, rerr := redact.New(redact.Options{Disabled: !a.Redact, Extra: a.RedactExtra, Home: userHome()})
+	red, rerr := redact.New(redact.Options{Disabled: !a.Redact, Extra: a.RedactExtra, KeepPrivateIP: a.keepPrivateIP, KeepDomains: a.keepDomains, Home: userHome()})
 	if rerr != nil {
 		return "", errc("bad_param", []string{"redact_extra=[]"}, "param", "redact_extra", "msg", rerr.Error())
 	}
-	if t.ExportRoot.Dir == "" {
-		return "", errc("export_failed", nil, "msg", "no file can be written with --offline")
+	if a.out != "" {
+		if err := checkExportOut(a); err != nil {
+			return "", err
+		}
+	} else if t.ExportRoot.Dir == "" {
+		return "", errc("export_failed", []string{"android-log-mcp --offline DIR export --out /abs/file.txt"}, "msg", "no file can be written to the dataset with --offline: give --out")
 	}
 	d, done, note, err := t.useAndWait(ctx, a.Device)
 	defer done()
@@ -100,7 +165,9 @@ func (t *Tools) export(ctx context.Context, a exportArgs) (out string, err error
 	}
 	capBytes := int64(a.MaxMB) << 20
 	dir := t.ExportRoot.Export()
-	if _, serr := os.Stat(dir); serr != nil {
+	if a.out != "" {
+		dir = filepath.Dir(a.out)
+	} else if _, serr := os.Stat(dir); serr != nil {
 		if err := t.ExportRoot.EnsureExport(); err != nil {
 			return "", errc("export_failed", []string{"android-log-mcp service status"}, "msg", err.Error())
 		}
@@ -288,9 +355,18 @@ func (t *Tools) export(ctx context.Context, a exportArgs) (out string, err error
 		sum := sha256.Sum256([]byte(label))
 		label = "dev-" + hex.EncodeToString(sum[:4])
 	}
-	final, err := layout.FreeName(dir, func(n int) string { return layout.ExportName(label, hostNow, n) })
-	if err == nil {
-		err = af.Commit(final, false)
+	var final string
+	if a.out != "" {
+		final = a.out
+		err = af.Commit(final, a.force)
+		if errors.Is(err, layout.ErrExists) {
+			return "", errc("exists", []string{"--force to overwrite it, or another --out"}, "file", final)
+		}
+	} else {
+		final, err = layout.FreeName(dir, func(n int) string { return layout.ExportName(label, hostNow, n) })
+		if err == nil {
+			err = af.Commit(final, false)
+		}
 	}
 	if err != nil {
 		return "", errc("export_failed", []string{"android-log-mcp service status"}, "msg", err.Error())
@@ -302,7 +378,10 @@ func (t *Tools) export(ctx context.Context, a exportArgs) (out string, err error
 	if a.Redact {
 		extra = append(extra, "redaction_hits", hits)
 	}
-	extra = append(extra, "clock_jumps", len(jumps), "expires", isoSec(hostNow.Add(layout.ExportMaxAge)))
+	extra = append(extra, "clock_jumps", len(jumps))
+	if a.out == "" { // a file at --out is the user's: never swept
+		extra = append(extra, "expires", isoSec(hostNow.Add(layout.ExportMaxAge)))
+	}
 	var b strings.Builder
 	b.WriteString(t.head(q, "ok", "export", extra...))
 	for _, n := range q.notes {

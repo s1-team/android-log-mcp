@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/s1crab/android-log-mcp/server/internal/device"
+	"github.com/s1crab/android-log-mcp/server/internal/layout"
 	"github.com/s1crab/android-log-mcp/server/internal/procs"
 	"github.com/s1crab/android-log-mcp/server/internal/store"
 )
@@ -364,6 +365,11 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 			}
 		} else {
 			body.WriteString(hdr("note", "code", "failed", "msg", useErr.Error()) + "\n")
+		}
+	}
+	if t.ExportRoot.Dir != "" {
+		if f, ok := layout.NewestExport(t.ExportRoot.Export()); ok {
+			body.WriteString("  " + hdr("export", "file", f.Path, "bytes", f.Size, "age_s", int(max(time.Since(f.Mod), 0).Seconds()), "complete", f.Complete) + "\n")
 		}
 	}
 	// cursor + package for the resolved device

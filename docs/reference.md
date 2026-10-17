@@ -139,6 +139,7 @@ The `exe/` directory holds one binary (about 11 MB), plus renamed copies only wh
 | `android-log-mcp` | The MCP process (MCP stdio server; records nothing and forwards every call to the service process, which it starts when needed) |
 | `android-log-mcp call TOOL [JSON]` | Call one tool through the service and print the result (like an MCP call, it starts recording the device and waits up to 10 s for the backfill) |
 | `android-log-mcp record [--device X]... --for 2h` / `--stop` / (no flag) | Keep recording until now + the duration without tool calls or connected MCP / CLI processes (a pin), stop now, or show what is recorded (see [below](#recording-pins-record-and-record_for)); `--json` for scripts |
+| `android-log-mcp export [flags]` | Write the lines a selection matches to a text file (see [Export files](#export-files-logcat_export)); **unredacted unless `--redact`**; `export -h` lists the flags |
 | `android-log-mcp report [flags]` | Diagnostic zip (see [below](#diagnostic-reports-and-privacy)); `report -h` lists the flags |
 | `android-log-mcp service [status [--json] [--verbose] \| stop [--force]]` | Show or stop the service process; without arguments, run it in the foreground. `stop --force` also ends a service process that holds the lock but does not answer: it is signalled (SIGTERM, then SIGKILL after 10 s; Windows: a stop request, then TerminateProcess) only when it is verified to be the process recorded in `run/service.json` (same executable and start time); unflushed lines can be lost, and the command says so. Exit 1 when the service holds the lock but does not answer |
 | `android-log-mcp install [--json]` | Copy this binary to a fixed path (`<user cache dir>/android-log-mcp/exe/`) and print it, for MCP hosts that run the binary directly (recommended on Windows) |
@@ -159,7 +160,7 @@ Every tool response and every CLI command prints the same grammar, built for age
 - **`view="summary"`** prints `levels`, `tags` (with `more=N` hidden tags), `procs`, `msgs` lines with counts, `crashes=N anrs=N next: logcat_crashes ...`, and up to 5 `latest_errors` rows; all counts are over the whole range (`matched`), not a sample.
 - **Quoting (one rule).** A string value is printed bare unless it is empty or contains a space, a control character, `"`, `=` or `\`. Every other value is a JSON string (`"..."` with `\\`, `\"`, `\n` escapes): any JSON parser reads it back. So a Windows path is always quoted and escaped, with or without spaces (`root="C:\\Users\\me\\alm"`), and a POSIX path without special characters is bare. Parameters inside `next:` are always JSON strings. In `next:` command lines the paths are quoted for the host shell (single quotes on Linux/macOS, double quotes on Windows when needed); several paths are never joined by commas, one line each.
 - **Times** in `proc`, `window` and `stored` lines are device-local to the second without offset (`2026-10-10T03:07:04`; `tz` and `tz_offset` are on the `device` line); times in headers and rows keep their millisecond and offset form.
-- **Error:** `error code=<code> ... next: ...`. Codes are a closed set: `bad_param`, `missing_param`, `bad_type`, `bad_json`, `bad_filter`, `bad_time`, `bad_cursor`, `cursor_device`, `host_time`, `empty_window`, `unknown_param`, `unknown_tool` (lists the tools), `unknown_device`, `unknown_crash`, `several_devices`, `no_device`, `device_offline`, `device_unauthorized`, `device_state`, `device_identifying`, `record_for_unavailable`, `disk_low` and `export_failed` (`logcat_export`), `service_unreachable` (a tool that is not retried after a lost connection, `logcat_export`). `note code=...` lines carry facts that explain the result (for example `shares_uid`, `lag`, `backfill`, `no_callback_durations`, `no_displayed_hot`).
+- **Error:** `error code=<code> ... next: ...`. Codes are a closed set: `bad_param`, `missing_param`, `bad_type`, `bad_json`, `bad_filter`, `bad_time`, `bad_cursor`, `cursor_device`, `host_time`, `empty_window`, `unknown_param`, `unknown_tool` (lists the tools), `unknown_device`, `unknown_crash`, `several_devices`, `no_device`, `device_offline`, `device_unauthorized`, `device_state`, `device_identifying`, `record_for_unavailable`, `disk_low`, `export_failed` and `exists` (`logcat_export`; `exists` only for the CLI's `--out`), `service_unreachable` (a tool that is not retried after a lost connection, `logcat_export`). `note code=...` lines carry facts that explain the result (for example `shares_uid`, `lag`, `backfill`, `no_callback_durations`, `no_displayed_hot`).
 - **Verbose:** `verbose=true` adds what rarely changes the next call: `host_now`, `tz`, the full clock-jump list, the shared-uid package list, linger and lifetime.
 - **`logcat_crashes` detail** shows the 20 lines before a crash by default; `before_lines` (1-100) shows more.
 
@@ -280,6 +281,35 @@ note code=unredacted msg="..." next: redact=true
 - Errors: the codes of `logcat_search`, plus `disk_low free_mb= need_mb= next: max_mb=<smaller>` (free space below `max_mb` + the recording guard's 512 MiB) and `export_failed msg= next: android-log-mcp service status`.
 - **File format.** `# ` header lines (`key=value`: version, device, model, api, boot, time zone, host and device now, window, parsed filter, `redacted=0|1`, a `# WARNING: not redacted` line or a note on the redaction limits, clock jumps, recording gaps, crash ids, caps), `# ---`, then the body, then `# end lines= bytes= matched= exact= truncated=0|max_mb|time_budget redaction_hits= last_cursor=`. Body lines are `logcat -v threadtime -v year` in device time: `2026-10-17 09:12:03.456  1234  1250 E OkHttp  : message`; `F` is fatal; a multi-line message repeats the prefix on every line; there is no process or package column. A `--------- clock jump seq= source= delta_s= device_before= device_after= host=` line is written before the first line at or after the jump's seq. Crash, ANR and DropBox text is not in the file (header: counts and ids; use `logcat_crashes`). A file without the `# end` footer is not complete.
 - **Redaction.** `redact=false` (default) writes messages as recorded. `redact=true` uses the rules and limits of [`report`](#diagnostic-reports-and-privacy): message text only (tag, process, package, pid and device properties are not redacted; the adb address is never written), the filter text and gap reasons in the header too, placeholders valid within one file. `report` stays redacted by default (`--no-redact` turns it off); `logcat_export` is raw by default (`redact=true` turns it on).
+
+- **Newest file in `logcat_status`.** `logcat_status` adds one fact line, `export file= bytes= age_s= complete=1|0`, for the newest file in `export/` (`complete=0`: truncated or without the `# end` footer). Nothing is shown while `export/` has none.
+
+### `android-log-mcp export` (CLI)
+
+```bash
+android-log-mcp export --device avd-api35 --package com.foo --min-level W --from 14:00 --out /home/me/logs/foo.txt
+android-log-mcp --offline R/store export --out /home/me/logs/offline.txt     # dataset of a report
+```
+
+The CLI process sends the selection to the service through the `export` op (started detached when none runs, like `report`), which writes the file with the code of the tool and prints the same `fmt=1` response on stdout (exit 1 on an error). Like the tool, the first call for a device starts recording and waits up to 10 s for the backfill; the call is not retried after a lost connection.
+
+| Flag | Meaning |
+|---|---|
+| `--device` `--filter` `--package` `--tag` (repeatable) `--min-level` `--from` `--to` `--after` `--before` | As the tool parameters |
+| `--max-mb N` | Size cap, 1..512 (default 64) |
+| `--out FILE` | Where to write. An **absolute** path in an existing directory; refused inside android-log-mcp's own entries of the data root or the control directory (`v<N>/`, `run/`, `tmp/`, `bin/`, `log/`, `export/`, `config.json`; symlinks are resolved). Without `--out` the file goes to `<root>/export/` like the tool's (kept 7 days). A file at `--out` is the user's: it is never swept and the response has no `expires=` |
+| `--force` | Overwrite an existing `--out` file (otherwise `error code=exists`). The file is replaced atomically |
+| `--redact`, `--redact-extra RE` (repeatable), `--keep-domain D` (repeatable), `--keep-private-ip` | Redaction as in `report`; the last three need `--redact` |
+| `--offline DIR` (global flag) | Reads the dataset in this process, with no adb and no service. `--out` is **required** and may not be inside DIR: a dataset is never written to |
+
+**Redaction flags are asymmetric on purpose.** The artefact that goes to other people is redacted unless you say otherwise; a log file for your own review is raw unless you ask:
+
+| | Default | Switch |
+|---|---|---|
+| `report` | redacted | `--no-redact` turns redaction off |
+| `export` / `logcat_export` | **not redacted** (`# WARNING` header line, `redacted=0`, `note code=unredacted`) | `--redact` / `redact=true` turns it on |
+
+**Counting.** In an export response `lines` is the number of physical lines written (a multi-line message counts once per line), `matched` the number of records of the selection in the window (a record with a multi-line message counts once).
 
 ## Diagnostic reports and privacy
 

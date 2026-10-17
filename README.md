@@ -8,6 +8,7 @@ An MCP (Model Context Protocol) stdio server that gives AI coding agents (MCP ho
 - **Android Studio filter syntax** (`tag:` `message~:` `-package:` `level:` `age:` `is:crash` `|` `&`, parentheses) with strict errors: a parse error gives the column and a fix instead of silently degrading to a substring match, and every response first echoes how the filter was parsed.
 - **Crashes and ANRs** (Java, native/tombstone, ANR) grouped by signature, with ANR traces and tombstones from `dumpsys dropbox` where available.
 - **App launch timelines** (COLD / WARM / HOT, TTID / TTFD) from `START u0`, `am_proc_start`, `am_on_*_called` (API ≤ 29) / `wm_on_*_called` (API ≥ 30), `Displayed` and `Fully drawn`.
+- **Log export**: `logcat_export` / `android-log-mcp export` write the matching lines to a text file for a human to read (unredacted unless asked; [docs/reference.md](docs/reference.md#export-files-logcat_export)).
 - **Diagnostic reports**: `android-log-mcp report` packs logs and diagnostics into a zip with sensitive data redacted by default.
 
 Prebuilt binaries for Linux, macOS and Windows (x64, arm64). Requires `adb`.
@@ -103,6 +104,7 @@ Precedence: `|` binds tighter than the space (implicit AND), so `tag:A level:err
 - **Nothing is recorded.** Recording starts with the first log tool call that uses a device; to keep recording without calls, run `android-log-mcp record --for 2h`. See [docs/reference.md](docs/reference.md#recording-pins-record-and-record_for).
 - **The MCP host cannot start `npx` on Windows.** Use `cmd /c npx …` or the native binary (B).
 - **Send diagnostics to a maintainer.** `android-log-mcp report` writes a zip with sensitive data redacted: [docs/reference.md](docs/reference.md#diagnostic-reports-and-privacy).
+- **Get a log file.** `android-log-mcp export --out /abs/path/log.txt [--min-level W --from 14:00 --package com.foo]` writes the matching lines as `logcat -v threadtime -v year` text. It is **not redacted** unless you pass `--redact` (the opposite of `report`): [docs/reference.md](docs/reference.md#android-log-mcp-export-cli).
 - **What is verified, and known limitations?** [docs/compatibility.md](docs/compatibility.md).
 - **Upgrading.** Upgrade notes are only in the [CHANGELOG](CHANGELOG.md); look for the **Breaking** entries.
 

@@ -108,6 +108,11 @@ func (t *Tools) Call(ctx context.Context, name string, raw json.RawMessage) (str
 		}
 		err = errc("unknown_tool", []string{"one of " + strings.Join(names, " ")}, "value", name)
 	}
+	return toolResult(out, err)
+}
+
+// toolResult is the text and isError of a tool run.
+func toolResult(out string, err error) (string, bool) {
 	if err != nil {
 		var te *toolError
 		if !errors.As(err, &te) { // not coded: keep the first token

@@ -44,6 +44,8 @@ usage:
                                                what is recorded (android-log-mcp record -h)
   android-log-mcp report [flags]               pack logs + diagnostics into a redacted zip
                                                (android-log-mcp report -h for flags)
+  android-log-mcp export [flags]               write the matching log lines to a text file, unredacted unless --redact
+                                               (android-log-mcp export -h for flags)
   android-log-mcp root [--json]                print the data root (default: <user cache dir>/android-log-mcp)
   android-log-mcp set-root DIR (--keep-old|--delete-old)
                                                move the data root for every MCP and CLI process (android-log-mcp set-root -h)
@@ -77,7 +79,7 @@ usage:
 	}
 	if flag.NArg() > 0 {
 		switch flag.Arg(0) {
-		case "call", "report", "compat", "root", "service", "set-root", "install", "record":
+		case "call", "report", "export", "compat", "root", "service", "set-root", "install", "record":
 		default:
 			fmt.Fprintln(os.Stderr, mcpserver.CLIError("usage", "android-log-mcp -h", "value", flag.Arg(0), "msg", "unknown_command"))
 			os.Exit(2)
@@ -122,6 +124,11 @@ usage:
 		cancel()
 		os.Exit(code)
 	}
+	if flag.NArg() > 0 && flag.Arg(0) == "export" && *offline == "" {
+		code := runExport(ctx, "", nil, flag.Args()[1:])
+		cancel()
+		os.Exit(code)
+	}
 	if flag.NArg() > 0 && flag.Arg(0) == "compat" {
 		code := runCompat(ctx, flag.Args()[1:])
 		cancel()
@@ -138,6 +145,11 @@ usage:
 	defer m.Close()
 	tools := &mcpserver.Tools{M: m}
 
+	if flag.NArg() > 0 && flag.Arg(0) == "export" {
+		code := runExport(ctx, *offline, tools, flag.Args()[1:])
+		m.Close()
+		os.Exit(code)
+	}
 	if flag.NArg() > 0 && flag.Arg(0) == "call" {
 		raw, ok := callJSON(flag.Args()[1:])
 		if !ok {

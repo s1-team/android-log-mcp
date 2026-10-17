@@ -3,6 +3,7 @@ package layout
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -205,4 +206,76 @@ func SweepExport(dir string, now time.Time, maxAge time.Duration, maxFiles int, 
 		}
 	}
 	return freed, n
+}
+
+// ProtectedOut reports whether an export written to path (`export --out`)
+// would land in android-log-mcp's own structure under one of the bases (the
+// data root, the control directory): a version directory, run/, tmp/, bin/,
+// log/, export/ or config.json. Symlinks are resolved on both sides. The
+// returned name is the protected entry.
+func ProtectedOut(path string, bases ...string) (string, bool) {
+	p, err := ResolvePath(path)
+	if err != nil {
+		return "", false
+	}
+	for _, b := range bases {
+		if b == "" {
+			continue
+		}
+		rb, err := ResolvePath(b)
+		if err != nil || !Within(p, rb) {
+			continue
+		}
+		rel, _ := filepath.Rel(rb, p)
+		first := strings.Split(rel, string(filepath.Separator))[0]
+		if first == "run" || first == "config.json" || OwnEntry(first, true, false) {
+			return filepath.Join(rb, first), true
+		}
+	}
+	return "", false
+}
+
+// ExportInfo describes an export file (NewestExport).
+type ExportInfo struct {
+	Path     string
+	Size     int64
+	Mod      time.Time
+	Complete bool // has the `# end` footer and was not truncated
+}
+
+// NewestExport returns the most recently written export file of dir.
+func NewestExport(dir string) (ExportInfo, bool) {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return ExportInfo{}, false
+	}
+	var best ExportInfo
+	found := false
+	for _, e := range ents {
+		if e.IsDir() || !exportFile.MatchString(e.Name()) {
+			continue
+		}
+		fi, err := e.Info()
+		if err != nil || !fi.Mode().IsRegular() {
+			continue
+		}
+		if !found || fi.ModTime().After(best.Mod) {
+			best, found = ExportInfo{Path: filepath.Join(dir, e.Name()), Size: fi.Size(), Mod: fi.ModTime()}, true
+		}
+	}
+	if !found {
+		return ExportInfo{}, false
+	}
+	if f, err := os.Open(best.Path); err == nil {
+		defer f.Close()
+		n := min(best.Size, 2048)
+		buf := make([]byte, n)
+		if _, err := f.ReadAt(buf, best.Size-n); err == nil || err == io.EOF {
+			tail := string(buf)
+			if i := strings.LastIndex(tail, "\n# end "); i >= 0 {
+				best.Complete = strings.Contains(tail[i:], " truncated=0 ")
+			}
+		}
+	}
+	return best, true
 }
