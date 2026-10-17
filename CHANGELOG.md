@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 - Concurrent track-devices updates can no longer start two recording sessions for one device ([#193](https://github.com/s1crab/android-log-mcp/issues/193)): the check that no session runs and the publication of the new session are one critical section.
 - A follower store promoted to writer now takes over what the old writer left ([#180](https://github.com/s1crab/android-log-mcp/issues/180)): it re-lists the segments, reloads the newest seq and the recent window, and cuts a torn last line before its first append. Before, it reused seqs the old writer had written (duplicate seqs on disk) and its first record joined a partial last line and was lost.
+- `crashes.jsonl`, `procs.jsonl` and `dropbox_seen.jsonl`: an entry appended after a torn last line (a hard kill or short write in the middle of a line) now starts a new line instead of joining the partial one and being lost ([#181](https://github.com/s1crab/android-log-mcp/issues/181)). Readers already skip the undecodable partial line.
 - DropBox ANR entries are matched one-to-one ([#176](https://github.com/s1crab/android-log-mcp/issues/176)). With two ANRs of one pid less than two minutes apart, an entry could attach to the neighbouring ANR (the nearest one by time) and later replace its traces. An ANR that already has a DropBox entry is no longer offered another one, an ANR logged after the entry's header time ranks behind those logged before it, and existing ANR traces are never overwritten.
 
 ## [0.8.1] - 2026-10-17

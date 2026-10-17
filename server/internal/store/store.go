@@ -1388,11 +1388,20 @@ func (s *Store) AppendAux(name string, v any) error {
 	}
 	s.auxMu.Lock()
 	defer s.auxMu.Unlock()
-	f, err := os.OpenFile(filepath.Join(s.Dir, name+".jsonl"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	f, err := os.OpenFile(filepath.Join(s.Dir, name+".jsonl"), os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o644)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
+	// A crash (or a short write) can leave a partial last line. Start on a
+	// fresh line, or the new entry would join it and be lost (issue #181);
+	// readers skip the undecodable partial line.
+	if st, err := f.Stat(); err == nil && st.Size() > 0 {
+		var last [1]byte
+		if _, err := f.ReadAt(last[:], st.Size()-1); err == nil && last[0] != '\n' {
+			b = append([]byte{'\n'}, b...)
+		}
+	}
 	_, err = f.Write(append(b, '\n'))
 	return err
 }
