@@ -3,6 +3,7 @@
 package logcat
 
 import (
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -182,6 +183,13 @@ func parseEpoch(t string) (int64, bool) {
 	for n := len(frac); n < 9; n++ {
 		f *= 10
 	}
+	// seconds*1e9 must fit an int64 (until the year 2262): a later epoch (a
+	// device clock set far ahead, or a corrupt line) is not a time, not a
+	// wrapped negative one (issue #195)
+	const maxSec, maxFrac = math.MaxInt64 / 1_000_000_000, math.MaxInt64 % 1_000_000_000
+	if sec > maxSec || sec < -maxSec || (sec == maxSec && f > maxFrac) {
+		return 0, false
+	}
 	return sec*1e9 + f, true
 }
 
@@ -194,6 +202,9 @@ func parseDateTime(date, clock string, loc *time.Location, year int) (int64, boo
 	}
 	t, err := time.ParseInLocation("2006-01-02 15:04:05.999999999", date+" "+clock, loc)
 	if err != nil {
+		return 0, false
+	}
+	if y := t.Year(); y < 1678 || y > 2261 { // UnixNano is undefined outside int64 nanoseconds (issue #195)
 		return 0, false
 	}
 	return t.UnixNano(), true
