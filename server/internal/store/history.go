@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"slices"
 	"strconv"
 	"time"
 
@@ -123,8 +124,11 @@ func lineTime(line []byte) (int64, bool) {
 	return 0, false
 }
 
-// segIndexFor returns the (extended to the current file size) index of a
-// segment, or nil if it cannot be read.
+// segIndexFor returns a snapshot of the (extended to the current file size)
+// index of a segment, or nil if it cannot be read. The snapshot is a copy made
+// under hmu: extendIndex reopens the trailing block and appends in place, so
+// handing out the shared index let a reader race with a concurrent extension
+// (issue #197).
 func (s *Store) segIndexFor(path string) *segIndex {
 	st, err := os.Stat(path)
 	s.hmu.Lock()
@@ -143,7 +147,7 @@ func (s *Store) segIndexFor(path string) *segIndex {
 	if st.Size() > ix.end {
 		s.extendIndex(path, ix)
 	}
-	return ix
+	return &segIndex{blocks: slices.Clone(ix.blocks), end: ix.end}
 }
 
 // extendIndex reads complete lines from ix.end on and appends them to the
