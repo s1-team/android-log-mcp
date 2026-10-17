@@ -164,8 +164,11 @@ func (t *Tools) export(ctx context.Context, a exportArgs) (out string, err error
 		return "", err
 	}
 	capBytes := int64(a.MaxMB) << 20
+	// the temp file lives in <root>/export/ (swept when stale) even for --out,
+	// which renames it into place; without a data root (--offline) it is
+	// created next to --out
 	dir := t.ExportRoot.Export()
-	if a.out != "" {
+	if t.ExportRoot.Dir == "" {
 		dir = filepath.Dir(a.out)
 	} else if _, serr := os.Stat(dir); serr != nil {
 		if err := t.ExportRoot.EnsureExport(); err != nil {
