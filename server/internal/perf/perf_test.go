@@ -19,6 +19,7 @@ import (
 	"github.com/s1crab/android-log-mcp/server/internal/analysis"
 	"github.com/s1crab/android-log-mcp/server/internal/device"
 	"github.com/s1crab/android-log-mcp/server/internal/filter"
+	"github.com/s1crab/android-log-mcp/server/internal/layout"
 	"github.com/s1crab/android-log-mcp/server/internal/logcat"
 	"github.com/s1crab/android-log-mcp/server/internal/mcpserver"
 	"github.com/s1crab/android-log-mcp/server/internal/model"
@@ -104,7 +105,12 @@ func openTools(tb testing.TB, base string, cfg store.Config) (*mcpserver.Tools, 
 	m.NoADB = true
 	m.Start(context.Background())
 	tb.Cleanup(m.Close)
-	return &mcpserver.Tools{M: m}, m
+	// logcat_export writes under a temp root, never under the real one
+	root := layout.Root{Dir: filepath.Join(tb.TempDir(), "root")}
+	if err := root.Ensure(); err != nil {
+		tb.Fatal(err)
+	}
+	return &mcpserver.Tools{M: m, ExportRoot: root}, m
 }
 
 // fixtureDataset is session-raw.log (15 min of a real API 29 emulator:
@@ -147,6 +153,7 @@ var outputScenarios = []scenario{
 	{"crashes_detail_java", "logcat_crashes", `{"id":"cr1"}`},
 	{"launches_package", "logcat_app_launches", `{"package":"com.example.logtest","from":"2026-10-10 02:50:00"}`},
 	{"launches_default", "logcat_app_launches", `{}`},
+	{"logcat_export", "logcat_export", `{}`}, // response size only: the file is not in the response (#172)
 }
 
 // normalize removes what depends on the machine or the moment (temp
@@ -155,12 +162,14 @@ var outputScenarios = []scenario{
 // host now: its digits are zeroed, its size kept.
 func normalize(out, base string) string {
 	out = strings.ReplaceAll(out, base, "<root>")
+	out = reExpName.ReplaceAllString(out, "export-N.txt") // time stamp and -2 suffix differ between calls
 	return reClock.ReplaceAllStringFunc(out, func(m string) string { return reDigit.ReplaceAllString(m, "0") })
 }
 
 var (
-	reClock = regexp.MustCompile(`device now [^\n]*?· clock offset (?:\(device − host\) )?\S+| dev_now=\S+ clock=\S+ offset_s=\S+(?: clock_age_s=\S+)?| since=\S+`)
-	reDigit = regexp.MustCompile(`[0-9]`)
+	reClock   = regexp.MustCompile(`device now [^\n]*?· clock offset (?:\(device − host\) )?\S+| dev_now=\S+ clock=\S+ offset_s=\S+(?: clock_age_s=\S+)?| since=\S+| expires=\S+`)
+	reExpName = regexp.MustCompile(`export-[^ "/\\]+\.txt`)
+	reDigit   = regexp.MustCompile(`[0-9]`)
 )
 
 func callOK(tb testing.TB, t *mcpserver.Tools, tool, args string) string {
@@ -190,7 +199,7 @@ func outputMetrics(t *testing.T, r *Results) {
 	// model's context before any call (initialize instructions + tools/list)
 	init, list := handshakeBytes(t, tools)
 	r.Set("out.initialize.bytes", Metric{Value: float64(init), Unit: "bytes", Kind: Exact, Desc: "initialize result (server info + instructions)"})
-	r.Set("out.tools_list.bytes", Metric{Value: float64(list), Unit: "bytes", Kind: Exact, Desc: "tools/list result (4 tool definitions)"})
+	r.Set("out.tools_list.bytes", Metric{Value: float64(list), Unit: "bytes", Kind: Exact, Desc: "tools/list result (5 tool definitions)"})
 }
 
 // handshakeBytes returns the JSON sizes of the initialize and tools/list
@@ -500,6 +509,7 @@ func scaleMetrics(t *testing.T, r *Results) {
 	}
 	scanMetrics(t, r, d.Store)
 	indexMetrics(t, r, d.Store)
+	exportMetrics(t, r, tools)
 	for _, q := range queryCases(first, last, fxLoc()) {
 		if q.cold {
 			d.Store.ReleaseCaches()
@@ -700,4 +710,48 @@ func crashMetrics(t *testing.T, r *Results) {
 	}
 	r.Set("query.crash_list_at_2000.ms", Metric{Value: median(runs), Unit: "ms", Kind: Time, Budget: 50,
 		Desc: "crash list (summaries of 2,020 crashes) as logcat_crashes / logcat_status read it, median of 5 (warm)"})
+}
+
+var reExportKV = regexp.MustCompile(`\b(bytes|lines)=(\d+)`)
+
+// exportMetrics: a capped logcat_export of the synthetic history (issue
+// #172): wall time, file bytes per written line, and the size of the
+// response. Redaction runs on a 20,000-line cap (it is the slow part).
+func exportMetrics(t *testing.T, r *Results, tools *mcpserver.Tools) {
+	kv := func(out string) (bytes, lines float64) {
+		for _, m := range reExportKV.FindAllStringSubmatch(strings.SplitN(out, "\n", 2)[0], -1) {
+			v, _ := strconv.ParseFloat(m[2], 64)
+			if m[1] == "bytes" {
+				bytes = v
+			} else {
+				lines = v
+			}
+		}
+		return
+	}
+	run := func(args string) (string, float64) {
+		var runs []float64
+		var out string
+		for i := 0; i < 3; i++ {
+			t0 := time.Now()
+			out = callOK(t, tools, "logcat_export", args)
+			runs = append(runs, ms(time.Since(t0)))
+		}
+		return out, median(runs)
+	}
+	out, el := run(`{"max_mb":8}`)
+	b, l := kv(out)
+	r.Set("export.ms", Metric{Value: el, Unit: "ms", Kind: Time, Budget: 3500,
+		Desc: "logcat_export max_mb=8 of the synthetic history (unredacted), median of 3"})
+	if l > 0 {
+		r.Set("export.bytes_per_line", Metric{Value: round(b/l, 1), Unit: "bytes", Kind: Exact, Desc: "export file bytes per written line (header and footer included)"})
+		r.Set("export.lines_per_sec", Metric{Value: round(l/(el/1000), 0), Unit: "lines/s", Kind: Info, Desc: "unredacted export rate (scan + format + write)"})
+	}
+	r.Set("out.logcat_export_at_scale.bytes", Metric{Value: float64(len(out)), Unit: "bytes", Kind: Info, Desc: "logcat_export response at scale (path included)"})
+	// redacted: bounded by lines through a narrow window
+	rout, rel := run(`{"redact":true,"max_mb":1}`)
+	_, rl := kv(rout)
+	if rl > 0 {
+		r.Set("export.redacted_lines_per_sec", Metric{Value: round(rl/(rel/1000), 0), Unit: "lines/s", Kind: Info, Desc: "redact=true export rate (the redactor is the bottleneck; max_mb=1)"})
+	}
 }

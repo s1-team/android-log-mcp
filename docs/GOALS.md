@@ -14,7 +14,7 @@ Give any AI coding agent reliable, low-friction access to what an Android app is
 2. **Observe, never interfere.** The tool must not change the device, the app, or the developer's existing tools.
 3. **Bounded.** Every resource it uses (memory, disk, files, processes, connections) has a limit and a lifetime.
 4. **Truthful.** It never silently guesses, drops data, or changes behavior. Gaps and errors are explicit and actionable.
-5. **Private by default.** Nothing leaves the machine unless the user exports it, and exports are redacted.
+5. **Private by default.** Nothing leaves the machine unless the user exports it. A diagnostic report meant for other people (`report`) is redacted by default. A log file exported for the developer's own review (`logcat_export`) is written as recorded unless redaction is requested, and says so in its header and in the response.
 6. **Agent-first.** The surface is small and stable; outputs are compact, structured and unambiguous. The first token of every response says `ok`, `empty` or `error`. Every truncation, empty result and error carries a directly executable next step (a `param=value` or a command), never prose-only advice and never a placeholder the agent must guess. Anything cut is marked at the place it was cut, with the parameter that shows the rest.
 7. **Predictable evolution.** Breaking changes are deliberate, versioned, and documented with an upgrade path.
 
@@ -43,7 +43,7 @@ This document is intentionally product-level. The concrete constraints that impl
 2. 只观察、不干扰：不改变设备、App 和开发者现有的工具。
 3. 有界：内存、磁盘、文件、进程、连接都有上限和生命周期。
 4. 如实：不悄悄猜测、丢数据或改变行为；缺口和错误要明确，并且给出能照着做的处理办法。
-5. 默认私密：用户不主动导出，数据就不离开本机；导出的内容要打码。
+5. 默认私密：用户不主动导出，数据就不离开本机。给别人看的诊断报告（`report`）默认打码；开发者自己审阅的日志导出（`logcat_export`）默认原样写出（要打码需显式指定），并在文件头和响应里明确标注。
 6. 面向 agent：接口小而稳定，输出紧凑、结构化、无歧义。
 7. 可预期的演进：破坏性变更要有意为之、带版本号，并附升级说明。
 

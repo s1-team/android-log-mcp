@@ -1,4 +1,5 @@
-// Package mcpserver exposes the four read-only logcat tools over MCP.
+// Package mcpserver exposes the logcat tools over MCP: four that only read
+// the recorded logs and logcat_export, which writes a file.
 package mcpserver
 
 import (
@@ -13,13 +14,14 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/s1crab/android-log-mcp/server/internal/device"
+	"github.com/s1crab/android-log-mcp/server/internal/layout"
 )
 
 // Version of the server.
 var Version = "0.8.1" // overridden at build time: -ldflags "-X main.version=..."
 
 const instructions = `Android logcat recorder. Recording starts on use: the first log tool call for a device starts recording it and backfills what is still in the device's log buffer (the call waits up to 10 s for that). Each device stops recording after a while without calls; stored logs stay queryable across sessions.
-Typical flows: crashes/ANRs → logcat_crashes. Startup time → logcat_app_launches. Anything else → logcat_search (use view="summary" first for wide ranges).
+Typical flows: a log file for a human to read → logcat_export (written as recorded unless redact=true). Crashes/ANRs → logcat_crashes. Startup time → logcat_app_launches. Anything else → logcat_search (use view="summary" first for wide ranges).
 To capture a reproduction: logcat_status → take ` + "`cursor`" + ` → user reproduces → logcat_search(after=cursor, wait_ms=20000). If logcat_status says "backfill in progress", call logcat_status again before using a cursor.
 To keep recording without calls (e.g. a long reproduction), call logcat_status(record_for="30m"); record_for="0" stops.
 All times in parameters and lines are device time (the Android device's clock, in its timezone); responses show device now, host now and the clock offset, and mark device clock jumps.`
@@ -34,6 +36,10 @@ type Tools struct {
 	Service func() []StatusLine
 	// Pins, if set, implements record_for (the service's pins).
 	Pins Pins
+	// ExportRoot is the data root logcat_export writes under (<root>/export/).
+	// Only the service sets it; without it (--offline, which never creates
+	// files in a dataset) the tool answers export_failed.
+	ExportRoot layout.Root
 }
 
 // toolError is a business error returned with isError=true. Its text is the
@@ -79,6 +85,11 @@ func (t *Tools) Call(ctx context.Context, name string, raw json.RawMessage) (str
 		var a searchArgs
 		if err = decodeArgs(raw, &a); err == nil {
 			out, err = t.search(ctx, a)
+		}
+	case "logcat_export":
+		var a exportArgs
+		if err = decodeArgs(raw, &a); err == nil {
+			out, err = t.export(ctx, a)
 		}
 	case "logcat_crashes":
 		var a crashArgs
@@ -149,13 +160,19 @@ type ToolDef struct {
 	Title  string          `json:"title"`
 	Desc   string          `json:"desc"`
 	Schema json.RawMessage `json:"schema"`
+	// Writes: the tool changes state (not read-only). Additive field: an
+	// older MCP process ignores it and annotates the tool read-only, which
+	// only affects the host's approval prompts.
+	Writes bool `json:"writes,omitempty"`
+	// NotIdempotent: repeating the call has another effect.
+	NotIdempotent bool `json:"not_idempotent,omitempty"`
 }
 
 // ToolDefs are this binary's tool definitions.
 func ToolDefs() []ToolDef {
 	var out []ToolDef
 	for _, d := range toolDefs() {
-		out = append(out, ToolDef{Name: d.name, Title: d.title, Desc: d.desc, Schema: json.RawMessage(d.schema)})
+		out = append(out, ToolDef{Name: d.name, Title: d.title, Desc: d.desc, Schema: json.RawMessage(d.schema), Writes: d.writes, NotIdempotent: d.notIdempotent})
 	}
 	return out
 }
@@ -166,9 +183,15 @@ func Instructions() string { return instructions }
 // CallFunc runs one tool: (name, raw JSON args) → (text, isError).
 type CallFunc func(ctx context.Context, name string, raw json.RawMessage) (string, bool)
 
-// NewServer builds the MCP server with the 4 tools, run in this process.
+// NewServer builds the MCP server with the tools, run in this process.
 func NewServer(t *Tools) *mcp.Server {
 	return NewProxyServer(ToolDefs(), Instructions(), t.Call)
+}
+
+// toolAnnotations: read-only and idempotent unless the definition says it
+// writes (logcat_status starts recording, logcat_export writes a file).
+func toolAnnotations(def ToolDef) *mcp.ToolAnnotations {
+	return &mcp.ToolAnnotations{Title: def.Title, ReadOnlyHint: !def.Writes, OpenWorldHint: boolPtr(false), DestructiveHint: boolPtr(false), IdempotentHint: !def.NotIdempotent}
 }
 
 // NewProxyServer builds an MCP server from tool definitions whose calls go
@@ -182,7 +205,7 @@ func NewProxyServer(defs []ToolDef, instr string, call CallFunc) *mcp.Server {
 			Title:       def.Title,
 			Description: def.Desc,
 			InputSchema: def.Schema,
-			Annotations: &mcp.ToolAnnotations{Title: def.Title, ReadOnlyHint: true, OpenWorldHint: boolPtr(false), DestructiveHint: boolPtr(false), IdempotentHint: true},
+			Annotations: toolAnnotations(def),
 		}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			var raw json.RawMessage
 			if req.Params != nil {
