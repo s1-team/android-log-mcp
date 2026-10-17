@@ -47,7 +47,7 @@ func OwnEntry(name string, dir, control bool) bool {
 		return false
 	}
 	switch {
-	case versionDir.MatchString(name), name == "tmp", name == "bin", name == "log":
+	case versionDir.MatchString(name), name == "tmp", name == "bin", name == "log", name == ExportDirName:
 		return true
 	case name == "run":
 		return !control

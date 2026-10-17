@@ -29,6 +29,10 @@ type SweepOptions struct {
 	// their own store, never deleted from under it).
 	Owned map[string]*store.Store
 	Now   time.Time
+	// Export file limits (0 = the constants in export.go; tests inject).
+	ExportMaxAge   time.Duration
+	ExportMaxFiles int
+	ExportMaxBytes int64
 }
 
 // SweepResult summarizes what Sweep removed.
@@ -119,7 +123,7 @@ func TotalBytes(base string) int64 {
 	for _, dd := range deviceDirs(base) {
 		add(dd.path, false)
 	}
-	for _, d := range []string{"tmp", "run", "owners", "bin", "log"} {
+	for _, d := range []string{"tmp", "run", "owners", "bin", "log", ExportDirName} {
 		add(filepath.Join(base, d), true)
 	}
 	return total
@@ -146,6 +150,7 @@ func Sweep(o SweepOptions) SweepResult {
 	res.OldBins = SweepBin(filepath.Join(o.Base, "bin"), o.KeepBin)
 	tmpBase := filepath.Join(o.Base, "tmp")
 	res.addAll(removeOlder(tmpBase, o.Now.Add(-o.TmpAge)))
+	res.addAll(SweepExport(filepath.Join(o.Base, ExportDirName), o.Now, o.ExportMaxAge, o.ExportMaxFiles, o.ExportMaxBytes))
 	busy := func(dd dataDir) bool {
 		if o.Owned[dd.path] != nil {
 			return true

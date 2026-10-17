@@ -24,7 +24,7 @@ go test -run '^$' -bench . ./internal/perf               # ad-hoc micro-benchmar
 | `internal/procs` | pid 到进程的生命周期表（am_proc_*、ps 快照、force-stop、重启） |
 | `internal/analysis` | 崩溃、ANR、tombstone 识别和 DropBox 合并；启动时间线 |
 | `internal/filter` | Android Studio Logcat 过滤语法的解析器（移植，含 AS 测试） |
-| `internal/layout` | Data root: `v1/<device-id>/` layout, the removed-HOME error, set-root validation / old-root removal, and the sweep (retention + total cap over every `v<N>/` format, `tmp/`, `run/`, `bin/`, `log/`; stale sockets; legacy `owners/`). Anything else under the root (pre-0.4 dirs) is ignored |
+| `internal/layout` | Data root: `v1/<device-id>/` layout, the removed-HOME error, set-root validation / old-root removal, and the sweep (retention + total cap over every `v<N>/` format, `tmp/`, `run/`, `bin/`, `log/`, `export/`; stale sockets; the export file writer and its retention; legacy `owners/`). Anything else under the root (pre-0.4 dirs) is ignored |
 | `internal/fakeadb` | Scriptable fake adb for unit and multi-process tests (devices, log buffers, `date`, per-line delay, invocation log); a test binary that is started as `adb` runs it |
 | `internal/timeparse` | Parser for the device-time parameters (`from`, `to`, relative values such as `30m`) |
 | `internal/testhome` | `TestMain` helper that redirects the per-user cache dir so tests never touch the real control dir, service or data root |

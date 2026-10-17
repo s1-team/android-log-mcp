@@ -215,7 +215,7 @@ android-log-mcp set-root /data/alm --delete-old   # move; remove our directories
 
 - Exactly one of `--keep-old` / `--delete-old` is required (no prompts). `DIR` must be absolute, writable, new or empty (or an earlier android-log-mcp root), and must not be the current root, inside it, or a parent of it.
 - The running service takes `run/config.lock`, waits for running tool calls, stops recording, carries each device's state into the new root (seq numbers and the `logcat -T` resume point, so recording continues without a gap or duplicates), writes `<control dir>/config.json` atomically and resumes recording there. **Any failure before that commit is rolled back** and the old root stays in use. With no service running, the command does the switch itself (it does not start a service).
-- `--delete-old` removes only `v<N>/`, `tmp/`, `bin/`, `log/` (and `run/` outside the control directory), then the old root if it is empty. What cannot be removed (for example an open file on Windows, which always includes the running service's own binary under the old root's `bin/`) is reported with exit status 3 and retried when the service next starts.
+- `--delete-old` removes only `v<N>/`, `tmp/`, `bin/`, `log/`, `export/` (and `run/` outside the control directory), then the old root if it is empty. What cannot be removed (for example an open file on Windows, which always includes the running service's own binary under the old root's `bin/`) is reported with exit status 3 and retried when the service next starts.
 - **History recorded before a switch stays in the old root and is not queried.** Open it with `--offline <old root>` if you kept it.
 - The control directory (socket, locks, `config.json`) never moves.
 
@@ -230,12 +230,14 @@ android-log-mcp set-root /data/alm --delete-old   # move; remove our directories
 <root>/tmp/                scratch files, removed after 1 hour
 <root>/bin/<version>-<hash>/android-log-mcp   service binaries: the running one and at most one other
 <root>/log/                service.log (1 MiB + one rotated copy), crash.log
+<root>/export/             0700: export files (export-<device-id>-<host time>.txt), kept 7 days, newest 20, 256 MiB in total
 ```
 
 - **Device IDs are stable:** `ro.serialno` for a physical device (the same over USB and Wi-Fi), `avd-<name>` for an emulator. Two devices online at once that resolve to the same ID are filed separately (`<id>~<adb serial>`) and `logcat_status` explains it.
 - Anything else under the root (pre-0.4 `<serial>/` directories, `legacy/`, …) is ignored: not read, not counted, not deleted. A leftover `owners/` directory from 0.4 development builds is removed.
 - **Retention:** 1 day (`ANDROID_LOG_MCP_MAX_AGE`) and 512 MiB per device (`ANDROID_LOG_MCP_MAX_DEVICE_MB`); the oldest segments go first. A segment is deleted once its newest line is past retention, and an active segment spans at most a quarter of the retention, so logs are kept for at most about 1.25 × the retention. Crash, DropBox and ended device-process records follow the same retention. DropBox entries dated more than the retention before device now are not imported.
-- **Total cap:** 2 GiB for everything the tool manages under the root (all devices and format versions, `tmp/`, `run/`, `bin/`, `log/`; `ANDROID_LOG_MCP_MAX_TOTAL_MB`). The oldest files go first; each current-format device keeps its newest segment.
+- **Total cap:** 2 GiB for everything the tool manages under the root (all devices and format versions, `tmp/`, `run/`, `bin/`, `log/`, `export/`; `ANDROID_LOG_MCP_MAX_TOTAL_MB`). The oldest files go first; each current-format device keeps its newest segment.
+- **Export files:** `export/` has its own fixed retention (7 days, the newest 20 files, 256 MiB in total, oldest first; constants, not settings). Only `export-*.txt` and leftover `.export-*.tmp` files are ever deleted there. A file that cannot be removed (open in an editor on Windows) is retried at the next sweep.
 - **Sweep** (in the service, at start and every minute; never with `--offline`): device directories that are not being recorded lose expired segments and are removed when nothing in them is newer; then the total cap applies. Directories whose `writer.lock` is held by another android-log-mcp process (e.g. an older version) are left alone. Only known file names are deleted.
 - **Low disk space:** below 512 MiB free (`ANDROID_LOG_MCP_MIN_FREE_MB`) recording pauses and a gap is recorded; it resumes with `logcat -T` once twice that is free. `logcat_status` shows why.
 - **Memory:** per device, the newest 20,000 lines (at most about 16 MiB) stay in memory; older history is read from disk in blocks into a 32 MiB LRU cache, released after 2 minutes without queries. `logcat_status` shows the current usage.
