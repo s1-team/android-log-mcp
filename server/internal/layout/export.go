@@ -60,15 +60,20 @@ func ExportName(label string, t time.Time, n int) string {
 // overwrite was not asked for.
 var ErrExists = errors.New("file exists")
 
-// AtomicFile is a file written under a temporary name in the directory of its
-// final path and renamed when complete, so a reader never sees a partial
-// file. Close the temp file before the rename (Windows cannot rename an open
-// file). Abort (or a failed Commit) removes the temp file.
+// AtomicFile is a file written under a temporary name and renamed when
+// complete, so a reader never sees a partial file. The temp file is created
+// in the directory NewAtomicFile is given (export/ for every export, issue
+// #206: a crash must not leave a .tmp in a directory of the user's). Close
+// the temp file before the rename (Windows cannot rename an open file).
+// Abort (or a failed Commit) removes the temp file.
 type AtomicFile struct {
 	*os.File
 	dir  string
 	done bool
 }
+
+// renameFile is os.Rename; tests replace it to simulate a cross-volume move.
+var renameFile = os.Rename
 
 // NewAtomicFile creates a 0600 temp file in dir (which must exist).
 func NewAtomicFile(dir string) (*AtomicFile, error) {
@@ -89,16 +94,15 @@ func (a *AtomicFile) Abort() {
 	os.Remove(a.File.Name())
 }
 
-// Commit syncs and closes the temp file and renames it to final (in the same
-// directory). Without overwrite an existing final is ErrExists (the check
-// and the rename are not atomic together; one service process writes here).
+// Commit syncs and closes the temp file and renames it to final. When final
+// is in another directory and the rename fails (another volume), the content
+// is copied to a temp file in final's directory and renamed there; that
+// directory must exist. Without overwrite an existing final is ErrExists (the
+// check and the rename are not atomic together; one service process writes
+// here). The temp file is removed in every case.
 func (a *AtomicFile) Commit(final string, overwrite bool) error {
 	if a.done {
 		return errors.New("already committed or aborted")
-	}
-	if filepath.Dir(final) != a.dir {
-		a.Abort()
-		return fmt.Errorf("%s is not in %s", final, a.dir)
 	}
 	if !overwrite {
 		if _, err := os.Lstat(final); err == nil {
@@ -117,11 +121,40 @@ func (a *AtomicFile) Commit(final string, overwrite bool) error {
 		return err
 	}
 	a.done = true
-	if err := os.Rename(tmp, final); err != nil {
-		os.Remove(tmp)
+	defer os.Remove(tmp) // no-op after a successful rename
+	err := renameFile(tmp, final)
+	if err == nil || filepath.Dir(final) == a.dir {
 		return err
 	}
-	return nil
+	return copyAcross(tmp, final)
+}
+
+// copyAcross copies src to a temp file next to final and renames that.
+func copyAcross(src, final string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.CreateTemp(filepath.Dir(final), exportTmpGlob)
+	if err != nil {
+		return err
+	}
+	tmp := out.Name()
+	_, err = io.Copy(out, in)
+	if err == nil {
+		err = out.Sync()
+	}
+	if cerr := out.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = renameFile(tmp, final)
+	}
+	if err != nil {
+		os.Remove(tmp)
+	}
+	return err
 }
 
 // FreeName returns the first name(n), n = 1, 2, ..., that does not exist in dir.

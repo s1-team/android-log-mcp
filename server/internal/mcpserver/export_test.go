@@ -671,3 +671,44 @@ func TestStatusListsNewestExport(t *testing.T) {
 		t.Fatalf("newest file is complete:\n%s", st)
 	}
 }
+
+// `export --out`: the temp file is created in <root>/export/, never in the
+// user's directory, and is renamed into place (issue #206).
+func TestExportOutTempFileLivesInExportDir(t *testing.T) {
+	// not parallel: changes a package variable
+	fx := newExFx(t, 50)
+	userDir := t.TempDir()
+	out := filepath.Join(userDir, "log.txt")
+	tmps := func(d string) int {
+		m, _ := filepath.Glob(filepath.Join(d, ".export-*.tmp"))
+		return len(m)
+	}
+	var inUser, inExport int
+	exportWrap = func(w io.Writer) io.Writer {
+		return writerFunc(func(p []byte) (int, error) {
+			inUser, inExport = max(inUser, tmps(userDir)), max(inExport, tmps(fx.dir))
+			return w.Write(p)
+		})
+	}
+	defer func() { exportWrap = nil }()
+	text, isErr := fx.tools.ExportToFile(context.Background(), json.RawMessage(`{}`), ExportTarget{Out: out})
+	if isErr || !strings.HasPrefix(text, "ok view=export") {
+		t.Fatalf("%s", text)
+	}
+	if inUser != 0 || inExport != 1 {
+		t.Errorf("temp files while writing: user dir %d, export dir %d (want 0 and 1)", inUser, inExport)
+	}
+	if b, err := os.ReadFile(out); err != nil || !strings.Contains(string(b), "# end ") {
+		t.Fatalf("file: %v", err)
+	}
+	if tmps(userDir) != 0 || tmps(fx.dir) != 0 {
+		t.Error("temp file left behind")
+	}
+	if ents, _ := os.ReadDir(userDir); len(ents) != 1 {
+		t.Errorf("user dir: %v", ents)
+	}
+}
+
+type writerFunc func([]byte) (int, error)
+
+func (f writerFunc) Write(p []byte) (int, error) { return f(p) }

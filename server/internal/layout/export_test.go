@@ -396,3 +396,60 @@ func TestProtectedOutDifferentCase(t *testing.T) {
 		t.Error("Notes/ is not ours")
 	}
 }
+
+// A target in another directory: renamed from the temp file's directory
+// (issue #206); when the rename fails (another volume) the content is copied
+// next to the target and renamed there. No temp file is left anywhere.
+func TestAtomicFileOtherDirectory(t *testing.T) {
+	tmpDir, outDir := t.TempDir(), t.TempDir()
+	names := func(d string) []string {
+		ents, _ := os.ReadDir(d)
+		var n []string
+		for _, e := range ents {
+			n = append(n, e.Name())
+		}
+		return n
+	}
+	write := func(final string, overwrite bool) error {
+		a, err := NewAtomicFile(tmpDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprint(a, "payload")
+		return a.Commit(final, overwrite)
+	}
+	final := filepath.Join(outDir, "x.txt")
+	if err := write(final, false); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(final); string(b) != "payload" || len(names(tmpDir)) != 0 || len(names(outDir)) != 1 {
+		t.Fatalf("rename: %q tmp=%v out=%v", b, names(tmpDir), names(outDir))
+	}
+	if err := write(final, false); !errors.Is(err, ErrExists) || len(names(tmpDir)) != 0 || len(names(outDir)) != 1 {
+		t.Fatalf("exists: %v tmp=%v out=%v", err, names(tmpDir), names(outDir))
+	}
+
+	// cross-volume: the first rename fails
+	old := renameFile
+	defer func() { renameFile = old }()
+	calls := 0
+	renameFile = func(a, b string) error {
+		calls++
+		if calls == 1 {
+			return errors.New("invalid cross-device link")
+		}
+		return old(a, b)
+	}
+	if err := write(final, true); err != nil {
+		t.Fatalf("fallback: %v", err)
+	}
+	if b, _ := os.ReadFile(final); string(b) != "payload" || calls != 2 || len(names(tmpDir)) != 0 || len(names(outDir)) != 1 {
+		t.Fatalf("fallback: %q calls=%d tmp=%v out=%v", b, calls, names(tmpDir), names(outDir))
+	}
+	// the fallback fails too: nothing is left behind
+	renameFile = func(a, b string) error { return errors.New("denied") }
+	os.Remove(final)
+	if err := write(final, false); err == nil || len(names(tmpDir)) != 0 || len(names(outDir)) != 0 {
+		t.Fatalf("failure: %v tmp=%v out=%v", err, names(tmpDir), names(outDir))
+	}
+}
