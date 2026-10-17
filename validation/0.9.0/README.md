@@ -26,7 +26,26 @@ Build: `main` + release commit (version **0.9.0**). Release PR: *(this PR)*. Cha
 
 ## Emulator validation
 
-> **PENDING.** To be filled from `/workspace/release-evidence/summary.md` once the emulator validation run has finished. Until then the PR stays a draft.
+Local run of 2026-10-17 (Asia/Shanghai, 13:29-14:46) on **API 29** (Android 10, `google_apis/x86_64`), emulator-5556, software emulation (**TCG**, no KVM), started with `validation/scripts/emu-start.sh`; one emulator, strictly serial; `auto_time=1` restored afterwards. Binary: built from `main` at **`3c8b781`** (before #217 and before the release commit; the binary still printed `0.8.1`). Not re-run on the release commit; #217 (meta trim, `cursor_pruned` first=) is not covered.
+
+| part | case | result |
+|---|---|---|
+| export | MCP and CLI default (unredacted: `# WARNING`, `redacted=0`, `note code=unredacted`); `redact=true` / `--redact` (hashed device id in the file name, e-mail and bearer masked); file in `<root>/export/` mode 0600; `logcat_status` export line; temp file in `<root>/export/`, none in `tmp/` | PASS (52 checks, 0 FAIL) |
+| export | truncation `max_mb=1` with `note code=truncated`, `cap=max_mb`, `next: after=`; continuation parts concatenate to one full export; CLI `--max-mb` | PASS |
+| export | `--out` guard (own entries `v1/ run/ tmp/ bin/ log/ export/ config.json`, subdirectory, symlinks refused; relative path and missing directory refused; `<root>/notes/x.txt` allowed); `--force`; `--offline` needs `--out` | PASS |
+| recovery | #180: follower promoted after the writer was SIGKILLed with a torn last line injected: no duplicate seqs, gaps or joined lines; lines the follower had not seen are taken over | PASS |
+| recovery | #182/#191: real `ENOSPC` on a tmpfs data root, then space freed: the recorder recovers by itself; all 900 test lines present once in memory and on disk, no burnt seqs, no partial lines (note: `last_error` stays in `logcat_status` after recovery) | PASS |
+| clock | `scripts/clock-e2e.sh` set-back matrix (-10 min, -3 h, -2 d, 1970, +1 d, +1 y, back; #48, #52, #54, #65) | 110 PASS, 2 FAIL (F1: test timing, no product bug) |
+| clock | #54 launch straddling a set-back (jump 4 s into the launch): launch kept, steps/TTID `unreliable=clock_jump` | PASS |
+| clock | #183 follower reloads `meta.json` after a device clock set-back (jumps 18 -> 20 seen without restart) | PASS |
+| clock | #189/#184 store state after a **simulated** host-clock set-back (stamps and mtime 3 days ahead; no `seg_times` plus future mtime): clamped to now, data kept | PASS |
+| clock | #184 stamps and mtime 90 days old, `ANDROID_LOG_MCP_MAX_AGE=1h` | **F2: open** |
+
+**F1 (test timing, not a product bug).** The `x1_root_m1d` straddle check of `clock-e2e.sh` schedules the clock jump 0.1 s after `am start`; on TCG `am start` needs seconds to reach `START`, so the jump lands before the launch and the launch is stamped outside the script's window. With the jump 4 s in, the product behaves correctly. The `#65` check of the script printed `dump=0` (its marker pattern does not match `-v epoch` output); recomputed by hand: 19 of 19 markers stored.
+
+**F2 (open, see issue TBD, being triaged).** The retention sweep at service start (`layout.Sweep`) removes a segment of a device directory not yet owned by the service by **file mtime**, although its `seg_times` stamps would be re-anchored to now. Repro: copy a recorded root, set the segment's mtime and its `seg_times` to now - 90 days, `ANDROID_LOG_MCP_MAX_AGE=1h`, start the service with the device attached: `retention: removed 1 expired files`, lines on disk 11,241 -> 996. The CHANGELOG sentence "never an immediate mass delete after a clock fix" holds for stores the writer has opened, not for this sweep. Not fixed here; a decision (fix before tagging or ship as known) is pending.
+
+**Not exercised.** `cap=time_budget` of `logcat_export` (needs about 300,000 redacted lines; unit tests only). The different-letter-case `--out` guard (#205) on a case-insensitive file system (the Linux file system is case-sensitive; unit test `TestProtectedOutDifferentCase` only). The host clock was not changed (retention after a host set-back was simulated by editing store state). API 35, Windows and macOS were not run.
 
 ## API 35 / Windows / macOS
 
@@ -34,4 +53,4 @@ Build: `main` + release commit (version **0.9.0**). Release PR: *(this PR)*. Cha
 
 ## Where the raw evidence is
 
-Raw logs and run outputs are **not in the repository** (AGENTS.md §3). They go into one archive, `android-log-mcp-0.9.0-evidence.tar.gz` (with `MANIFEST.txt` and a sha256), to be attached to the GitHub Release `v0.9.0` after tagging. Until then it is kept on the release box at `/workspace/release-evidence/`.
+Raw logs, run outputs and the one-off scripts are **not in the repository** (AGENTS.md §3). The emulator part is in one archive, `0.9.0-evidence.tar.gz` (`MANIFEST.txt`, `SUMMARY.md`), sha256 `efa5bd706483f0fa14674bae50843b3ba6537c6cf6994f1b081ea01a53f78cc4`, to be attached to the GitHub Release `v0.9.0` after tagging. Until then it is on the release box at `/workspace/release-evidence/`. The other rows of the table above are not covered by that archive and are still to fill.
