@@ -5,6 +5,7 @@
 //	  tmp/                        scratch files (expire after an hour)
 //	  bin/<version>-<hash>/       service binaries (the running one + at most one other)
 //	  log/                        service log (size-capped, rotated)
+//	  export/                     export files (export.go: 7 days, 20 files, 256 MiB)
 //	  run/                        only in the default root, which is also the service's
 //	                              control directory (service lock, state, socket)
 //
@@ -51,7 +52,7 @@ func (r Root) Ensure() error {
 			return err
 		}
 	}
-	return nil
+	return r.EnsureExport()
 }
 
 func exists(p string) bool { _, err := os.Stat(p); return err == nil }
