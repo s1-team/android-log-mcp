@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-17
+
+Highlights: the `logcat_export` tool and `android-log-mcp export` CLI ([#172](https://github.com/s1crab/android-log-mcp/issues/172)), and a round of store and device robustness fixes (failed writes, torn tails, follower takeover, retention after a clock correction, recorder restarts). Segment files are unchanged; `meta.json` gains an optional `seg_times` field that older binaries ignore.
+
+Platform status: Windows and macOS are covered by CI only (unit tests with the fake adb); they were not tested with a real or emulator-attached adb for this release and are **unverified**. The emulator checks are summarised in [validation/0.9.0/README.md](validation/0.9.0/README.md).
+
 ### Added
 
 - **`logcat_export`** ([#172](https://github.com/s1crab/android-log-mcp/issues/172)): writes the lines a `logcat_search` selection matches to a text file for a human to review (`logcat -v threadtime -v year` lines in device time, a `# ` header, `--------- clock jump` markers, a `# end` footer) and returns only its path and counts, never log lines. Files go to `<root>/export/` (the tool has no output path). Limits: `max_mb` (default 64, max 512) and a 20 s time budget; a cut export says so (`note code=truncated`, `truncated newer=N cap=max_mb|time_budget next: after=<cursor>`) and `after=` writes the rest. Not redacted by default (`note code=unredacted`); `redact=true` masks the message text with the rules of `report`, `redact_extra` adds RE2 patterns. A redacted export of a large window is slow (about 15,000 lines/s) and usually ends at the time budget. The CLI command follows in a later change.
@@ -360,7 +366,8 @@ Upgrade notes are in the **Breaking** entries below.
 - First release: an MCP stdio server giving AI agents read-only access to Android logcat, with background recording of every connected device, the tools `logcat_status`, `logcat_search` (Android Studio filter syntax with strict errors), `logcat_crashes` and `logcat_app_launches`, and the `call` debug subcommand.
 - npm packaging: a Node launcher plus per-platform binary packages (linux / darwin / win32 × x64 / arm64), CI and release workflows.
 
-[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/s1crab/android-log-mcp/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/s1crab/android-log-mcp/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/s1crab/android-log-mcp/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/s1crab/android-log-mcp/compare/v0.7.0...v0.7.1
