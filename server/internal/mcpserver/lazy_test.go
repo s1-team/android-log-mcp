@@ -280,25 +280,28 @@ func TestStatusShowsLateHandover(t *testing.T) {
 	release := device.HoldSessionEndForTest(l.m, "FAKEA", 1, 200*time.Millisecond)
 	defer release()
 	l.e.SetDevices(map[string]string{"FAKEA": "offline"})
-	deadline := time.Now().Add(20 * time.Second)
-	for l.m.Get("FAKEA").Status().State != "offline" {
-		if time.Now().After(deadline) {
-			t.Fatal("disconnect not seen")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	l.e.SetDevices(map[string]string{"FAKEA": "device"})
+	// Each phase has its own generous bound (#220): on a starved CI runner
+	// (Windows, -race, many packages at once) spawning the fake adb alone can
+	// take more than 15 s. On any failure the device state, the last
+	// status response and the fake adb call log say where it stopped.
 	var out string
-	for {
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("device state=%q\nlast logcat_status:\n%s\nfake adb calls (tail):\n%s", l.m.Get("FAKEA").Status().State, out, l.e.CallsTail(60))
+		}
+	})
+	waitUntil(t, "the disconnect to be seen (state offline)", lazyWait, func() bool {
+		return l.m.Get("FAKEA").Status().State == "offline"
+	})
+	l.e.SetDevices(map[string]string{"FAKEA": "device"})
+	waitUntil(t, "logcat_status to show the late handover (note code=handoff)", lazyWait, func() bool {
 		out, _ = l.call(t, "logcat_status", `{}`)
 		if strings.Contains(out, "note code=handoff") {
-			break
+			return true
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("logcat_status does not show the late handover:\n%s", out)
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+		time.Sleep(40 * time.Millisecond)
+		return false
+	})
 	t.Logf("logcat_status:\n%s", out)
 	if !strings.Contains(out, "recording session 2 started at") {
 		t.Fatalf("logcat_status:\n%s", out)
