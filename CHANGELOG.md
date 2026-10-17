@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 - A data root now has an `export/` directory (mode 0700, a protected ACL on Windows) for the export files of the coming `logcat_export` ([#172](https://github.com/s1crab/android-log-mcp/issues/172)). It is bounded from the start: files older than 7 days, more than 20 files or more than 256 MiB in total are removed (oldest first), it counts toward the total cap, and `set-root --delete-old` removes it.
 
+### Fixed
+
+- DropBox ANR entries are matched one-to-one ([#176](https://github.com/s1crab/android-log-mcp/issues/176)). With two ANRs of one pid less than two minutes apart, an entry could attach to the neighbouring ANR (the nearest one by time) and later replace its traces. An ANR that already has a DropBox entry is no longer offered another one, an ANR logged after the entry's header time ranks behind those logged before it, and existing ANR traces are never overwritten.
+
 ## [0.8.1] - 2026-10-17
 
 Platform status: Windows and macOS are covered by CI only (unit tests with the fake adb); they were not tested with a real or emulator-attached adb for this release and are **unverified**. The emulator checks ran on API 29 locally (software emulation / TCG); API 35 is noted in the release PR / validation README.

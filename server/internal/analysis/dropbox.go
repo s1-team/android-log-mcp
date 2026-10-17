@@ -163,6 +163,21 @@ func dropboxDelta(crashNs int64, crashSeq uint64, entryNs int64, jumps []ClockSh
 	return d, false
 }
 
+// anrEntrySlack is how far after a DropBox entry's header time an ANR may
+// be logged and still be its source (clock readings of the two sources
+// differ a little).
+const anrEntrySlack = int64(5e9)
+
+// hasDropboxSource reports that a DropBox entry is already attached.
+func (c *Crash) hasDropboxSource() bool {
+	for _, x := range c.Sources {
+		if strings.HasPrefix(x, "dropbox:") {
+			return true
+		}
+	}
+	return false
+}
+
 // MatchDropboxBoot is MatchDropbox for an entry fetched during boot
 // session boot: a Java or native crash entry also matches a crash of that
 // boot with the same pid and process whatever their device times differ
@@ -217,7 +232,7 @@ func MatchDropboxBoot(list []*Crash, e DropboxEntry, boot string, jumps []ClockS
 	}
 	var best, far *Crash
 	var bestD, farD int64 = 1 << 62, 1 << 62
-	var bestShifted, tie bool
+	var bestShifted, tie, taken bool
 	for _, x := range list {
 		if x.Kind != kind {
 			continue
@@ -240,12 +255,29 @@ func MatchDropboxBoot(list []*Crash, e DropboxEntry, boot string, jumps []ClockS
 			}
 		}
 		win := int64(60e9)
+		inWin := d < win
 		if kind == "anr" {
+			inWin = d < anrPairWindow
 			win = anrPairWindow
+			// One DropBox entry per ANR (issue #176): an ANR that already
+			// has its entry is not offered another one.
+			if x.hasDropboxSource() {
+				if inWin {
+					taken = true
+				}
+				continue
+			}
+			// The entry is written after the ANR was declared, so with only
+			// its header time to go by, an ANR logged clearly after the
+			// entry is the next ANR of that process, not the source (not used when
+			// clock jumps are stored: the two readings may sit on either side).
+			if e.BodyTimeNs == 0 && len(jumps) == 0 && x.TimeNs > e.TimeNs+anrEntrySlack && inWin {
+				d += win // ranks after every ANR logged before the entry
+			}
 		}
-		if d < win && d < bestD {
+		if inWin && d < bestD {
 			best, bestD, bestShifted, tie = x, d, shifted, false
-		} else if d < win && d == bestD && best != x && (shifted || bestShifted) {
+		} else if inWin && d == bestD && best != x && (shifted || bestShifted) {
 			tie = true
 		} else if d >= win && boot != "" && x.Boot == boot && kind != "anr" && pid != 0 && x.PID == pid &&
 			proc != "" && x.Process == proc && (far == nil || d < farD) {
@@ -258,13 +290,16 @@ func MatchDropboxBoot(list []*Crash, e DropboxEntry, boot string, jumps []ClockS
 	if best == nil {
 		best = far
 	}
+	if best == nil && taken {
+		return nil, false // its ANR already has an entry: not a new crash
+	}
 	src := "dropbox:" + e.Tag
 	if best != nil {
 		cp := *best
 		cp.addSource(src)
 		switch kind {
 		case "anr":
-			if tr := anrTraces(e.Body); tr != "" {
+			if tr := anrTraces(e.Body); tr != "" && cp.Traces == "" {
 				cp.Traces = tr
 			}
 			if cp.Headline == "" {
