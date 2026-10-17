@@ -60,7 +60,7 @@ func TestServiceSingleInstanceAndOps(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	if c.Hello.Version != "0.4.0" || c.Hello.Proto != Proto || len(c.Hello.Tools) != 4 || c.Hello.Instructions == "" || c.Hello.Root != ctrl.Dir {
+	if c.Hello.Version != "0.4.0" || c.Hello.Proto != Proto || len(c.Hello.Tools) != 5 || c.Hello.Instructions == "" || c.Hello.Root != ctrl.Dir {
 		t.Fatalf("hello %+v", c.Hello)
 	}
 	var r CallReply

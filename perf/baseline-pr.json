@@ -338,7 +338,7 @@
       "desc": "logcat_crashes {\"package\":\"com.example.logtest\"} on the API 29 fixture (\u2248 535 tokens)"
     },
     "out.initialize.bytes": {
-      "value": 1187,
+      "value": 1278,
       "unit": "bytes",
       "kind": "exact",
       "desc": "initialize result (server info + instructions)"
@@ -410,10 +410,10 @@
       "desc": "logcat_status {\"package\":\"com.example.logtest\"} on the API 29 fixture (\u2248 349 tokens)"
     },
     "out.tools_list.bytes": {
-      "value": 10230,
+      "value": 13730,
       "unit": "bytes",
       "kind": "exact",
-      "desc": "tools/list result (4 tool definitions)"
+      "desc": "tools/list result (5 tool definitions)"
     },
     "query.crash_list_at_2000.ms": {
       "value": 0.004,
@@ -874,6 +874,43 @@
       "unit": "KiB",
       "kind": "mem",
       "desc": "class dictionary + per-block class lists after EnsureIndex"
+    },
+    "export.bytes_per_line": {
+      "value": 159.4,
+      "unit": "bytes",
+      "kind": "exact",
+      "desc": "export file bytes per written line (header and footer included)"
+    },
+    "export.lines_per_sec": {
+      "value": 1349320,
+      "unit": "lines/s",
+      "kind": "info",
+      "desc": "unredacted export rate (scan + format + write)"
+    },
+    "export.ms": {
+      "value": 38.99,
+      "unit": "ms",
+      "kind": "time",
+      "budget": 3500,
+      "desc": "logcat_export max_mb=8 of the synthetic history (unredacted), median of 3"
+    },
+    "export.redacted_lines_per_sec": {
+      "value": 14069,
+      "unit": "lines/s",
+      "kind": "info",
+      "desc": "redact=true export rate (the redactor is the bottleneck; max_mb=1)"
+    },
+    "out.logcat_export.bytes": {
+      "value": 522,
+      "unit": "bytes",
+      "kind": "exact",
+      "desc": "logcat_export {} on the API 29 fixture (\u2248 130 tokens)"
+    },
+    "out.logcat_export_at_scale.bytes": {
+      "value": 763,
+      "unit": "bytes",
+      "kind": "info",
+      "desc": "logcat_export response at scale (path included)"
     }
   }
 }

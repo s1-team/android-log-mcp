@@ -77,6 +77,7 @@ Paths for every OS, Codex and `claude mcp add` variants, and why B is better on 
 | `logcat_search` | Search logs with the filter syntax below: lines or a summary; `after`/`before` cursors, `wait_ms` |
 | `logcat_crashes` | Java, native and ANR crashes grouped by signature; full detail with `id` |
 | `logcat_app_launches` | Launch timeline (COLD / WARM / HOT) with TTID / TTFD |
+| `logcat_export` | Write the matching lines to a `.txt` file for a human (not redacted unless `redact=true`; not read-only); returns the path and counts |
 
 All times in `from` / `to` / `age:` are **device time**; output is in the device's time zone. Parameters, time semantics, the `package` parameter and several devices: [docs/tools.md](docs/tools.md). Reproducing a bug: call `logcat_status` for a `cursor`, let the user reproduce, then `logcat_search(after=cursor, wait_ms=20000)`. `cursor` is the newest stored line at the time of the call; `after=cursor` is exclusive (only lines stored after it) and `before=cursor` pages older (only lines before it).
 

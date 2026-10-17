@@ -252,11 +252,15 @@ func TestMCPInMemory(t *testing.T) {
 	var names []string
 	for _, x := range lt.Tools {
 		names = append(names, x.Name)
-		if x.Annotations == nil || !x.Annotations.ReadOnlyHint {
-			t.Errorf("%s not read-only", x.Name)
+		writes := x.Name == "logcat_export" || x.Name == "logcat_status" // #172
+		if x.Annotations == nil || x.Annotations.ReadOnlyHint == writes {
+			t.Errorf("%s: annotations %+v (writes=%v)", x.Name, x.Annotations, writes)
+		}
+		if x.Name == "logcat_export" && (x.Annotations == nil || x.Annotations.IdempotentHint) {
+			t.Errorf("logcat_export must not be idempotent")
 		}
 	}
-	if strings.Join(names, ",") != "logcat_app_launches,logcat_crashes,logcat_search,logcat_status" {
+	if strings.Join(names, ",") != "logcat_app_launches,logcat_crashes,logcat_export,logcat_search,logcat_status" {
 		t.Errorf("tools: %v", names)
 	}
 	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "logcat_search", Arguments: map[string]any{"filter": "tag:Net", "limit": 2}})

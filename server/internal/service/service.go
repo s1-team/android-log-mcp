@@ -281,7 +281,7 @@ func (s *Service) startManager(root string) {
 		m.CatchUpWait = s.opt.CatchUpWait
 	}
 	m.Start(ctx)
-	t := &mcpserver.Tools{M: m, Pins: pinner{s}}
+	t := &mcpserver.Tools{M: m, Pins: pinner{s}, ExportRoot: m.Root}
 	t.Service = func() []mcpserver.StatusLine { return s.Info().Lines() }
 	s.mu.Lock()
 	s.root, s.m, s.mstop, s.tools = root, m, cancel, t

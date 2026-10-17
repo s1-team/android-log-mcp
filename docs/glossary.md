@@ -14,6 +14,8 @@ Several kinds of process are involved when android-log-mcp runs: our own, the An
 | **device process** | 设备进程 | A process on the phone or emulator, e.g. the app being debugged or logd. Log lines, crashes and the process table are about device processes. |
 | **MCP host** | MCP 宿主 | The agent tool that starts MCP processes from its configuration: Codex, Cursor, Claude Code, … |
 
+| **export file** | 导出文件 | The `.txt` written by `logcat_export` under `<root>/export/` (7 days, newest 20, 256 MiB): a header, `logcat -v threadtime -v year` lines in device time, a footer. Not a report (`report` writes a zip). |
+
 Related words:
 
 - **MCP stdio server**: the product category (what android-log-mcp is, and what an MCP host's configuration calls a "server"). A running instance is an MCP process.

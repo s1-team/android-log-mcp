@@ -425,13 +425,21 @@ func (c *Client) startEmbedded(reason string) error {
 // Do runs op on the service (reconnecting once if the connection was lost
 // before the request was answered).
 func (c *Client) Do(ctx context.Context, op string, in, out any) error {
+	return c.do(ctx, op, in, out, true)
+}
+
+// noRetryTools write a file: after a lost reply a retry would write a second
+// one, so they are not retried (issue #172).
+var noRetryTools = map[string]bool{"logcat_export": true}
+
+func (c *Client) do(ctx context.Context, op string, in, out any, retry bool) error {
 	for attempt := 0; ; attempt++ {
 		conn, err := c.ensure(ctx)
 		if err != nil {
 			return err
 		}
 		err = conn.Do(ctx, op, in, out)
-		if errors.Is(err, ipc.ErrClosed) && attempt < 2 {
+		if retry && errors.Is(err, ipc.ErrClosed) && attempt < 2 {
 			continue
 		}
 		return err
@@ -440,10 +448,14 @@ func (c *Client) Do(ctx context.Context, op string, in, out any) error {
 
 // Call runs a tool on the service. A dropped connection (the service was
 // stopped, replaced or crashed) is retried after reconnecting: the tools
-// are read-only.
+// are read-only, except logcat_export, which is not retried (a retry after
+// a lost reply would write a second file) and answers service_unreachable.
 func (c *Client) Call(ctx context.Context, name string, raw []byte) (string, bool) {
 	var r CallReply
-	err := c.Do(ctx, "call", CallArgs{Name: name, Args: raw}, &r)
+	err := c.do(ctx, "call", CallArgs{Name: name, Args: raw}, &r, !noRetryTools[name])
+	if text, ok := lostCall(name, err); ok {
+		return text, true
+	}
 	if err != nil {
 		return "android-log-mcp: " + err.Error(), true
 	}
@@ -456,6 +468,15 @@ func (c *Client) Call(ctx context.Context, name string, raw []byte) (string, boo
 		}
 	}
 	return r.Text, r.IsError
+}
+
+// lostCall is the answer to a tool that is not retried when the connection
+// was lost while it ran (its reply, and possibly its file, is unknown).
+func lostCall(name string, err error) (string, bool) {
+	if err == nil || !noRetryTools[name] || !errors.Is(err, ipc.ErrClosed) {
+		return "", false
+	}
+	return `error code=service_unreachable msg="the connection to the service was lost while the export ran; a file may or may not have been written (see logcat_status or the export directory)" next: android-log-mcp service status`, true
 }
 
 // Close disconnects; an in-process service is stopped (its other clients
