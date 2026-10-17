@@ -39,9 +39,14 @@ type Meta struct {
 	// ClockJumps are the device clock jumps seen in the stored lines,
 	// oldest first (issue #48; bounded, pruned with the segments).
 	ClockJumps []ClockJump `json:"clock_jumps,omitempty"`
-	CrashSeq   int         `json:"crash_seq,omitempty"`
-	AnrSeq     int         `json:"anr_seq,omitempty"`
-	State      string      `json:"state,omitempty"` // last known adb state
+	// SegTimes are the host times each segment was started and last
+	// written, kept here so age retention and rotation do not depend on file
+	// mtimes (issues #184, #186, #189). Older stores have none; they are
+	// filled from the mtimes on first open, and older binaries ignore it.
+	SegTimes []SegTime `json:"seg_times,omitempty"`
+	CrashSeq int       `json:"crash_seq,omitempty"`
+	AnrSeq   int       `json:"anr_seq,omitempty"`
+	State    string    `json:"state,omitempty"` // last known adb state
 	// Addr is the last adb serial the device was reached at (connection
 	// address only; Serial is the stable device ID since layout v1).
 	Addr string `json:"addr,omitempty"`
@@ -145,4 +150,11 @@ func (m *Meta) ArrivalNs() int64 {
 		return m.ArrivalTimeNs
 	}
 	return m.LastTimeNs
+}
+
+// SegTime is the host-time stamp of one segment (by its first seq).
+type SegTime struct {
+	First   uint64 `json:"first"`
+	StartNs int64  `json:"start_ns"`
+	EndNs   int64  `json:"end_ns"`
 }

@@ -78,7 +78,7 @@ func TestMaxAgeFromEnv(t *testing.T) {
 	}
 }
 
-// Retention deletes whole segments whose newest line (mtime) is older than
+// Retention deletes whole segments whose newest line (host time) is older than
 // the configured MaxAge; the active segment is never deleted.
 func TestRetentionHonorsConfiguredMaxAge(t *testing.T) {
 	for _, tc := range []struct {
@@ -95,11 +95,12 @@ func TestRetentionHonorsConfiguredMaxAge(t *testing.T) {
 		if len(segs) < 4 {
 			t.Fatalf("setup: %d segments", len(segs))
 		}
-		old := time.Now().Add(-3 * time.Hour)
-		for _, sg := range segs[:len(segs)-1] {
-			os.Chtimes(sg.path, old, old)
-		}
+		// The host clock moves on 3h: the old segments' newest line is now
+		// 3h old (segment age comes from the persisted stamps, not mtimes).
+		later := time.Now().Add(3 * time.Hour)
+		hostNow = func() time.Time { return later }
 		s.Prune()
+		hostNow = time.Now
 		after, _ := s.listSegments()
 		if got := len(after) - 1; got != min(tc.keep, len(segs)-1) {
 			t.Errorf("MaxAge %v: %d old segments left of %d", tc.maxAge, got, len(segs)-1)

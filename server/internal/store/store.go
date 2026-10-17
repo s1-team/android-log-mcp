@@ -302,6 +302,7 @@ func (s *Store) Meta() Meta {
 	m.Gaps = append([]Gap(nil), m.Gaps...)
 	m.Holes = append([]SeqRange(nil), m.Holes...)
 	m.ClockJumps = append([]ClockJump(nil), m.ClockJumps...)
+	m.SegTimes = append([]SegTime(nil), m.SegTimes...)
 	return m
 }
 
@@ -686,6 +687,9 @@ func (s *Store) Append(recs []*model.Record) error {
 		return s.failAppendLocked(mk, err)
 	}
 	s.segs[len(s.segs)-1].size = s.curSize
+	if n := len(s.meta.SegTimes); n > 0 && s.meta.SegTimes[n-1].First == s.segs[len(s.segs)-1].first {
+		s.meta.SegTimes[n-1].EndNs = nowHost
+	}
 	s.meta.IngestHostNs = time.Now().UnixNano()
 	s.trimLocked(false)
 	s.dirty = true
@@ -725,6 +729,13 @@ func (s *Store) failAppendLocked(mk appendMark, err error) error {
 		kept = append(kept, sg)
 	}
 	s.segs = kept
+	st := s.meta.SegTimes[:0]
+	for _, t := range s.meta.SegTimes {
+		if t.First <= mk.lastSeq {
+			st = append(st, t)
+		}
+	}
+	s.meta.SegTimes = st
 	for i := range s.segs {
 		if s.segs[i].path == mk.path {
 			s.segs[i].size = mk.size // a rotation in the batch had set the larger size
@@ -775,14 +786,16 @@ func (s *Store) rotateLocked(first uint64) error {
 			s.segs[n-1].size = s.curSize
 		}
 	}
+	nowH := hostNow().UnixNano()
+	s.ensureStampsLocked(nowH)
 	// Reuse the last segment if it is not full (e.g. after restart) and the
 	// seqs continue it (not after a set-root move, which leaves a seq jump).
 	if n := len(s.segs); n > 0 && s.segs[n-1].size < s.cfg.SegmentBytes && s.cur == nil && s.curSize == 0 && continuesSeg(s.segs[n-1], first) {
 		f, err := os.OpenFile(s.segs[n-1].path, os.O_WRONLY|os.O_APPEND, 0o644)
 		if err == nil {
 			s.cur, s.curW, s.curSize = f, bufio.NewWriterSize(f, 256<<10), s.segs[n-1].size
-			s.curStart = segmentStartHostNs(s.segs, n-1)
-			if s.curSize < s.cfg.SegmentBytes && !s.segmentTooOld(hostNow().UnixNano()) {
+			s.curStart = s.stampFor(s.segs[n-1].first).StartNs
+			if s.curSize < s.cfg.SegmentBytes && !s.segmentTooOld(nowH) {
 				return nil
 			}
 			f.Close()
@@ -796,6 +809,8 @@ func (s *Store) rotateLocked(first uint64) error {
 	}
 	s.cur, s.curW, s.curSize = f, bufio.NewWriterSize(f, 256<<10), 0
 	s.segs = append(s.segs, segment{first: first, path: p})
+	s.meta.SegTimes = append(s.meta.SegTimes, SegTime{First: first, StartNs: nowH, EndNs: nowH})
+	s.dirty = true
 	s.pruneLocked()
 	return nil
 }
@@ -905,11 +920,12 @@ func (s *Store) pruneLocked() {
 	for _, sg := range s.segs {
 		total += sg.size
 	}
-	cutoff := time.Now().Add(-s.cfg.MaxAge)
+	now := hostNow().UnixNano()
+	s.ensureStampsLocked(now)
+	cutoff := now - int64(s.cfg.MaxAge)
 	for len(s.segs) > 1 {
 		old := s.segs[0]
-		st, err := os.Stat(old.path)
-		tooOld := err == nil && st.ModTime().Before(cutoff)
+		tooOld := s.stampFor(old.first).EndNs < cutoff
 		if total <= s.cfg.MaxBytes && !tooOld {
 			break
 		}
@@ -1649,21 +1665,80 @@ func (s *Store) oldestNs() int64 {
 // hostNow is the host clock for segment rotation (tests replace it).
 var hostNow = time.Now
 
-// segmentStartHostNs estimates the host time segment i was started after a
-// restart: the previous segment stopped being written when this one was
-// created, so its mtime is that moment; for the first segment, its own
-// mtime (later than its start, so rotation is late rather than early).
-// Host time only: the device clock may jump (#48).
-func segmentStartHostNs(segs []segment, i int) int64 {
-	for _, j := range []int{i - 1, i} {
-		if j < 0 {
-			continue
-		}
-		if fi, err := os.Stat(segs[j].path); err == nil {
-			return fi.ModTime().UnixNano()
+// staleHostSpan is how old a segment's last host-time stamp may be before
+// the stamp is distrusted: a host clock that was far off while recording
+// (RTC not set, dead battery) and was then corrected makes every stamp look
+// ancient, and deleting by it would silently drop recent data (issue #184).
+func (s *Store) staleHostSpan() int64 {
+	return max(int64(30*24*time.Hour), 10*int64(s.cfg.MaxAge))
+}
+
+// stampFor returns the stamp of the segment with this first seq (a copy; zero
+// value when unknown, which ensureStampsLocked prevents for stored segments).
+func (s *Store) stampFor(first uint64) SegTime {
+	for _, t := range s.meta.SegTimes {
+		if t.First == first {
+			return t
 		}
 	}
-	return 0
+	return SegTime{}
+}
+
+// ensureStampsLocked makes s.meta.SegTimes describe exactly the stored
+// segments with sane host times (writer only):
+//   - a segment without a stamp (a store written before the stamps existed)
+//     gets one from the file mtimes, as before;
+//   - a stamp in the future (the host clock was ahead and was corrected) is
+//     set to now, so the segment ages from the correction (issue #189);
+//   - a stamp older than staleHostSpan is distrusted and set to now, so
+//     nothing is deleted at once after a clock correction, and the segment
+//     still ages out one MaxAge later (issue #184);
+//   - stamps of segments that are gone are dropped.
+func (s *Store) ensureStampsLocked(now int64) {
+	if !s.writer {
+		return
+	}
+	old := s.meta.SegTimes
+	out := make([]SegTime, 0, len(s.segs))
+	changed := len(old) != len(s.segs)
+	for i, sg := range s.segs {
+		var t SegTime
+		found := false
+		for _, o := range old {
+			if o.First == sg.first {
+				t, found = o, true
+				break
+			}
+		}
+		if !found {
+			t = SegTime{First: sg.first}
+			if fi, err := os.Stat(sg.path); err == nil {
+				t.EndNs = fi.ModTime().UnixNano()
+				t.StartNs = t.EndNs
+			}
+			if i > 0 {
+				if fi, err := os.Stat(s.segs[i-1].path); err == nil {
+					t.StartNs = fi.ModTime().UnixNano()
+				}
+			}
+			changed = true
+		}
+		n := t
+		if n.EndNs == 0 && n.StartNs == 0 || n.StartNs > now || n.EndNs > now || now-n.EndNs > s.staleHostSpan() {
+			n.StartNs, n.EndNs = now, now
+		}
+		if n.StartNs > n.EndNs {
+			n.StartNs = n.EndNs
+		}
+		if n != t {
+			changed = true
+		}
+		out = append(out, n)
+	}
+	if changed {
+		s.meta.SegTimes = out
+		s.dirty = true
+	}
 }
 
 // firstRecordNs is the time of the first complete line of a segment (0 if none).
