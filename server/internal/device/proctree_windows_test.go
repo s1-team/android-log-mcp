@@ -32,13 +32,37 @@ func TestKillPidWaitsForExit(t *testing.T) {
 	done := make(chan struct{})
 	go func() { cmd.Wait(); close(done) }()
 	time.Sleep(300 * time.Millisecond) // let it start and take its cwd
-	killPid(cmd.Process.Pid)
+	if !killPidWait(cmd.Process.Pid, 5*time.Second) {
+		t.Fatal("killPidWait did not see the process exit")
+	}
 	if err := os.Remove(dir); err != nil {
 		t.Fatalf("working dir still locked right after killPid: %v", err)
 	}
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
+		t.Fatal("child not reaped")
+	}
+}
+
+// A zero wait never blocks: killPidWait returns at once (the injected wait
+// is what the tests of slow-exit handling use, no 500 ms sleep needed).
+func TestKillPidWaitZeroDoesNotBlock(t *testing.T) {
+	cmd := procattr.Hide(exec.Command(os.Args[0], "-test.run=^TestKillPidHelperSleep$"))
+	cmd.Env = append(os.Environ(), "ALM_KILLPID_HELPER=1")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() { cmd.Wait(); close(done) }()
+	t0 := time.Now()
+	killPidWait(cmd.Process.Pid, 0)
+	if time.Since(t0) > 2*time.Second {
+		t.Fatalf("killPidWait(0) blocked for %s", time.Since(t0))
+	}
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
 		t.Fatal("child not reaped")
 	}
 }

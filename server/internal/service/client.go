@@ -53,13 +53,14 @@ type RepairTiming struct {
 	StoppingWait time.Duration // how long a service that is shutting down is waited for (30 s)
 	TermWait     time.Duration // graceful stop before the kill (10 s)
 	KillWait     time.Duration // wait for the lock after the kill (5 s)
+	ExitWait     time.Duration // wait for the old pid to be gone once the lock is free (5 s)
 	WaiterWait   time.Duration // how long another client's repair is waited for (60 s)
 	HelloWait    time.Duration // how long a probe waits for the hello reply (3 s)
 }
 
 func (r *RepairTiming) defaults() {
 	for p, d := range map[*time.Duration]time.Duration{&r.SilentFor: 10 * time.Second, &r.StoppingWait: 30 * time.Second,
-		&r.TermWait: 10 * time.Second, &r.HelloWait: 3 * time.Second, &r.KillWait: 5 * time.Second, &r.WaiterWait: 60 * time.Second} {
+		&r.TermWait: 10 * time.Second, &r.HelloWait: 3 * time.Second, &r.KillWait: 5 * time.Second, &r.ExitWait: 5 * time.Second, &r.WaiterWait: 60 * time.Second} {
 		if *p <= 0 {
 			*p = d
 		}

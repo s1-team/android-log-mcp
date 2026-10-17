@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -29,6 +31,9 @@ import (
 //	ignoreterm  ignores SIGTERM (so the graceful stop does not work)
 //	badexe      service.json names another executable
 //	badstart    service.json has another start time
+//	lingerexit  releases the lock when <ctrl dir>/release appears, then stays
+//	            alive for ALM_TEST_LINGER_MS more (the lock is free, the pid is not gone);
+//	            with lingerterm a SIGTERM does the same
 //	embedded    service.json says the service runs inside an MCP process
 //
 // It writes service.json like a service and prints "ready".
@@ -45,7 +50,6 @@ func holderMain() (int, bool) {
 	if !ok {
 		return 3, true
 	}
-	_ = lock
 	if strings.Contains(mode, "ignoreterm") {
 		signal.Ignore(syscall.SIGTERM)
 	}
@@ -70,6 +74,28 @@ func holderMain() (int, bool) {
 		return 6, true
 	}
 	os.Stdout.WriteString("ready\n")
+	if strings.Contains(mode, "lingerexit") {
+		term := make(chan os.Signal, 1)
+		if strings.Contains(mode, "lingerterm") {
+			signal.Notify(term, syscall.SIGTERM) // overrides ignoreterm
+		}
+		for {
+			select {
+			case <-term:
+				goto release
+			default:
+			}
+			if _, err := os.Stat(filepath.Join(ctrl.Dir, "release")); err == nil {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	release:
+		store.ReleaseLock(lock)
+		ms, _ := strconv.Atoi(os.Getenv("ALM_TEST_LINGER_MS"))
+		time.Sleep(time.Duration(ms) * time.Millisecond)
+		return 0, true
+	}
 	time.Sleep(10 * time.Minute)
 	return 0, true
 }
@@ -79,10 +105,13 @@ type holder struct {
 	done chan struct{}
 }
 
+// lingerMS is how long a lingerexit holder stays after releasing the lock.
+const lingerMS = 1500
+
 func startHolder(t *testing.T, ctrl Control, root, mode string) *holder {
 	t.Helper()
 	cmd := procattr.Hide(exec.Command(os.Args[0]))
-	cmd.Env = append(os.Environ(), "ALM_TEST_HOLDER="+mode, "ALM_TEST_CTRL="+ctrl.Dir, "ALM_TEST_ROOT="+root)
+	cmd.Env = append(os.Environ(), "ALM_TEST_HOLDER="+mode, "ALM_TEST_CTRL="+ctrl.Dir, "ALM_TEST_ROOT="+root, "ALM_TEST_LINGER_MS="+strconv.Itoa(lingerMS))
 	var out bytes.Buffer
 	pr, pw, _ := os.Pipe()
 	cmd.Stdout, cmd.Stderr = pw, &out
@@ -410,5 +439,104 @@ func TestIdentify(t *testing.T) {
 	}
 	if alive, _, _, _ := identify(&State{PID: 1 << 30, Exe: exe}); alive {
 		t.Fatal("a missing pid is not alive")
+	}
+}
+
+// pidGone: the holder's pid no longer is the process service.json named.
+func pidGone(ctrl Control, st *State) bool {
+	alive, ours, _, _ := identify(st)
+	return !alive || !ours
+}
+
+// The lock is free but the old pid is still exiting: StopHolder returns only
+// after the pid is gone (#226 wait-for-exit), so a successor never starts
+// beside a process that still holds its directories (Windows).
+func TestStopHolderWaitsForPidExit(t *testing.T) {
+	t.Parallel()
+	ctrl := testControl(t)
+	h := startHolder(t, ctrl, "", "lingerexit,ignoreterm,nolistener")
+	d := Diagnose(ctrl)
+	st := *d.State
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		os.WriteFile(filepath.Join(ctrl.Dir, "release"), nil, 0o600)
+	}()
+	t0 := time.Now()
+	res, err := StopHolder(ctrl, d, StopOptions{Auto: true, TermWait: scaled(20 * time.Second), KillWait: scaled(5 * time.Second), ExitWait: scaled(20 * time.Second)})
+	if err != nil || res.Killed {
+		t.Fatalf("StopHolder: %+v %v", res, err)
+	}
+	if !pidGone(ctrl, &st) {
+		t.Fatalf("StopHolder returned after %s with the old pid %d still running", time.Since(t0), h.pid)
+	}
+	if time.Since(t0) < lingerMS*time.Millisecond/2 {
+		t.Fatalf("returned after %s: did not wait for the exit", time.Since(t0))
+	}
+	if ctrl.ReadState() != nil {
+		t.Fatal("service.json not cleaned up")
+	}
+}
+
+// ExitWait is a bound, not an error: a pid that outlasts it is logged and
+// StopHolder still succeeds (the behaviour before the wait existed).
+func TestStopHolderExitWaitExpires(t *testing.T) {
+	t.Parallel()
+	ctrl := testControl(t)
+	startHolder(t, ctrl, "", "lingerexit,ignoreterm,nolistener")
+	d := Diagnose(ctrl)
+	os.WriteFile(filepath.Join(ctrl.Dir, "release"), nil, 0o600)
+	t0 := time.Now()
+	if _, err := StopHolder(ctrl, d, StopOptions{Auto: true, TermWait: scaled(20 * time.Second), ExitWait: 50 * time.Millisecond}); err != nil {
+		t.Fatal(err)
+	}
+	if el := time.Since(t0); el > lingerMS*time.Millisecond*3 {
+		t.Fatalf("took %s", el)
+	}
+}
+
+// A reused pid (same pid, other start time) is gone, not waited for.
+func TestWaitProcExitReusedPid(t *testing.T) {
+	t.Parallel()
+	ctrl := testControl(t)
+	startHolder(t, ctrl, "", "silent")
+	st := *Diagnose(ctrl).State
+	t0 := time.Now()
+	if waitProcExit(&st, 150*time.Millisecond) {
+		t.Fatal("a live holder with its own start time is not gone")
+	}
+	if time.Since(t0) < 100*time.Millisecond {
+		t.Fatal("did not wait")
+	}
+	st.StartTime++
+	t0 = time.Now()
+	if !waitProcExit(&st, 10*time.Second) || time.Since(t0) > 2*time.Second {
+		t.Fatalf("reused pid was waited for (%s)", time.Since(t0))
+	}
+	st.StartTime--
+	st.PID = 0
+	if !waitProcExit(&st, time.Second) {
+		t.Fatal("no pid is gone")
+	}
+}
+
+// Replacing a hung service with real processes: when Connect returns, the
+// old pid is gone even though it kept running after releasing the lock.
+func TestReplaceWaitsForOldPid(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("the graceful stop of a silent holder is SIGTERM; StopHolder's wait is covered above")
+	}
+	ctrl := testControl(t)
+	h := startHolder(t, ctrl, "", "lingerexit,lingerterm,silent")
+	st := *Diagnose(ctrl).State
+	c := newRepairClient(ctrl)
+	defer c.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), scaled(120*time.Second))
+	defer cancel()
+	if _, err := c.Connect(ctx); err != nil {
+		t.Fatalf("%v\nservice log:\n%s", err, logTail(ctrl))
+	}
+	if !pidGone(ctrl, &st) {
+		t.Fatalf("connected while the old holder (pid %d) was still running", h.pid)
 	}
 }
