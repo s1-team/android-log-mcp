@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -217,5 +219,48 @@ func TestPermissions(t *testing.T) {
 	}
 	if di, _ := os.Stat(filepath.Dir(p)); di.Mode().Perm() != 0o700 {
 		t.Fatalf("not tightened: %v", di.Mode().Perm())
+	}
+}
+
+// peerGoneConn is a connection whose peer is gone: writes fail with EPIPE
+// at once, while the read side only reports the loss when released (the
+// order that raced in #237).
+type peerGoneConn struct {
+	net.Conn
+	release chan struct{}
+}
+
+func (c *peerGoneConn) Write([]byte) (int, error) {
+	return 0, &net.OpError{Op: "write", Net: "unix", Err: errors.New("write: broken pipe")}
+}
+func (c *peerGoneConn) Read([]byte) (int, error) { <-c.release; return 0, io.EOF }
+func (c *peerGoneConn) Close() error {
+	select {
+	case <-c.release:
+	default:
+		close(c.release)
+	}
+	return nil
+}
+func (c *peerGoneConn) SetWriteDeadline(time.Time) error { return nil }
+
+// A write that hits a closing peer before the reader sees the EOF is a
+// lost connection (ErrClosed, so callers reconnect), not a raw write error.
+func TestDoWriteToGonePeerIsErrClosed(t *testing.T) {
+	t.Parallel()
+	a, b := net.Pipe()
+	defer b.Close()
+	cl := newClient(&peerGoneConn{Conn: a, release: make(chan struct{})})
+	defer cl.Close()
+	if err := cl.Do(context.Background(), "x", nil, nil); !errors.Is(err, ErrClosed) {
+		t.Fatalf("got %v, want ErrClosed", err)
+	}
+}
+
+// A write timeout is not a lost connection.
+func TestWriteTimeoutIsNotPeerGone(t *testing.T) {
+	t.Parallel()
+	if peerGone(&writeError{os.ErrDeadlineExceeded}) || peerGone(errors.New("encode")) || !peerGone(&writeError{errors.New("broken pipe")}) {
+		t.Fatal("peerGone classification")
 	}
 }
