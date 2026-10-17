@@ -22,7 +22,7 @@ export ANDROID_LOG_MCP_BIN="${ANDROID_LOG_MCP_BIN:-$ROOT/server/android-log-mcp}
 ADB="$(command -v adb || echo adb)"
 APK="$ROOT/validation/logtest-app/build/logtest.apk"
 SCRATCH="$OUT/scratch"
-mkdir -p "$SCRATCH/svc" "$SCRATCH/app" "$SCRATCH/clock"
+mkdir -p "$SCRATCH/svc" "$SCRATCH/app" "$SCRATCH/clock" "$SCRATCH/gate" "$SCRATCH/gate-control"
 : > "$OUT/results.tsv"
 FAILED=0
 cd "$ROOT"
@@ -36,7 +36,9 @@ step() { # name, command...
   "$@" > "$dir/log.txt" 2>&1; rc=$?
   tail -40 "$dir/log.txt"
   echo "::endgroup::"
-  if [ $rc -eq 0 ]; then res=pass; first=""; else
+  if [ $rc -ne 0 ] && [ "$name" = crash-gate-control ] && [ "${CRASH_GATE_CONTROL_REQUIRED:-0}" != 1 ]; then
+    res="info-fail (exit $rc)"; first=$(grep -m1 -E 'FAIL' "$dir/log.txt" | cut -c1-200)
+  elif [ $rc -eq 0 ]; then res=pass; first=""; else
     res="fail (exit $rc)"; FAILED=$((FAILED + 1))
     first=$(grep -m1 -E '(^|[^A-Z])FAIL' "$dir/log.txt" | cut -c1-200)
     [ -n "$first" ] || first=$(tail -1 "$dir/log.txt" | cut -c1-200)
@@ -86,6 +88,17 @@ app_e2e() {
   XDG_CACHE_HOME="$SCRATCH/app" scripts/app-e2e.sh "$SERIAL" "$OUT/app/calls"
 }
 
+crash_gate() {
+  XDG_CACHE_HOME="$SCRATCH/gate" scripts/crash-gate-e2e.sh "$SERIAL" "$OUT/crash-gate" required
+}
+
+# #233 (fixed by PR #235): an uninterrupted native crash gives exactly one
+# row. Informational (result "info-fail", never counted) until #235 merges;
+# CRASH_GATE_CONTROL_REQUIRED=1 makes it required.
+crash_gate_control() {
+  XDG_CACHE_HOME="$SCRATCH/gate-control" scripts/crash-gate-e2e.sh "$SERIAL" "$OUT/crash-gate-control" control
+}
+
 clock_e2e() {
   XDG_CACHE_HOME="$SCRATCH/clock" scripts/clock-e2e.sh "$SERIAL" "$OUT/clock"
 }
@@ -107,7 +120,7 @@ fixtures() {
 
 stop_services() {
   local x
-  for x in svc app clock; do XDG_CACHE_HOME="$SCRATCH/$x" "$ANDROID_LOG_MCP_BIN" service stop || true; done
+  for x in svc app clock gate gate-control; do XDG_CACHE_HOME="$SCRATCH/$x" "$ANDROID_LOG_MCP_BIN" service stop || true; done
   # the service logs are evidence
   find "$SCRATCH" -name '*.log' -path '*android-log-mcp*' | while read -r f; do
     cp "$f" "$OUT/service-logs/$(printf '%s' "${f#"$SCRATCH"/}" | tr / _)"
@@ -121,6 +134,8 @@ step service-e2e service_e2e
 step report-e2e report_e2e
 step app-e2e app_e2e
 step clock-e2e clock_e2e
+step crash-gate crash_gate
+step crash-gate-control crash_gate_control
 step fixtures fixtures
 stop_services > "$OUT/service-logs/stop.txt" 2>&1
 column -t -s $'\t' "$OUT/results.tsv" || cat "$OUT/results.tsv"
