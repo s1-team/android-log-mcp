@@ -57,23 +57,43 @@ func TestRecordOnceRestartDoesNotLeakWorkers(t *testing.T) {
 			len(e.CallsMatching("-s FAKEA logcat -b")),
 			e.CallsTail(60))
 	})
-	for i := 1; i <= 3; i++ {
-		// a stream killed before its first line is retried without exec-out, so
-		// count both forms of the logcat start
-		streamCount := func() int {
-			return len(e.CallsMatching("-s FAKEA exec-out logcat -b")) + len(e.CallsMatching("-s FAKEA logcat -b"))
-		}
-		streams := streamCount()
+	// the session lingers only about a minute after the last tool call; hold
+	// it (like an in-flight call) so a slow runner cannot idle it out while
+	// the test waits for the recorder to restart
+	defer m.Begin("FAKEA")()
+	streamCount := func() int {
+		// a stream killed before its first line is retried without exec-out,
+		// so count both forms of the logcat start
+		return len(e.CallsMatching("-s FAKEA exec-out logcat -b")) + len(e.CallsMatching("-s FAKEA logcat -b"))
+	}
+	// newestStream returns the pid of the newest fake logcat stream (the file
+	// lists every earlier one too, whose pids may be reused by now). The fake
+	// logs the call before it appends its pid, so the newest pid can still be
+	// the previous, dead stream right after streamCount grew.
+	newestStream := func() int {
 		b, _ := os.ReadFile(filepath.Join(e.Dir, "dev", "FAKEA", "logcat"))
-		// only the newest stream (the file lists every earlier one too, whose
-		// pids may be reused by now)
 		if f := strings.Fields(string(b)); len(f) > 0 {
-			if pid, _ := strconv.Atoi(f[len(f)-1]); pid > 0 && fakeadb.Alive(pid) {
-				if p, err := os.FindProcess(pid); err == nil {
-					p.Kill() // adb logcat dies; the device stays attached
-				}
-			}
+			pid, _ := strconv.Atoi(f[len(f)-1])
+			return pid
 		}
+		return 0
+	}
+	for i := 1; i <= 3; i++ {
+		// kill a LIVE stream: skipping the kill when the pid is not there yet
+		// (or already dead) would wait for a restart nothing triggered
+		var streams int
+		waitFor(t, "a live logcat stream to kill (restart "+strconv.Itoa(i)+")", leakWait, func() bool {
+			pid := newestStream()
+			if pid <= 0 || !fakeadb.Alive(pid) {
+				return false
+			}
+			p, err := os.FindProcess(pid)
+			if err != nil {
+				return false
+			}
+			streams = streamCount()
+			return p.Kill() == nil // adb logcat dies; the device stays attached
+		})
 		waitFor(t, "the new logcat stream after kill (restart "+strconv.Itoa(i)+")", leakWait, func() bool { return streamCount() > streams })
 		waitFor(t, "recording again after kill (restart "+strconv.Itoa(i)+")", leakWait, func() bool { return d.Status().Recording })
 	}
