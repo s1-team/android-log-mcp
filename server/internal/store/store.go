@@ -116,7 +116,8 @@ type Store struct {
 	curSize  int64
 	curStart int64 // host time the active segment was started (0 = unknown); never device time (#48)
 	meta     Meta
-	metaMod  time.Time
+	metaMod  time.Time // mtime and size of the meta.json last read: a follower reloads when either differs
+	metaSize int64
 	dirty    bool
 	notify   chan struct{}
 	repair   *segRepair // a failed write left bytes to cut before the next write (issues #182, #191)
@@ -271,7 +272,9 @@ func (s *Store) loadMetaLocked() {
 	if err != nil {
 		return
 	}
-	if !st.ModTime().After(s.metaMod) && !s.metaMod.IsZero() {
+	// Not "newer": a host clock set back (or a coarse timestamp) can stamp
+	// a newer file with an older or equal time (issue #183).
+	if !s.metaMod.IsZero() && st.ModTime().Equal(s.metaMod) && st.Size() == s.metaSize {
 		return
 	}
 	b, err := os.ReadFile(p)
@@ -285,7 +288,7 @@ func (s *Store) loadMetaLocked() {
 		if s.meta.Serial == "" {
 			s.meta.Serial = serial
 		}
-		s.metaMod = st.ModTime()
+		s.metaMod, s.metaSize = st.ModTime(), st.Size()
 		s.lastSeq = max(s.lastSeq, m.SeqFloor)
 	}
 }
@@ -313,10 +316,12 @@ func (s *Store) UpdateMeta(fn func(m *Meta)) {
 }
 
 func (s *Store) saveMetaLocked() {
+	// A failed save stays dirty: Flush retries it (issue #187).
+	s.dirty = true
 	b, _ := json.MarshalIndent(&s.meta, "", " ")
 	tmp := filepath.Join(s.Dir, "meta.json.tmp")
 	if os.WriteFile(tmp, b, 0o644) != nil {
-		return // stay dirty: retried on the next Flush
+		return
 	}
 	// On Windows the rename fails while another process (a follower, a
 	// report) has meta.json open; stay dirty and retry on the next Flush.
