@@ -274,21 +274,28 @@ func (d *Device) setState(ctx context.Context, state string) {
 		d.lastSeen = time.Now()
 	}
 	running := d.cancel != nil
-	owned := d.owned
-	d.mu.Unlock()
-	if state == "device" && !running && owned {
-		d.mu.Lock()
+	start := state == "device" && !running && d.owned
+	var (
+		sess     uint64
+		prevDone <-chan struct{}
+		done     chan struct{}
+		cctx     context.Context
+	)
+	if start {
+		// the check above and the publication of d.cancel are one critical
+		// section: concurrent calls start one recording session (#193)
 		d.sessSeq++
-		sess, prevDone := d.sessSeq, d.sessDone
-		done := make(chan struct{})
+		sess, prevDone = d.sessSeq, d.sessDone
+		done = make(chan struct{})
 		d.sessDone = done
-		d.mu.Unlock()
 		d.catchStart(sess) // a call right after attach waits for this session's catch-up
-		cctx, cancel := context.WithCancel(withSession(withChildren(ctx, &d.kids), sess))
-		d.mu.Lock()
+		var cancel context.CancelFunc
+		cctx, cancel = context.WithCancel(withSession(withChildren(ctx, &d.kids), sess))
 		d.cancel = cancel
 		d.runWG.Add(1)
-		d.mu.Unlock()
+	}
+	d.mu.Unlock()
+	if start {
 		go func() {
 			defer d.runWG.Done()
 			defer close(done)
