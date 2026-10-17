@@ -4,7 +4,8 @@ name: emulator
 # GitHub-hosted ubuntu-latest runners (KVM). Never run this on a self-hosted
 # runner or the dev box: nested KVM crashes that host (AGENTS.md §6).
 # Not a required check. Steps and evidence: scripts/emulator-ci.sh
-# (compat, service-e2e, report-e2e, app-e2e, clock-e2e, fixtures).
+# (compat, service-e2e, report-e2e, app-e2e, clock-e2e, crash-gate,
+# crash-gate-control (informational until #235), fixtures).
 on:
   schedule:
     - cron: "41 20 * * *"   # nightly, 04:41 Asia/Shanghai (after the perf nightly in ci.yml)
@@ -19,6 +20,7 @@ on:
       - .github/workflows/emulator.yml
       - scripts/emulator-ci.sh
       - scripts/app-e2e.sh
+      - scripts/crash-gate-e2e.sh
       - scripts/clock-e2e.sh
       - scripts/service-e2e.*
       - scripts/e2e-report.sh
@@ -120,13 +122,13 @@ jobs:
           script: echo "boot snapshot saved"
       # The checks never fail this step (results.tsv decides below), so a
       # failure here is the emulator itself: boot it once more. A run takes
-      # about 8 minutes; the step timeout covers an emulator that never exits
+      # about 8 minutes (about 20 with the crash gate); the step timeout covers an emulator that never exits
       # after a failed boot (seen once: services missing after a snapshot
       # boot, then a 43-minute hang on shutdown).
       - name: Run the validation
         id: run1
         continue-on-error: true
-        timeout-minutes: 28
+        timeout-minutes: 32
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api }}
@@ -143,7 +145,7 @@ jobs:
           pkill -9 -f qemu-system 2>/dev/null || true
       - name: Run the validation (emulator retry, cold boot)
         if: steps.run1.outcome != 'success'
-        timeout-minutes: 28
+        timeout-minutes: 32
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api }}
@@ -159,6 +161,15 @@ jobs:
           echo "emulator boot retried: ${{ steps.run1.outcome != 'success' }}" | tee "$OUT/meta.txt" 2>/dev/null || true
           test -s "$OUT/results.tsv" || { echo "::error::no results (the emulator did not run the checks)"; exit 1; }
           cat "$OUT/results.tsv"
+          {
+            echo "### Crash gate, API ${{ matrix.api }}"
+            echo "Required: native + native_abort + Java crash (clock back) + ANR (clock back), each with a service SIGKILL between sources: exactly one row per crash, earlier ids kept. Informational until #235 (#233): uninterrupted native/native_abort give exactly one row."
+            for g in crash-gate crash-gate-control; do
+              [ -s "$OUT/$g/verdicts.tsv" ] || continue
+              echo; echo "**$g**"; echo; echo "| scenario | verdict | detail |"; echo "|---|---|---|"
+              awk -F'\t' '{printf "| %s | %s | %s |\n",$1,$2,$3}' "$OUT/$g/verdicts.tsv"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
           ! grep -q $'\tfail' "$OUT/results.tsv"
       - uses: actions/upload-artifact@v4
         if: always()
@@ -169,6 +180,7 @@ jobs:
             !${{ env.OUT }}/scratch
             !${{ env.OUT }}/app/calls/android-log-mcp
             !${{ env.OUT }}/clock/android-log-mcp
+            !${{ env.OUT }}/crash-gate*/scratch
           retention-days: 14
           if-no-files-found: warn
 
