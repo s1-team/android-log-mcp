@@ -303,7 +303,7 @@ func (t *Tools) buildQuery(d *device.Device, a commonArgs) (*query, error) {
 			seq = last
 		}
 		if c.name == "after" && first > 0 && seq+1 < first {
-			q.notes = append(q.notes, hdr("note", "code", "cursor_pruned", "boot", cur.Boot, "using", "oldest"))
+			q.notes = append(q.notes, hdr("note", "code", "cursor_pruned", "boot", cur.Boot, "first", first, "using", "oldest"))
 		}
 		*c.dst = seq
 		if c.name == "before" && seq == 0 {

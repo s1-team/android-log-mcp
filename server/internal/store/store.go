@@ -319,7 +319,7 @@ func (s *Store) UpdateMeta(fn func(m *Meta)) {
 func (s *Store) saveMetaLocked() {
 	// A failed save stays dirty: Flush retries it (issue #187).
 	s.dirty = true
-	b, _ := json.MarshalIndent(&s.meta, "", " ")
+	b, _ := json.Marshal(&s.meta) // compact: the readers are json.Unmarshal (#173 G6)
 	tmp := filepath.Join(s.Dir, "meta.json.tmp")
 	if os.WriteFile(tmp, b, 0o644) != nil {
 		return
@@ -923,6 +923,7 @@ func (s *Store) pruneLocked() {
 	now := hostNow().UnixNano()
 	s.ensureStampsLocked(now)
 	cutoff := now - int64(s.cfg.MaxAge)
+	trimmed := false
 	for len(s.segs) > 1 {
 		old := s.segs[0]
 		tooOld := s.stampFor(old.first).EndNs < cutoff
@@ -938,8 +939,46 @@ func (s *Store) pruneLocked() {
 		total -= old.size
 		s.segs = s.segs[1:]
 		s.dropCache(old.path)
+		trimmed = true
 	}
 	s.dropMemBeforeLocked()
+	if trimmed {
+		s.trimMetaLocked()
+	}
+}
+
+// trimMetaLocked drops the meta.json bookkeeping of pruned segments
+// together: SegTimes of removed segments, ClockJumps before the first
+// retained seq (Store.ClockJumps never returned them) and Sessions that
+// ended before it. The session covering the first retained seq (the last
+// one with FirstSeq <= it) is always kept, because readers pick the boot of
+// a seq as the last session whose FirstSeq is at or below it (#173 G6).
+func (s *Store) trimMetaLocked() {
+	if !s.writer || len(s.segs) == 0 {
+		return
+	}
+	first := max(s.segs[0].first, 1)
+	s.ensureStampsLocked(hostNow().UnixNano())
+	cover := -1
+	for i, se := range s.meta.Sessions {
+		if se.FirstSeq <= first {
+			cover = i
+		}
+	}
+	if cover > 0 {
+		s.meta.Sessions = append([]Session(nil), s.meta.Sessions[cover:]...)
+		s.dirty = true
+	}
+	var jumps []ClockJump
+	for _, j := range s.meta.ClockJumps {
+		if j.Seq >= first {
+			jumps = append(jumps, j)
+		}
+	}
+	if len(jumps) != len(s.meta.ClockJumps) {
+		s.meta.ClockJumps = jumps
+		s.dirty = true
+	}
 }
 
 // dropMemBeforeLocked removes window records older than the oldest segment.
@@ -970,6 +1009,7 @@ func (s *Store) RemoveOldestSegment(path string) (int64, bool) {
 	s.segs = s.segs[1:]
 	s.dropCache(old.path)
 	s.dropMemBeforeLocked()
+	s.trimMetaLocked()
 	return old.size, true
 }
 
