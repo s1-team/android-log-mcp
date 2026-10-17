@@ -661,7 +661,7 @@ func TestStatusListsNewestExport(t *testing.T) {
 	out := fx.ok(t, `{"max_mb":1}`) // truncated: incomplete
 	p := respFile(t, out)
 	st, _ = fx.tools.Call(context.Background(), "logcat_status", json.RawMessage(`{"device":"emu-x"}`))
-	want := "  export file=" + p + " bytes="
+	want := "  " + hdr("export", "file", p) + " bytes=" // quoted the way the response quotes it (Windows paths)
 	if !strings.Contains(st, want) || !strings.Contains(st, " complete=0\n") || !strings.Contains(st, " age_s=") {
 		t.Fatalf("status lacks %q complete=0:\n%s", want, st)
 	}
