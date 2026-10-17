@@ -41,11 +41,12 @@ func TestCarryOverAndUncarry(t *testing.T) {
 	m := nst.Meta()
 	nst.Close()
 	rd := m.ResumeDedup
-	if m.SeqFloor != 3 || rd == nil || rd.Count != 3 || rd.SeqFloor != 3 || rd.BootID != "b" || len(rd.Hashes) != 0 {
-		// the last lines of the boot session by seq, in resume_dedup.bin (issue #56)
+	if m.SeqFloor != 3 || rd == nil || rd.Count != 4 || rd.SeqFloor != 3 || rd.BootID != "b" || len(rd.Hashes) != 0 {
+		// the last lines of the boot session by seq, in resume_dedup.bin (issue #56),
+		// plus the whole-entry hash of the two same-header records 2 and 3 (issue #192)
 		t.Fatalf("meta: %+v", m)
 	}
-	if b, err := os.ReadFile(filepath.Join(cs[0].To, store.ResumeDedupFile)); err != nil || len(b) != 24 {
+	if b, err := os.ReadFile(filepath.Join(cs[0].To, store.ResumeDedupFile)); err != nil || len(b) != 32 {
 		t.Fatalf("%s: %d bytes, %v", store.ResumeDedupFile, len(b), err)
 	}
 	Uncarry(cs)

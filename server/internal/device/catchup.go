@@ -354,11 +354,14 @@ func tailMultiset(st *store.Store, n int) multiset {
 		n = maxResumeHashes
 	}
 	seen := 0
+	var runs splitRuns
 	st.Scan(sessionFirst(st), st.LastSeq()+1, true, func(r *model.Record) bool {
 		set[recHash(r)]++
+		runs.add(set, r)
 		seen++
 		return seen < n
 	})
+	runs.end(set)
 	return set
 }
 
@@ -372,15 +375,62 @@ func boundaryMultiset(st *store.Store, arrNs int64) multiset {
 		return set
 	}
 	seen := 0
+	var runs splitRuns
 	st.Scan(sessionFirst(st), st.LastSeq()+1, true, func(r *model.Record) bool {
 		if r.TimeNs < arrNs-int64(resumeSlack) {
 			return false
 		}
 		set[recHash(r)]++
+		runs.add(set, r)
 		seen++
 		return seen < maxResumeHashes
 	})
+	runs.end(set)
 	return set
+}
+
+// splitRuns finds a multi-line entry that was stored as several records
+// (issue #192): the live assembler flushes a pending entry after 150 ms
+// without a line, so on a slow transport the rest of the entry arrives later
+// and becomes a record of its own with the same header. The replay after a
+// reconnect assembles the entry whole, and its hash matches none of the
+// pieces. For every run of consecutive stored records with one header, add()
+// also counts the hash the whole entry would have (the messages joined by
+// "\n", as the assembler joins them), so the replayed entry is recognised.
+// Records arrive newest first (the scans above).
+type splitRuns struct {
+	head string   // header of the run
+	msgs []string // messages, newest first
+	r0   model.Record
+}
+
+func runHeader(r *model.Record) string {
+	return fmt.Sprintf("%d|%d|%d|%c|%s|%d|%s", r.TimeNs, r.PID, r.TID, r.Level, r.Tag, r.UID, r.Buffer)
+}
+
+func (s *splitRuns) add(set multiset, r *model.Record) {
+	h := runHeader(r)
+	if len(s.msgs) > 0 && h != s.head {
+		s.end(set)
+	}
+	if len(s.msgs) == 0 {
+		s.head, s.r0 = h, *r
+	}
+	s.msgs = append(s.msgs, r.Msg)
+}
+
+// end closes the current run, counting its whole-entry hash if it has
+// several records.
+func (s *splitRuns) end(set multiset) {
+	if n := len(s.msgs); n > 1 {
+		for i, j := 0, n-1; i < j; i, j = i+1, j-1 {
+			s.msgs[i], s.msgs[j] = s.msgs[j], s.msgs[i]
+		}
+		whole := s.r0
+		whole.Msg = strings.Join(s.msgs, "\n")
+		set[recHash(&whole)]++
+	}
+	s.msgs = s.msgs[:0]
 }
 
 // bufferLines returns the entries logd holds in the recorded buffers
