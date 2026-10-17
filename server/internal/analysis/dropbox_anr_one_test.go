@@ -12,7 +12,7 @@ import (
 
 func anrEntry(headerNs, bodyNs int64, marker string) DropboxEntry {
 	return DropboxEntry{Tag: "data_app_anr", TimeNs: headerNs, BodyTimeNs: bodyNs,
-		Body: "Process: com.foo\nPID: 4321\nSubject: x\n\n----- pid 4321 at x -----\nCmd line: com.foo\n" + marker + "\n"}
+		Body: "Process: com.foo\nPID: 4321\nSubject: Input dispatching timed out\n\n----- pid 4321 at x -----\nCmd line: com.foo\n" + marker + "\n"}
 }
 
 // twoANRs returns two complete ANRs of pid 4321 at 1000 s and 1060 s.

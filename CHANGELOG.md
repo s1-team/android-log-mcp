@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+### Fixed
+
+- A native crash is no longer listed twice when its tombstone lines are read after the log line `Fatal signal` was already stored: the tombstone, `am_crash` and the DropBox entry now attach to the existing crash (same id, same row) instead of creating a second one a moment later ([#233](https://github.com/s1crab/android-log-mcp/issues/233), [#225](https://github.com/s1crab/android-log-mcp/issues/225)).
+- The sources of one ANR (`am_anr`, the `ANR in` block, the DropBox entry) are paired in the order they arrived, no longer by a 120 s window ([#225](https://github.com/s1crab/android-log-mcp/issues/225), second of three changes). A dump that takes longer than two minutes (slow emulator, loaded device) no longer produces a second ANR; the pairing gives up only after 10 minutes. Two real ANRs of one process are never merged, whatever the gap and wherever the service process restarts, and a DropBox entry or block with another reason does not attach to an unrelated ANR. `crashes.jsonl` crashes of kind `anr` written by this version carry the optional field `n` (ordinal within the process lifetime); older binaries ignore it. Crashes written by 0.9.x keep the old pairing windows.
+
 ## [0.9.1] - 2026-10-17
 
 Patch release: the on-disk store is declared an internal format, and `meta.json` is trimmed with retention ([#173](https://github.com/s1crab/android-log-mcp/issues/173)). No tool or CLI change; segment files are unchanged and older binaries read `meta.json` as before. Platform status: Windows and macOS are covered by CI only (unit tests with the fake adb) and are **unverified** with a real or emulator-attached adb. The emulator checks are summarised in [validation/0.9.1/README.md](validation/0.9.1/README.md).

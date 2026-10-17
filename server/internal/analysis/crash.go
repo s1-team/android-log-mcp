@@ -42,6 +42,7 @@ type Crash struct {
 	Inc     string     `json:"inc,omitempty"`  // procs.Proc.ID of the process lifetime, or a weak token p<pid>@<seq>
 	IncWeak bool       `json:"incw,omitempty"` // Inc is a weak token (no lifetime known)
 	Ev      []Evidence `json:"ev,omitempty"`   // observations attached to the fact
+	N       int        `json:"n,omitempty"`    // ANR: 1-based ordinal within the process lifetime (issue #225); 0 for other kinds and older facts
 
 	// adj is the detector's private time: device time minus the clock
 	// jumps seen so far (continuous time). Windows compare adj, never TimeNs
@@ -92,6 +93,13 @@ type Detector struct {
 	// re-resolved at every attempt, because a start line that arrives late
 	// moves it. nil: pid and time decide, as before.
 	Lifetime func(pid int, devNs int64, seq uint64) string
+	// PairInStore: the owner of Emit pairs a snapshot with an open fact
+	// itself, from the persisted crash list (issue #225: the stored fact is
+	// the truth, a copy in detector memory only knows what this detector
+	// saw). An ANR source is then always emitted as a new snapshot (no ID)
+	// and is never joined to a crash held in memory. false: the detector
+	// pairs ANR sources in memory (tests, offline use).
+	PairInStore bool
 
 	recent   []*Crash           // last crashes for dedup/merge (bounded)
 	amNative []amNative         // am_crash "Native crash" events waiting for the tombstone
@@ -184,11 +192,14 @@ const anrPairWindow = 120e9
 // already supplied that source) is a repeat: the ANR is returned with
 // repeat=true and must be left unchanged, not paired with a new one (issue
 // #175). Repeats of the same text under another seq are not recognised here.
-func (d *Detector) findAnr(pid int, proc, boot string, ns, devNs int64, seq uint64, needEvent bool) (c *Crash, repeat bool) {
+func (d *Detector) findAnr(pid int, proc, boot string, ns, devNs int64, seq uint64, needEvent bool, reason string) (c *Crash, repeat bool) {
+	if d.PairInStore {
+		return nil, false
+	}
 	if seq != 0 {
 		for i := len(d.recent) - 1; i >= 0; i-- {
 			c := d.recent[i]
-			if c.Kind != "anr" || c.PID != pid || abs(c.adj-ns) > anrPairWindow {
+			if c.Kind != "anr" || c.PID != pid || abs(c.adj-ns) > anrEvidenceCap {
 				continue
 			}
 			if c.Boot != "" && boot != "" && c.Boot != boot {
@@ -199,19 +210,21 @@ func (d *Detector) findAnr(pid int, proc, boot string, ns, devNs int64, seq uint
 			}
 		}
 	}
+	// ordinal / interval pairing (issue #225): the latest ANR of this
+	// process lifetime anchored before the record that still lacks the
+	// source and agrees on the reason; time is only the veto cap
+	src := "logcat:system"
+	if needEvent {
+		src = "events:am_anr"
+	}
+	probe := &Crash{Kind: "anr", Boot: boot, PID: pid, Process: proc, TimeNs: devNs, Seq: seq, Headline: reason, Ev: []Evidence{{S: src, Q: seq}}}
+	var cands []*Crash
 	for i := len(d.recent) - 1; i >= 0; i-- {
-		c := d.recent[i]
-		if c.Kind != "anr" || c.PID != pid || abs(c.adj-ns) > anrPairWindow {
-			continue
-		}
-		if c.Boot != "" && boot != "" && c.Boot != boot {
-			continue
-		}
-		if (needEvent && !c.hasSource("events:am_anr") || !needEvent && c.Body == "") && d.sameLife(c, proc, pid, devNs, seq) {
-			return c, false
+		if x := d.recent[i]; x.Kind == "anr" && x.PID == pid {
+			cands = append(cands, x)
 		}
 	}
-	return nil, false
+	return PickAnrFact(cands, probe, func(x *Crash) int64 { return ns - x.adj }, func(x *Crash) bool { return d.sameLife(x, proc, pid, devNs, seq) })
 }
 
 // sameLife reports that evidence of process proc (pid, device time devNs,
@@ -442,7 +455,7 @@ func (d *Detector) Feed(r *model.Record) {
 		f := logcat.EventFields(r.Msg, 5)
 		if len(f) >= 5 {
 			pid, _ := strconv.Atoi(f[1])
-			c, repeat := d.findAnr(pid, f[2], r.Boot, u, r.TimeNs, r.Seq, true)
+			c, repeat := d.findAnr(pid, f[2], r.Boot, u, r.TimeNs, r.Seq, true, f[4])
 			if repeat {
 				break // the same record again: nothing changes
 			}
@@ -466,7 +479,7 @@ func (d *Detector) Feed(r *model.Record) {
 		if pm := reANRPid.FindStringSubmatch(r.Msg); pm != nil {
 			pid, _ = strconv.Atoi(pm[1])
 		}
-		c, repeat := d.findAnr(pid, proc, r.Boot, u, r.TimeNs, r.Seq, false)
+		c, repeat := d.findAnr(pid, proc, r.Boot, u, r.TimeNs, r.Seq, false, anrReasonOf(r.Msg))
 		if repeat {
 			break // the same record again: nothing changes
 		}
@@ -482,11 +495,7 @@ func (d *Detector) Feed(r *model.Record) {
 			c.CPU = firstLines(r.Msg[i:], 10)
 		}
 		c.addSource("logcat:" + r.Buffer)
-		reason := ""
-		if rm := reANRReason.FindStringSubmatch(r.Msg); rm != nil {
-			reason = rm[1]
-		}
-		c.addEv("logcat:"+r.Buffer, r.Seq, r.TimeNs, proc, reason)
+		c.addEv("logcat:"+r.Buffer, r.Seq, r.TimeNs, proc, anrReasonOf(r.Msg))
 		emit = append(emit, c)
 		dropbox = append(dropbox, "data_app_anr")
 	}
@@ -859,4 +868,12 @@ func splitThreads(t string) []string {
 		out = append(out, strings.Join(cur, "\n"))
 	}
 	return out
+}
+
+// anrReasonOf is the first Reason: (or Subject:) line of an "ANR in" block.
+func anrReasonOf(msg string) string {
+	if rm := reANRReason.FindStringSubmatch(msg); rm != nil {
+		return rm[1]
+	}
+	return ""
 }

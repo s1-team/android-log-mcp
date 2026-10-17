@@ -194,6 +194,7 @@ func NewPipeline(st *store.Store, boot string, loc *time.Location) *Pipeline {
 		}
 	}
 	p.Det.Emit = p.EmitCrash
+	p.Det.PairInStore = true
 	p.Det.Lifetime = func(pid int, devNs int64, seq uint64) string {
 		if x := p.resolveAnchor(pid, devNs, seq); x != nil {
 			return x.ID
@@ -398,6 +399,9 @@ func (p *Pipeline) attachLocked(in *analysis.Crash, fromDropbox bool) {
 		return // nothing new: a repeat of evidence already attached
 	}
 	if out.ID == "" {
+		if out.Kind == "anr" && out.N == 0 {
+			out.N = p.nextOrdinal(out)
+		}
 		p.Store.UpdateMeta(func(m *store.Meta) {
 			if out.Kind == "anr" {
 				m.AnrSeq++
@@ -410,6 +414,26 @@ func (p *Pipeline) attachLocked(in *analysis.Crash, fromDropbox bool) {
 	}
 	in.ID = out.ID
 	p.Store.AppendAux("crashes", crashAuxLine{Crash: out, HostNs: now})
+}
+
+// nextOrdinal is the 1-based ordinal of the new ANR fact f within its
+// process lifetime (issue #225): one more than the stored ANR facts of the
+// same boot and pid that are bound to the same lifetime (a weak fact counts
+// the weak ones of a compatible process). The lifetime is the tuple's
+// (boot, kind, inc, n); n tells a second ANR of one process from the first.
+func (p *Pipeline) nextOrdinal(f *analysis.Crash) int {
+	n := 1
+	for _, x := range OpenFacts(p.Store, f.Boot, "anr", f.PID) {
+		if x.PID != f.PID || x.ID == f.ID {
+			continue
+		}
+		switch {
+		case !f.IncWeak && !x.IncWeak && x.Inc == f.Inc,
+			f.IncWeak && x.IncWeak && analysis.ProcCompatible(x.Process, f.Process):
+			n++
+		}
+	}
+	return n
 }
 
 // sameVersion reports that b carries nothing a (the stored version) lacks.

@@ -84,7 +84,7 @@ func (r *factRig) anrBlock(sec int64, pid int, proc, reason string) *model.Recor
 func (r *factRig) dropboxANR(sec int64, pid int, proc, reason string) {
 	ts := time.Unix(0, r.ns(sec)).UTC().Format("2006-01-02 15:04:05")
 	r.p.ApplyDropbox("Drop box contents\n========================================\n" + ts + " data_app_anr (text, 100 bytes)\nProcess: " + proc +
-		"\nPID: " + fmt.Sprint(pid) + "\nSubject: " + reason + "\n\n----- pid " + fmt.Sprint(pid) + " at (no time) -----\nCmd line: " + proc + "\n\n")
+		"\nPID: " + fmt.Sprint(pid) + "\nSubject: " + reason + "\n\n----- pid " + fmt.Sprint(pid) + " at (no time) -----\nCmd line: " + proc + "\nDump-at: " + fmt.Sprint(sec) + "\n\n")
 }
 
 func (r *factRig) facts() []*analysis.Crash {
@@ -176,15 +176,16 @@ func TestANRRestartBetweenSources(t *testing.T) {
 	}
 }
 
-// Without the restart the same two sources one second apart pair as before,
-// and one beyond the (unchanged) 120 s window do not: PR1 changes no window.
-func TestANRWindowsUnchangedInPR1(t *testing.T) {
+// The two sources of one ANR pair at any gap up to the veto cap
+// (anrEvidenceCap, 10 min), with or without a restart between them, and not
+// beyond it (PR2 of #225 replaced the 120 s window).
+func TestANRGapUpToEvidenceCap(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		gap     int64
 		restart bool
 		want    int
-	}{{5, false, 1}, {5, true, 1}, {120, false, 1}, {120, true, 1}, {130, false, 2}, {130, true, 2}} {
+	}{{5, false, 1}, {5, true, 1}, {120, true, 1}, {130, false, 1}, {130, true, 1}, {300, true, 1}, {599, false, 1}, {600, true, 1}, {601, false, 2}, {601, true, 2}} {
 		t.Run(fmt.Sprintf("gap%d-restart%v", tc.gap, tc.restart), func(t *testing.T) {
 			t.Parallel()
 			r := newFactRig(t)

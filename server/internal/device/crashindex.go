@@ -73,6 +73,7 @@ type crashSummary struct {
 	// persisted-fact fields (issue #225): small, kept for the open-fact lookup
 	Inc     string              `json:"inc,omitempty"`
 	IncWeak bool                `json:"incw,omitempty"`
+	N       int                 `json:"n,omitempty"`
 	Ev      []analysis.Evidence `json:"ev,omitempty"`
 }
 
@@ -169,7 +170,7 @@ func (x *crashIndex) addLocked(data []byte, base int64) {
 			c := &analysis.Crash{ID: s.ID, Kind: s.Kind, Boot: s.Boot, TimeNs: s.TimeNs, Seq: s.Seq, PID: s.PID,
 				Process: s.Process, Package: s.Package, Thread: s.Thread, Headline: s.Headline, Signature: s.Signature,
 				Sources: s.Sources[:len(s.Sources):len(s.Sources)], Location: s.Location, // full slice: appends by callers copy
-				Inc: s.Inc, IncWeak: s.IncWeak, Ev: s.Ev[:len(s.Ev):len(s.Ev)]}
+				Inc: s.Inc, IncWeak: s.IncWeak, N: s.N, Ev: s.Ev[:len(s.Ev):len(s.Ev)]}
 			e := x.ents[s.ID]
 			if e == nil {
 				e = &crashEnt{}

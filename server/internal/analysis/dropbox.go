@@ -259,6 +259,32 @@ func MatchDropboxBoot(list []*Crash, e DropboxEntry, boot string, jumps []ClockS
 		if kind == "anr" {
 			inWin = d < anrPairWindow
 			win = anrPairWindow
+			if fresh := x.HasEvidence() && !x.synthOnly(); fresh {
+				// a fact written by the ordinal pairing (issue #225): the
+				// 120 s window gives way to the veto cap, a different
+				// reason is a different ANR, and an ANR logged after the
+				// entry (or of a later fact of the process) is not its source
+				win = anrEvidenceCap
+				inWin = d < win
+				if ok, _ := ReasonCompatible(x.Headline, headerField(e.Body, "Subject")); !ok {
+					continue
+				}
+				if et := firstNonZero(e.BodyTimeNs, e.TimeNs); len(jumps) == 0 && et != 0 {
+					if x.TimeNs > et+anrEntrySlack {
+						continue
+					}
+					later := false
+					for _, y := range list {
+						if y != x && y.Kind == "anr" && y.PID == x.PID && y.Boot == x.Boot && y.HasEvidence() && y.Seq > x.Seq && y.TimeNs <= et+anrEntrySlack {
+							later = true
+							break
+						}
+					}
+					if later && !x.hasDropboxSource() {
+						continue // a later ANR of the process is anchored before the entry: the entry is its (or a later one's)
+					}
+				}
+			}
 			// One DropBox entry per ANR (issue #176): an ANR that already
 			// has its entry is not offered another one.
 			if x.hasDropboxSource() {
@@ -480,4 +506,11 @@ func KeepDropbox(c, old *Crash) {
 	if c.Location == "" {
 		c.Location = old.Location
 	}
+}
+
+func firstNonZero(a, b int64) int64 {
+	if a != 0 {
+		return a
+	}
+	return b
 }

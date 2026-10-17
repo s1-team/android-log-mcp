@@ -230,7 +230,7 @@ func TestFindOpenFact(t *testing.T) {
 		for _, tc := range []struct {
 			gap  int64
 			want bool
-		}{{119, true}, {120, true}, {121, false}} {
+		}{{119, true}, {121, true}, {600 - 1, true}, {600, true}, {601, false}} { // the 120 s window is gone (PR2): the cap is anrEvidenceCap
 			got, _ := FindOpenFact([]*Crash{f1}, in(1000+tc.gap, evBlock(uint64(1000+tc.gap))), nil, nil)
 			if (got != nil) != tc.want {
 				t.Errorf("+%d s: %v", tc.gap, got)
