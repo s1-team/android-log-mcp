@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -28,9 +29,17 @@ func lazyEnv(t *testing.T, extra ...string) ([]string, fakeadb.Env) {
 	e.SetDevices(map[string]string{"FAKEA": "device"})
 	// runs before TempDir's removal: orphaned fake logcats exit once their
 	// device directory is gone
+	diagFor(t, func() string {
+		return fmt.Sprintf("fake adb calls (tail):\n%s\nany child running: %v\n", e.CallsTail(60), e.AnyChildRunning())
+	})
 	t.Cleanup(func() {
 		os.RemoveAll(filepath.Join(dir, "dev"))
-		time.Sleep(300 * time.Millisecond)
+		// wait for the orphans to notice instead of sleeping; bounded, and
+		// not a failure (TempDir removal reports a real problem)
+		deadline := time.Now().Add(scaled(30 * time.Second))
+		for e.AnyChildRunning() && time.Now().Before(deadline) {
+			time.Sleep(20 * time.Millisecond)
+		}
 	})
 	env := isoEnv(t, append([]string{"ANDROID_LOG_MCP_ADB=" + adb, fakeadb.EnvDir + "=" + dir}, extra...)...)
 	return env, e
@@ -47,14 +56,11 @@ func (s *session) call(t *testing.T, name string, args map[string]any) string {
 	return res.Content[0].(*mcp.TextContent).Text
 }
 
+// eventually is waitUntil with a floor of 30 s per stage: the callers' short
+// budgets were tuned for fast Linux and flaked on starved runners.
 func eventually(t *testing.T, what string, d time.Duration, ok func() bool) {
 	t.Helper()
-	for end := time.Now().Add(d); time.Now().Before(end); time.Sleep(50 * time.Millisecond) {
-		if ok() {
-			return
-		}
-	}
-	t.Fatalf("timed out: %s", what)
+	waitUntil(t, what, max(d, 30*time.Second), ok)
 }
 
 // An MCP client connects: the service runs, but runs no adb until the
@@ -69,7 +75,8 @@ func TestLazyRecording(t *testing.T) {
 	if pid == 0 {
 		t.Fatal("no service")
 	}
-	time.Sleep(time.Second)
+	// no sleep: the service is up (statePID) and the checks below follow
+	// synchronous round trips to it, so a late adb start would show here
 	if c := e.Calls(); len(c) != 0 {
 		t.Fatalf("adb run before the first log tool call: %q", c)
 	}
@@ -113,10 +120,11 @@ func TestRecordForWithoutService(t *testing.T) {
 	t.Parallel()
 	env, e := lazyEnv(t, "ALM_TEST_EXIT_GRACE=1s", "ANDROID_LOG_MCP_LINGER=1s")
 	t0 := time.Now()
-	// long enough for slow fake-adb starts (-race: ~1 s per adb call)
-	pin, check := 3*time.Second, 2*time.Second
+	// long enough for slow fake-adb starts on starved runners (-race: ~1 s per
+	// adb call); the pin is observed, never slept through (#226)
+	pin := 20 * time.Second
 	if raceEnabled {
-		pin, check = 10*time.Second, 7*time.Second
+		pin = 40 * time.Second
 	}
 	out, errOut, code := cliEnv(t, env, "record", "--for", pin.String())
 	if code != 0 || !strings.HasPrefix(out, "ok record action=pinned ") || !strings.Contains(out, "device id=FAKEA state=recording ") {
@@ -133,9 +141,8 @@ func TestRecordForWithoutService(t *testing.T) {
 	if !strings.Contains(out, "device id=FAKEA ") || strings.Contains(out, "pinned_until=- ") || !strings.Contains(out, "pin_by=\"android-log-mcp record") {
 		t.Fatalf("record state:\n%s", out)
 	}
-	time.Sleep(time.Until(t0.Add(check)))
 	if !e.LogcatRunning("FAKEA") {
-		t.Fatal("stopped before the pin ended")
+		t.Fatalf("stopped before the pin ended (%s after the start)\n%s", time.Since(t0), dumpDiags(t))
 	}
 	waitGone(t, pid)
 	// The service waits only a bounded time for a killed adb child (Windows:

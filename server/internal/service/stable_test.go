@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bufio"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -37,11 +38,28 @@ func TestInstallFileReplacesRunningCopy(t *testing.T) {
 	}
 	run := exec.Command(dst, "-test.run=^$")
 	run.Env = append(os.Environ(), "ALM_TEST_SLEEP=1")
+	out, err := run.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := run.Start(); err != nil {
 		t.Fatal(err)
 	}
 	defer func() { run.Process.Kill(); run.Wait() }()
-	time.Sleep(300 * time.Millisecond)
+	// the copy is running (its image is mapped) once it printed "ready"
+	ready := make(chan string, 1)
+	go func() { l, _ := bufio.NewReader(out).ReadString('\n'); ready <- l }()
+	waitUntil(t, "the running copy to start", 60*time.Second, func() bool {
+		select {
+		case l := <-ready:
+			if !strings.HasPrefix(l, "ready") {
+				t.Fatalf("the running copy did not start: %q", l)
+			}
+			return true
+		default:
+			return false
+		}
+	})
 	src := filepath.Join(dir, "new-binary")
 	os.WriteFile(src, []byte("a newer binary"), 0o755)
 	if _, up, err := installFile(src, dst); err != nil || !up {
@@ -53,7 +71,8 @@ func TestInstallFileReplacesRunningCopy(t *testing.T) {
 	run.Process.Kill()
 	run.Wait()
 	var left []string
-	for i := 0; i < 50; i++ { // Windows may release the image a moment after exit
+	// Windows may release the image a moment after exit
+	waitUntil(t, "the leftover of the old copy to be removed", 60*time.Second, func() bool {
 		if _, _, err := installFile(src, dst); err != nil {
 			t.Fatal(err)
 		}
@@ -64,10 +83,6 @@ func TestInstallFileReplacesRunningCopy(t *testing.T) {
 				left = append(left, e.Name())
 			}
 		}
-		if len(left) == 0 {
-			return
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	t.Fatalf("leftovers after the old copy stopped: %s", strings.Join(left, ", "))
+		return len(left) == 0
+	})
 }

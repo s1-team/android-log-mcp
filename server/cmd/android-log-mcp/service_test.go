@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,6 +32,7 @@ func isoEnv(t *testing.T, extra ...string) []string {
 		"ANDROID_LOG_MCP_ADB=" + filepath.Join(d, "no-adb"),
 	}
 	env = append(env, extra...)
+	diagFor(t, func() string { return envDiag(env) })
 	t.Cleanup(func() {
 		cliEnv(t, env, "service", "stop")
 		if pid := statePID(t, env); pid > 0 {
@@ -38,8 +40,11 @@ func isoEnv(t *testing.T, extra ...string) []string {
 				p.Kill()
 			}
 		}
-		time.Sleep(100 * time.Millisecond)
-		os.RemoveAll(d)
+		// the service is gone (killed above); RemoveAll retries while Windows
+		// still holds a handle of the dying process
+		for deadline := time.Now().Add(scaled(30 * time.Second)); os.RemoveAll(d) != nil && time.Now().Before(deadline); {
+			time.Sleep(50 * time.Millisecond)
+		}
 	})
 	return env
 }
@@ -145,14 +150,7 @@ func (s *session) status(t *testing.T) string {
 
 func waitGone(t *testing.T, pid int) {
 	t.Helper()
-	deadline := time.Now().Add(20 * time.Second)
-	for time.Now().Before(deadline) {
-		if !processAlive(pid) {
-			return
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	t.Fatalf("pid %d still running", pid)
+	waitUntil(t, fmt.Sprintf("pid %d to exit", pid), 60*time.Second, func() bool { return !processAlive(pid) })
 }
 
 // Two MCP clients share one service; when the service is killed, both

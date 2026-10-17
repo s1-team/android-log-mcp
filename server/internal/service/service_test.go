@@ -21,7 +21,9 @@ func testControl(t *testing.T) Control {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(d) })
-	return Control{Dir: filepath.Join(d, "c")}
+	ctrl := Control{Dir: filepath.Join(d, "c")}
+	diagFor(t, func() string { return ctrlDiag(ctrl) })
+	return ctrl
 }
 
 // startTest starts a service in ctrl; opts adjust its Options (exitAfter,
@@ -252,25 +254,28 @@ func lingerEnv(s string) func(*Options) {
 func TestServiceLifetime(t *testing.T) {
 	t.Parallel()
 	ctrl := testControl(t)
-	s := startTest(t, ctrl, "0.5.0", lingerEnv("0"), exitAfter(500*time.Millisecond))
-	time.Sleep(200 * time.Millisecond)
+	// The grace is the feature under test: long enough that a starved runner
+	// reaches the first Dial well inside it, observed (never slept) below.
+	const grace = 3 * time.Second
+	s := startTest(t, ctrl, "0.5.0", lingerEnv("0"), exitAfter(grace))
 	select {
 	case <-s.Done():
-		t.Fatal("stopped before the first client could connect")
+		t.Fatalf("stopped before the first client could connect\n%s", dumpDiags(t))
 	default:
 	}
 	c, err := Dial(context.Background(), ctrl, "0.5.0", "mcp")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("%v\n%s", err, dumpDiags(t))
 	}
 	if !strings.Contains(c.Hello.Recording, "idle") {
 		t.Errorf("hello recording %q", c.Hello.Recording)
 	}
-	time.Sleep(time.Second) // longer than the grace: a client is connected
+	// longer than the grace: a client is connected, so the service stays
+	// (a negative observation; it ends at once if the service stops)
 	select {
 	case <-s.Done():
-		t.Fatal("stopped while a client was connected")
-	default:
+		t.Fatalf("stopped while a client was connected\n%s", dumpDiags(t))
+	case <-time.After(grace + grace/2):
 	}
 	var info Info
 	c.Do(context.Background(), "status", nil, &info)
@@ -281,21 +286,13 @@ func TestServiceLifetime(t *testing.T) {
 		t.Fatalf("text %s", info.Text())
 	}
 	c.Close()
-	select {
-	case <-s.Done():
-		if !strings.Contains(s.Reason(), "no MCP or CLI process, no pin") {
-			t.Fatalf("reason %q", s.Reason())
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("did not stop after the last client")
+	waitDone(t, "the stop after the last client", 60*time.Second, s.Done())
+	if !strings.Contains(s.Reason(), "no MCP or CLI process, no pin") {
+		t.Fatalf("reason %q", s.Reason())
 	}
-	// and without any client it stops after the grace
+	// and without any client it stops after the grace (its own stage budget)
 	s2 := startTest(t, ctrl, "0.5.0", lingerEnv("0"), exitAfter(500*time.Millisecond))
-	select {
-	case <-s2.Done():
-	case <-time.After(5 * time.Second):
-		t.Fatal("no stop without clients")
-	}
+	waitDone(t, "the stop without clients", 60*time.Second, s2.Done())
 }
 
 // An active pin keeps the service alive with no clients; once it ends the
@@ -327,11 +324,7 @@ func TestPinKeepsServiceAlive(t *testing.T) {
 	if err := s.dropPin("dev1"); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-s.Done():
-	case <-time.After(10 * time.Second):
-		t.Fatal("did not stop after the pin ended")
-	}
+	waitDone(t, "the stop after the pin ended", 60*time.Second, s.Done())
 }
 
 // Polling `service status` (role "cli") does not keep an unused service
@@ -340,10 +333,10 @@ func TestStatusPollingDoesNotKeepAlive(t *testing.T) {
 	t.Parallel()
 	ctrl := testControl(t)
 	s := startTest(t, ctrl, "0.5.0", lingerEnv("0"), exitAfter(time.Second))
-	for end := time.Now().Add(10 * time.Second); time.Now().Before(end); time.Sleep(200 * time.Millisecond) {
+	waitUntil(t, "the service to stop although status is polled", 60*time.Second, func() bool {
 		select {
 		case <-s.Done():
-			return
+			return true
 		default:
 		}
 		if c, err := Dial(context.Background(), ctrl, "0.5.0", "cli"); err == nil {
@@ -351,6 +344,6 @@ func TestStatusPollingDoesNotKeepAlive(t *testing.T) {
 			c.Do(context.Background(), "status", nil, &i)
 			c.Close()
 		}
-	}
-	t.Fatal("status polling kept the service alive")
+		return false
+	})
 }

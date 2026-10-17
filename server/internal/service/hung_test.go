@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -164,7 +165,7 @@ func TestSilentHolderIsReplaced(t *testing.T) {
 			c := newRepairClient(ctrl)
 			defer c.Close()
 			t0 := time.Now()
-			ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), scaled(120*time.Second))
 			defer cancel()
 			hello, err := c.Connect(ctx)
 			if err != nil {
@@ -172,12 +173,9 @@ func TestSilentHolderIsReplaced(t *testing.T) {
 			}
 			// Nominal 4-7 s (SilentFor, TermWait, KillWait are fixed waits);
 			// a -race -parallel stress run needs 3x that (20.25 s seen, #103).
-			// Only a hang is a failure here, so the bound is far above it
-			// and below the 40 s context.
-			if el := time.Since(t0); el > 30*time.Second {
-				t.Fatalf("took %s\nservice log:\n%s", el, logTail(ctrl))
-			}
-			if !h.waitDead(10 * time.Second) {
+			// Only a hang is a failure (the context above), not elapsed time.
+			t.Logf("replaced after %s", time.Since(t0))
+			if !h.waitDead(scaled(60 * time.Second)) {
 				t.Fatalf("the silent holder is still running\nservice log:\n%s", logTail(ctrl))
 			}
 			if hello.PID != os.Getpid() {
@@ -196,16 +194,13 @@ func TestForeignHolderIsNotSignalled(t *testing.T) {
 			h := startHolder(t, ctrl, "", mode)
 			c := newRepairClient(ctrl)
 			defer c.Close()
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), scaled(120*time.Second))
 			defer cancel()
 			_, err := c.Connect(ctx)
 			if err == nil || !strings.Contains(err.Error(), "not stopped automatically") || !strings.Contains(err.Error(), "service stop --force") {
 				t.Fatalf("err = %v", err)
 			}
-			time.Sleep(300 * time.Millisecond)
-			if h.dead() {
-				t.Fatal("a process that is not this service was signalled")
-			}
+			notDeadWithin(t, h, 500*time.Millisecond, "a process that is not this service was signalled")
 			// service stop --force refuses it too
 			var out, errb bytes.Buffer
 			if code := RunStop(ctrl, "0.5.0", true, &out, &errb); code != 1 || !strings.Contains(errb.String(), "not recognised") {
@@ -245,15 +240,12 @@ func TestStopRefusesReusedPidAndEmbedded(t *testing.T) {
 				if force && !strings.Contains(errb.String(), tc.msg) {
 					t.Fatalf("force: message %q lacks %q", errb.String(), tc.msg)
 				}
-				time.Sleep(200 * time.Millisecond)
-				if h.dead() {
-					t.Fatalf("force=%v signalled the holder", force)
-				}
+				notDeadWithin(t, h, 300*time.Millisecond, fmt.Sprintf("force=%v signalled the holder", force))
 			}
 			// the automatic path refuses too
 			c := newRepairClient(ctrl)
 			defer c.Close()
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), scaled(120*time.Second))
 			defer cancel()
 			if _, err := c.Connect(ctx); err == nil {
 				t.Fatal("Connect succeeded against a holder that must be refused")
@@ -283,7 +275,7 @@ func TestConcurrentClientsShareOneRepair(t *testing.T) {
 			defer wg.Done()
 			c := newRepairClient(ctrl)
 			t.Cleanup(c.Close)
-			ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), scaled(120*time.Second))
 			defer cancel()
 			hello, err := c.Connect(ctx)
 			pids[i], errs[i] = hello.PID, err
@@ -298,10 +290,8 @@ func TestConcurrentClientsShareOneRepair(t *testing.T) {
 			t.Fatalf("client %d connected to pid %d", i, pids[i])
 		}
 	}
-	if el := time.Since(t0); el > 25*time.Second {
-		t.Fatalf("took %s", el)
-	}
-	if !h.waitDead(10 * time.Second) {
+	t.Logf("all clients connected after %s", time.Since(t0))
+	if !h.waitDead(scaled(60 * time.Second)) {
 		t.Fatal("holder still running")
 	}
 	b, _ := os.ReadFile(filepath.Join(ctrl.Run(), "replace.json"))
@@ -321,7 +311,7 @@ func TestReplaceRateLimit(t *testing.T) {
 	os.WriteFile(filepath.Join(ctrl.Run(), "replace.json"), b, 0o600)
 	c := newRepairClient(ctrl)
 	defer c.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), scaled(120*time.Second))
 	defer cancel()
 	_, err := c.Connect(ctx)
 	if err == nil || !strings.Contains(err.Error(), "3 times within a minute") {
@@ -341,7 +331,7 @@ func TestStoppingServiceIsWaitedFor(t *testing.T) {
 	h := startHolder(t, ctrl, root, "silent")
 	c := newRepairClient(ctrl)
 	defer c.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), scaled(120*time.Second))
 	defer cancel()
 	_, err := c.Connect(ctx)
 	if err == nil || !strings.Contains(err.Error(), "shutting down") {
@@ -373,7 +363,7 @@ func TestStopForce(t *testing.T) {
 	if code := RunStop(ctrl, "0.5.0", true, &out, &errb); code != 0 {
 		t.Fatalf("--force: %d %q %q", code, out.String(), errb.String())
 	}
-	if !h.waitDead(10*time.Second) || Running(ctrl) {
+	if !h.waitDead(scaled(60*time.Second)) || Running(ctrl) {
 		t.Fatal("--force did not stop the holder")
 	}
 }
@@ -389,18 +379,14 @@ func TestSocketWatchRecreatesSocket(t *testing.T) {
 	if err := os.Remove(ctrl.Socket()); err != nil {
 		t.Fatal(err)
 	}
-	deadline := time.Now().Add(10 * time.Second)
-	for {
+	waitUntil(t, "the socket to be recreated", 60*time.Second, func() bool {
 		c, err := Dial(context.Background(), ctrl, "0.5.0", "cli")
-		if err == nil {
-			c.Close()
-			return
+		if err != nil {
+			return false
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("the socket was not recreated: %v", err)
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
+		c.Close()
+		return true
+	})
 }
 
 func TestIdentify(t *testing.T) {

@@ -149,13 +149,10 @@ func TestSetRoot(t *testing.T) {
 			t.Fatalf("call: %d %s", c, e)
 		}
 		pid, _ = serviceRoot(t, env)
-		deadline := time.Now().Add(20 * time.Second)
-		for time.Now().Before(deadline) {
-			if _, err := os.Stat(filepath.Join(a, "bin")); os.IsNotExist(err) {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
+		waitUntil(t, "the old root's bin directory to be removed", 60*time.Second, func() bool {
+			_, err := os.Stat(filepath.Join(a, "bin"))
+			return os.IsNotExist(err)
+		})
 	}
 	if _, err := os.Stat(a); !os.IsNotExist(err) {
 		t.Fatalf("old root still there: %v", err)

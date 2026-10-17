@@ -11,6 +11,7 @@ import (
 
 func TestMain(m *testing.M) {
 	if os.Getenv("ALM_TEST_SLEEP") != "" { // a running copy for TestInstallFileReplacesRunningCopy
+		os.Stdout.WriteString("ready\n") // the parent waits for this, not for a sleep
 		time.Sleep(60 * time.Second)
 		os.Exit(0)
 	}

@@ -77,7 +77,9 @@ func TestRecordOnceRestartDoesNotLeakWorkers(t *testing.T) {
 		waitFor(t, "the new logcat stream after kill (restart "+strconv.Itoa(i)+")", leakWait, func() bool { return streamCount() > streams })
 		waitFor(t, "recording again after kill (restart "+strconv.Itoa(i)+")", leakWait, func() bool { return d.Status().Recording })
 	}
-	time.Sleep(500 * time.Millisecond)
+	// the previous iterations' loops end with their context; wait for the
+	// count to settle at one (a leak never gets there) instead of sleeping
+	waitFor(t, "a single reconcile loop after 3 in-session restarts", leakWait, func() bool { return count("reconcile") == 1 })
 	if n := count("reconcile"); n != 1 {
 		t.Errorf("%d reconcile loops running after 3 in-session restarts, want 1 (workers: %v)", n, d.bg.run)
 	}
