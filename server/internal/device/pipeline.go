@@ -279,7 +279,6 @@ func (p *Pipeline) Drain(all bool, now time.Time) error {
 		}
 		batch[i], arrived[i], live[i], late[i] = r, p.queue[i].arrived, p.queue[i].live, p.queue[i].late
 	}
-	p.queue = append(p.queue[:0], p.queue[n:]...)
 	// jumps first: attribution compares device times only inside one clock
 	// epoch (issue #55)
 	jumps := p.detectJumps(batch, arrived, live, late)
@@ -306,6 +305,11 @@ func (p *Pipeline) Drain(all bool, now time.Time) error {
 	if err := p.Store.Append(batch); err != nil {
 		return err
 	}
+
+	// the batch leaves the queue only once the store has it: a failed
+	// Append keeps the records queued for the next Drain, and Appended()
+	// counts stored records only (issue #191)
+	p.queue = append(p.queue[:0], p.queue[n:]...)
 	for _, r := range batch {
 		// the detector sees each clock set before the first line that
 		// carries the new clock (issue #55); a "possible" jump is a quiet

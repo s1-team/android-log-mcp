@@ -119,6 +119,7 @@ type Store struct {
 	metaMod  time.Time
 	dirty    bool
 	notify   chan struct{}
+	repair   *segRepair // a failed write left bytes to cut before the next write (issues #182, #191)
 
 	// follower tail state
 	tailSeg string
@@ -136,6 +137,13 @@ type Store struct {
 	closed  atomic.Bool
 
 	auxMu sync.Mutex // serializes aux appends with compaction
+}
+
+// segRepair says a segment must be cut back to size bytes (its last
+// durable size) before anything is appended to it again.
+type segRepair struct {
+	path string
+	size int64
 }
 
 func newStore(dir string, cfg Config) *Store {
@@ -621,18 +629,31 @@ func (s *Store) Append(recs []*model.Record) error {
 	if !s.writer {
 		return errors.New("store: not the writer")
 	}
+	if err := s.repairLocked(); err != nil {
+		return err
+	}
+	// Append is all or nothing: lastSeq, the window and the meta times are
+	// published only once the batch is flushed. On an error the batch is
+	// rolled back (failAppendLocked), so the caller can write it again
+	// without burning seqs or leaving records that only memory has
+	// (issues #182, #191).
+	mk := appendMark{lastSeq: s.lastSeq, mem: s.mem, memBytes: s.memBytes, newestNs: s.newestNs,
+		arrival: s.meta.ArrivalTimeNs, lastT: s.meta.LastTimeNs, curStart: s.curStart}
+	if n := len(s.segs); n > 0 {
+		mk.path, mk.size = s.segs[n-1].path, s.segs[n-1].size
+	}
 	nowHost := hostNow().UnixNano()
 	for _, r := range recs {
 		s.lastSeq++
 		r.Seq = s.lastSeq
 		if s.cur == nil || s.curSize >= s.cfg.SegmentBytes || s.segmentTooOld(nowHost) {
 			if err := s.rotateLocked(r.Seq); err != nil {
-				return err
+				return s.failAppendLocked(mk, err)
 			}
 		}
 		b, err := json.Marshal(r)
 		if err != nil {
-			return err
+			return s.failAppendLocked(mk, err)
 		}
 		b = append(b, '\n')
 		if s.curSize == 0 {
@@ -641,7 +662,7 @@ func (s *Store) Append(recs []*model.Record) error {
 		n, err := s.curW.Write(b)
 		s.curSize += int64(n)
 		if err != nil {
-			return err
+			return s.failAppendLocked(mk, err)
 		}
 		if n := len(s.mem); n > 0 && s.mem[n-1].Seq+1 != r.Seq {
 			s.mem, s.memBytes = nil, 0 // seq jump (set-root move): the window must stay contiguous
@@ -654,17 +675,79 @@ func (s *Store) Append(recs []*model.Record) error {
 			s.meta.LastTimeNs = r.TimeNs
 		}
 	}
-	s.segs[len(s.segs)-1].size = s.curSize
 	// Make every batch visible to follower processes right away (the
 	// recorder appends ~every 100 ms; meta.json is saved by Flush, ~2/s).
 	if err := s.curW.Flush(); err != nil {
-		return err
+		return s.failAppendLocked(mk, err)
 	}
+	s.segs[len(s.segs)-1].size = s.curSize
 	s.meta.IngestHostNs = time.Now().UnixNano()
 	s.trimLocked(false)
 	s.dirty = true
 	close(s.notify)
 	s.notify = make(chan struct{})
+	return nil
+}
+
+// appendMark is the state Append restores when a batch fails.
+type appendMark struct {
+	lastSeq        uint64
+	mem            []*model.Record
+	memBytes       int64
+	newestNs       int64
+	arrival, lastT int64
+	curStart       int64
+	path           string // last segment before the batch, and its durable size
+	size           int64
+}
+
+// failAppendLocked undoes a failed batch: segments it created are removed,
+// the segment it continued is cut back to its durable size, and the
+// writer is closed so the next Append opens it afresh. When the cut
+// itself fails it is retried by repairLocked before the next write.
+func (s *Store) failAppendLocked(mk appendMark, err error) error {
+	if s.cur != nil {
+		s.cur.Close()
+	}
+	s.cur, s.curW, s.curSize = nil, nil, 0
+	kept := s.segs[:0]
+	for _, sg := range s.segs {
+		if sg.first > mk.lastSeq {
+			os.Remove(sg.path)
+			s.dropCache(sg.path)
+			continue
+		}
+		kept = append(kept, sg)
+	}
+	s.segs = kept
+	for i := range s.segs {
+		if s.segs[i].path == mk.path {
+			s.segs[i].size = mk.size // a rotation in the batch had set the larger size
+		}
+	}
+	s.lastSeq, s.mem, s.memBytes, s.newestNs = mk.lastSeq, mk.mem, mk.memBytes, mk.newestNs
+	s.meta.ArrivalTimeNs, s.meta.LastTimeNs, s.curStart = mk.arrival, mk.lastT, mk.curStart
+	if mk.path != "" {
+		s.repair = &segRepair{mk.path, mk.size}
+		s.repairLocked()
+	}
+	return err
+}
+
+// repairLocked cuts a segment back after a failed write (see segRepair).
+func (s *Store) repairLocked() error {
+	r := s.repair
+	if r == nil {
+		return nil
+	}
+	if err := os.Truncate(r.path, r.size); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("store: cannot repair %s after a failed write: %w", filepath.Base(r.path), err)
+	}
+	s.repair = nil
+	// the history index and cached blocks may cover bytes that are gone
+	// (a query between the flush and the cut): drop them, they are rebuilt
+	// from the file
+	s.dropCache(r.path)
 	return nil
 }
 
@@ -678,7 +761,9 @@ func continuesSeg(sg segment, first uint64) bool {
 
 func (s *Store) rotateLocked(first uint64) error {
 	if s.cur != nil {
-		s.curW.Flush()
+		if err := s.curW.Flush(); err != nil {
+			return err // the batch is rolled back by Append
+		}
 		s.cur.Close()
 		s.cur = nil
 		if n := len(s.segs); n > 0 {
@@ -718,7 +803,17 @@ func (s *Store) Flush() {
 		return
 	}
 	if s.curW != nil {
-		s.curW.Flush()
+		if err := s.curW.Flush(); err != nil {
+			// buffered bytes (none after a successful Append) could not be
+			// written: drop the writer and cut the segment back to what is
+			// durable
+			s.cur.Close()
+			s.cur, s.curW, s.curSize = nil, nil, 0
+			if n := len(s.segs); n > 0 {
+				s.repair = &segRepair{s.segs[n-1].path, s.segs[n-1].size}
+				s.repairLocked()
+			}
+		}
 	}
 	if s.dirty {
 		s.meta.LastSeenHostNs = time.Now().UnixNano()
@@ -739,6 +834,12 @@ func (s *Store) Close() {
 	s.Flush()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// the writer stops here, so nothing retries a failed meta.json save
+	// later (on Windows a follower may hold the file open for a moment)
+	for i := 0; s.writer && s.dirty && i < 5; i++ {
+		time.Sleep(20 * time.Millisecond)
+		s.saveMetaLocked()
+	}
 	if s.cur != nil {
 		s.cur.Close()
 		s.cur = nil
