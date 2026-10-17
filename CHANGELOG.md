@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+### Changed
+
+- Docs: the on-disk store (JSONL segments, `meta.json`) is declared an internal, versioned format; agents and users should use `report` and `logcat_export` rather than parsing it ([#173](https://github.com/s1crab/android-log-mcp/issues/173)).
+- The `cursor_pruned` note of `logcat_search` now says which line "oldest" is: `note code=cursor_pruned boot=<boot> first=<seq> using=oldest` ([#173](https://github.com/s1crab/android-log-mcp/issues/173)).
+- `meta.json` is trimmed together with retention ([#173](https://github.com/s1crab/android-log-mcp/issues/173)): when segments are pruned, `seg_times`, the `clock_jumps` before the first retained seq and the `sessions` that ended before it are dropped, so a long-lived device no longer grows its meta forever. The session that covers the first retained seq is always kept, because the boot of a seq is the last session starting at or below it. `meta.json` is written compactly (no indentation). What tools read is unchanged; older binaries read the file as before.
+
 ## [0.9.0] - 2026-10-17
 
 Highlights: the `logcat_export` tool and `android-log-mcp export` CLI ([#172](https://github.com/s1crab/android-log-mcp/issues/172)), and a round of store and device robustness fixes (failed writes, torn tails, follower takeover, retention after a clock correction, recorder restarts). Segment files are unchanged; `meta.json` gains an optional `seg_times` field that older binaries ignore.
@@ -21,9 +27,6 @@ Platform status: Windows and macOS are covered by CI only (unit tests with the f
 
 ### Changed
 
-- Docs: the on-disk store (JSONL segments, `meta.json`) is declared an internal, versioned format; agents and users should use `report` and `logcat_export` rather than parsing it ([#173](https://github.com/s1crab/android-log-mcp/issues/173)).
-- The `cursor_pruned` note of `logcat_search` now says which line "oldest" is: `note code=cursor_pruned boot=<boot> first=<seq> using=oldest` ([#173](https://github.com/s1crab/android-log-mcp/issues/173)).
-- `meta.json` is trimmed together with retention ([#173](https://github.com/s1crab/android-log-mcp/issues/173)): when segments are pruned, `seg_times`, the `clock_jumps` before the first retained seq and the `sessions` that ended before it are dropped, so a long-lived device no longer grows its meta forever. The session that covers the first retained seq is always kept, because the boot of a seq is the last session starting at or below it. `meta.json` is written compactly (no indentation). What tools read is unchanged; older binaries read the file as before.
 - Tool annotations: `logcat_export` is not read-only and not idempotent, and `logcat_status` is no longer annotated read-only (it starts recording, and `record_for` pins it). An MCP host that auto-approves read-only tools may now ask first. The tool definition carries the new optional fields `writes` and `not_idempotent`; an older MCP process ignores them.
 - [docs/GOALS.md](docs/GOALS.md) principle 5 now reads: a report meant for other people is redacted by default; a log file exported for the developer's own review is written as recorded unless redaction is requested, and says so. `report` still redacts by default.
 - The MCP process no longer retries `logcat_export` after a lost connection to the service (a retry could write a second file); it answers `error code=service_unreachable`.
