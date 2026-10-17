@@ -66,7 +66,7 @@ args = ["/c", "npx", "-y", "android-log-mcp"]
 
 Trade-offs on Windows: every MCP session runs a chain of `npx.cmd` → `cmd.exe` → `node` → the binary, i.e. three extra processes between the MCP host and the MCP process and a slower start (npx resolves the package first). Whether `cmd.exe` gets a console window depends on how the MCP host starts it. Path B starts the binary directly.
 
-**Upgrading:** `npx -y android-log-mcp` uses the newest version npx has cached and may not check for a new one every time. To upgrade, pin the version in `args` (`"android-log-mcp@0.9.0"`) and change it on upgrades, or use `android-log-mcp@latest`; then restart the MCP host. The new MCP process replaces an older running service process by itself.
+**Upgrading:** `npx -y android-log-mcp` uses the newest version npx has cached and may not check for a new one every time. To upgrade, pin the version in `args` (`"android-log-mcp@0.9.1"`) and change it on upgrades, or use `android-log-mcp@latest`; then restart the MCP host. The new MCP process replaces an older running service process by itself.
 
 ### B. Without npx: the native binary (recommended on Windows)
 

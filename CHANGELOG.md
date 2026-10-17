@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-10-17
+
+Patch release: the on-disk store is declared an internal format, and `meta.json` is trimmed with retention ([#173](https://github.com/s1crab/android-log-mcp/issues/173)). No tool or CLI change; segment files are unchanged and older binaries read `meta.json` as before. Platform status: Windows and macOS are covered by CI only (unit tests with the fake adb) and are **unverified** with a real or emulator-attached adb. The emulator checks are summarised in [validation/0.9.1/README.md](validation/0.9.1/README.md).
+
 ### Changed
 
 - Docs: the on-disk store (JSONL segments, `meta.json`) is declared an internal, versioned format; agents and users should use `report` and `logcat_export` rather than parsing it ([#173](https://github.com/s1crab/android-log-mcp/issues/173)).
@@ -369,7 +373,8 @@ Upgrade notes are in the **Breaking** entries below.
 - First release: an MCP stdio server giving AI agents read-only access to Android logcat, with background recording of every connected device, the tools `logcat_status`, `logcat_search` (Android Studio filter syntax with strict errors), `logcat_crashes` and `logcat_app_launches`, and the `call` debug subcommand.
 - npm packaging: a Node launcher plus per-platform binary packages (linux / darwin / win32 × x64 / arm64), CI and release workflows.
 
-[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/s1crab/android-log-mcp/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/s1crab/android-log-mcp/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/s1crab/android-log-mcp/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/s1crab/android-log-mcp/compare/v0.7.1...v0.8.0
