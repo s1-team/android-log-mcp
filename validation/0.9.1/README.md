@@ -19,7 +19,7 @@ Device rows ran from a clean build of the release branch at **`51b15ae`** (versi
 
 | item | result | evidence (in the archive) |
 |---|---|---|
-| CI (14/14) | PASS ([run 39030387902](https://github.com/s1crab/android-log-mcp/actions/runs/39030387902), 14/14 on `7a42cdf`; the commits after it only touch this file and the PR checks of the final head are the last word) | Actions on this PR |
+| CI (14/14) | PASS ([run 39030387902](https://github.com/s1crab/android-log-mcp/actions/runs/39030387902), 14/14 on `7a42cdf` before the rebase onto `6e08d10`; `TestHandoffKeepsPins` timed out once on windows on `d2a15c4`, a timing flake: [#230](https://github.com/s1crab/android-log-mcp/issues/230), test-only fix [#231](https://github.com/s1crab/android-log-mcp/pull/231); the commits after it only touch this file and the PR checks of the final head are the last word) | Actions on this PR |
 | service-e2e API 29 | PASS (`RESULT: OK`, 29 PASS, 0 FAIL) | `release-rows/service-e2e-api29.txt` |
 | service-e2e API 35 | **not run**: only one TCG emulator may run on this box; a second would perturb timing (AVD `api35` exists). Same as 0.8.x and 0.9.0 | — |
 | e2e-report API 29 | PASS: 23 secrets of 16 kinds redacted, 29 LeakTest headers intact, offline load OK | `release-rows/e2e-report-api29.txt`, `release-rows/e2e-report-api29/` |
@@ -33,7 +33,7 @@ Device rows ran from a clean build of the release branch at **`51b15ae`** (versi
 | set-root + whole-buffer re-read | PASS (inside service-e2e): boundary line not re-stored; no marker stored twice after switch-back | `release-rows/service-e2e-api29.txt` |
 | #217 meta trim + `cursor_pruned first=` | PASS: on a copy of the real emulator store (2 segments, 5 clock jumps) plus a dead session, dropping the oldest segment left `first=11693`, 0 clock jumps, only the covering session, only the retained `seg_times`, compact `meta.json` (1,912 → 788 bytes); an offline `logcat_search` with an old cursor answers `note code=cursor_pruned boot=c40308c3 first=11693 using=oldest`; store/mcpserver unit tests green | `release-rows/meta217/` (`probe.txt`, `cursor.txt`, `meta-before.json`, `meta-after.json`, `unittests.txt`) |
 | JSONL internal-format docs | PASS: `docs/reference.md` declares the store format internal and versioned and points to `logcat_export` / `report`; `scripts/check-doc-links.py` clean | `release-rows/docs-check.txt` |
-| race-gate | PASS, `count=10` ([run 39028688842](https://github.com/s1crab/android-log-mcp/actions/runs/39028688842) on `51b15ae`; `go test -race -count=10` per package, all packages × linux/windows/macos green; summary posted on the PR) | Actions artifact / run link |
+| race-gate | PASS, `count=10` ([run 39028688842](https://github.com/s1crab/android-log-mcp/actions/runs/39028688842) on `51b15ae`; `go test -race -count=10` per package, all packages × linux/windows/macos green; summary posted on the PR). The branch was later rebased onto `main` `6e08d10` (one docs-only commit, #227); no code differs from the raced tree) | Actions artifact / run link |
 | perf | EnsureIndex cold median **~1.53 s** at ~512 MiB retained (measured on `3c8b781`, see `release-rows/index-build-512mib.md`); the 0.9.1 changes do not touch the index path. CI `perf` job: green in the same run | `release-rows/index-build-512mib.md`, Actions |
 
 ## API 35 / Windows / macOS
