@@ -297,7 +297,7 @@ The CLI process sends the selection to the service through the `export` op (star
 |---|---|
 | `--device` `--filter` `--package` `--tag` (repeatable) `--min-level` `--from` `--to` `--after` `--before` | As the tool parameters |
 | `--max-mb N` | Size cap, 1..512 (default 64) |
-| `--out FILE` | Where to write. An **absolute** path in an existing directory; refused inside android-log-mcp's own entries of the data root or the control directory (`v<N>/`, `run/`, `tmp/`, `bin/`, `log/`, `export/`, `config.json`; symlinks are resolved). Without `--out` the file goes to `<root>/export/` like the tool's (kept 7 days). A file at `--out` is the user's: it is never swept and the response has no `expires=` |
+| `--out FILE` | Where to write. An **absolute** path in an existing directory; refused **only** inside android-log-mcp's own entries of the data root or the control directory: `v<N>/`, `run/`, `tmp/`, `bin/`, `log/`, `export/` and `config.json` (symlinks are resolved). Any other path, including other files and directories in the root such as `<root>/notes/x.txt`, is allowed. Without `--out` the file goes to `<root>/export/` like the tool's (kept 7 days). A file at `--out` is the user's: it is never swept and the response has no `expires=` |
 | `--force` | Overwrite an existing `--out` file (otherwise `error code=exists`). The file is replaced atomically |
 | `--redact`, `--redact-extra RE` (repeatable), `--keep-domain D` (repeatable), `--keep-private-ip` | Redaction as in `report`; the last three need `--redact` |
 | `--offline DIR` (global flag) | Reads the dataset in this process, with no adb and no service. `--out` is **required** and may not be inside DIR: a dataset is never written to |
