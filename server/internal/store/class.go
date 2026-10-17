@@ -136,7 +136,7 @@ func (b block) classSum(ids map[uint32]bool) (n uint64, ok bool) {
 		return 0, false
 	}
 	for _, c := range b.classes {
-		if ids[c.id] {
+		if ids == nil || ids[c.id] { // nil: no class filter, every class counts
 			n += uint64(c.n)
 		}
 	}
@@ -356,7 +356,7 @@ func (s *Store) AggClasses(after, before uint64, fromNs, toNs int64, ids map[uin
 	if before == 0 || before > last+1 {
 		before = last + 1
 	}
-	if after+1 >= before {
+	if after >= before-1 { // before >= 1 here; avoids after+1 wrapping at MaxUint64
 		return
 	}
 	lo, hi := after+1, before
@@ -404,7 +404,7 @@ func (s *Store) AggClasses(after, before uint64, fromNs, toNs int64, ids map[uin
 				var addl []cn
 				s.hmu.Lock()
 				for _, c := range b.classes {
-					if ids[c.id] {
+					if ids == nil || ids[c.id] {
 						addl = append(addl, cn{s.classes.Key(c.id), int(c.n)})
 					}
 				}
