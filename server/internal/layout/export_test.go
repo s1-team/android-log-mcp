@@ -296,3 +296,59 @@ func TestOwnEntryExport(t *testing.T) {
 		t.Error("foreign file removed")
 	}
 }
+
+func TestProtectedOut(t *testing.T) {
+	t.Parallel()
+	root, ctrl := t.TempDir(), t.TempDir()
+	for _, c := range []struct {
+		path string
+		bad  bool
+	}{
+		{filepath.Join(root, "v1", "dev", "x.txt"), true},
+		{filepath.Join(root, "export", "export-x.txt"), true},
+		{filepath.Join(root, "tmp", "x"), true},
+		{filepath.Join(ctrl, "run", "x"), true},
+		{filepath.Join(ctrl, "config.json"), true},
+		{filepath.Join(root, "notes", "x.txt"), false},
+		{filepath.Join(root, "x.txt"), false},
+		{filepath.Join(t.TempDir(), "run", "x.txt"), false},
+	} {
+		if _, bad := ProtectedOut(c.path, root, ctrl); bad != c.bad {
+			t.Errorf("%s: protected=%v, want %v", c.path, bad, c.bad)
+		}
+	}
+	// a symlink into the store does not get around it
+	link := filepath.Join(t.TempDir(), "l")
+	os.MkdirAll(filepath.Join(root, "v1"), 0o755)
+	if err := os.Symlink(filepath.Join(root, "v1"), link); err == nil {
+		if _, bad := ProtectedOut(filepath.Join(link, "x.txt"), root); !bad {
+			t.Error("symlink into v1 not protected")
+		}
+	}
+}
+
+func TestNewestExport(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if _, ok := NewestExport(dir); ok {
+		t.Fatal("empty dir")
+	}
+	w := func(name, body string, age time.Duration) {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		os.Chtimes(p, time.Now().Add(-age), time.Now().Add(-age))
+	}
+	w("export-a-1.txt", "x\n# end lines=1 bytes=9 matched=1 exact=true truncated=0 redaction_hits=0 last_cursor=c\n", time.Hour)
+	w("export-a-2.txt", "x\n# end lines=1 bytes=9 matched=2 exact=true truncated=max_mb redaction_hits=0 last_cursor=c\n", time.Minute)
+	w("other.txt", "x", 0)
+	f, ok := NewestExport(dir)
+	if !ok || filepath.Base(f.Path) != "export-a-2.txt" || f.Complete {
+		t.Fatalf("%+v", f)
+	}
+	w("export-a-3.txt", "no footer", 0)
+	if f, _ = NewestExport(dir); filepath.Base(f.Path) != "export-a-3.txt" || f.Complete {
+		t.Fatalf("%+v", f)
+	}
+}

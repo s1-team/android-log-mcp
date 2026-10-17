@@ -410,7 +410,7 @@
       "desc": "logcat_status {\"package\":\"com.example.logtest\"} on the API 29 fixture (\u2248 349 tokens)"
     },
     "out.tools_list.bytes": {
-      "value": 13730,
+      "value": 13097,
       "unit": "bytes",
       "kind": "exact",
       "desc": "tools/list result (5 tool definitions)"

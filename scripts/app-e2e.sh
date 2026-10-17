@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # End-to-end app scenarios with assertions on a running emulator or device
 # (issue #27): launches, Java / native / abort / :remote crashes, a
-# broadcast ANR and log markers, checked through `android-log-mcp call`.
+# broadcast ANR, log markers and a text export, checked through `android-log-mcp call`.
 #
 #   scripts/app-e2e.sh SERIAL OUT_DIR
 #
@@ -93,6 +93,23 @@ check "markers counted exactly (3)" has marks "^ok view=lines .* matched=3 exact
 
 call status logcat_status "{$D,\"package\":\"$PKG\"}" || FAILS=$((FAILS + 1))
 check "logcat_status lists $PKG:remote" has status "$PKG:remote"
+
+# logcat_export (issue #172): the markers as a text file, through the tool and
+# through `android-log-mcp export --out`; the response never has log lines
+call export logcat_export "{$D,\"filter\":\"tag:ALMCI_MARK message:$RUN\",\"from\":\"$FROM\"}" || FAILS=$((FAILS + 1))
+check "export response: ok, 3 lines matched, unredacted note" has export "^ok view=export .* matched=3 exact=1 .*redacted=0"
+check "export response has no log line" bash -c "! grep -q '$RUN' '$OUT/export.txt'"
+EXPFILE="$(sed -nE '1s/.* file=("[^"]+"|[^ ]+) .*/\1/p' "$OUT/export.txt" | tr -d '"')"
+check "export file exists" test -s "$EXPFILE"
+check "export file has the markers (device time, threadtime form)" grep -qE "^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:.]+ +[0-9]+ +[0-9]+ I ALMCI_MARK *: +$RUN hello" "$EXPFILE"
+check "export file keeps non-ASCII intact" grep -q "$RUN printable: café ✓ 中文" "$EXPFILE"
+check "export file ends with a complete footer" grep -qE "^# end lines=3 .* matched=3 .* truncated=0 " "$EXPFILE"
+CLIOUT="$OUT/cli-export.txt"
+rm -f "$CLIOUT"
+check "CLI export --out writes the file" bash -c "'$BIN' export --device '$SERIAL' --filter 'tag:ALMCI_MARK message:$RUN' --from '$FROM' --out '$CLIOUT' > '$OUT/cli-export-resp.txt'"
+check "CLI export file equals the tool's body" bash -c "diff <(grep -v '^#' '$CLIOUT') <(grep -v '^#' '$EXPFILE') >/dev/null"
+check "CLI export refuses an existing file without --force" bash -c "! '$BIN' export --device '$SERIAL' --from '$FROM' --out '$CLIOUT' >/dev/null"
+check "CLI export --force --redact overwrites" bash -c "'$BIN' export --device '$SERIAL' --filter 'tag:ALMCI_MARK message:$RUN' --from '$FROM' --out '$CLIOUT' --force --redact >/dev/null && grep -q '^# redacted=1' '$CLIOUT'"
 
 echo "app-e2e: $FAILS failed check(s)"
 [ "$FAILS" -eq 0 ]

@@ -9,6 +9,8 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 ### Added
 
 - **`logcat_export`** ([#172](https://github.com/s1crab/android-log-mcp/issues/172)): writes the lines a `logcat_search` selection matches to a text file for a human to review (`logcat -v threadtime -v year` lines in device time, a `# ` header, `--------- clock jump` markers, a `# end` footer) and returns only its path and counts, never log lines. Files go to `<root>/export/` (the tool has no output path). Limits: `max_mb` (default 64, max 512) and a 20 s time budget; a cut export says so (`note code=truncated`, `truncated newer=N cap=max_mb|time_budget next: after=<cursor>`) and `after=` writes the rest. Not redacted by default (`note code=unredacted`); `redact=true` masks the message text with the rules of `report`, `redact_extra` adds RE2 patterns. A redacted export of a large window is slow (about 15,000 lines/s) and usually ends at the time budget. The CLI command follows in a later change.
+- **`android-log-mcp export`** ([#172](https://github.com/s1crab/android-log-mcp/issues/172)): the CLI side of `logcat_export`, through a new service op. The same selection flags as the tool, `--out FILE` (an absolute path; refused inside the data root's or control directory's own entries), `--force` to overwrite, `--redact` / `--redact-extra` / `--keep-domain` / `--keep-private-ip`; `--offline DIR export` needs `--out`. **Not redacted unless `--redact`**, the opposite of `report` (`report --no-redact`); both are documented side by side in [docs/reference.md](docs/reference.md#android-log-mcp-export-cli).
+- `logcat_status` lists the newest export file: `export file= bytes= age_s= complete=1|0`.
 - A data root now has an `export/` directory (mode 0700, a protected ACL on Windows) for the export files of the coming `logcat_export` ([#172](https://github.com/s1crab/android-log-mcp/issues/172)). It is bounded from the start: files older than 7 days, more than 20 files or more than 256 MiB in total are removed (oldest first), it counts toward the total cap, and `set-root --delete-old` removes it.
 
 ### Changed
@@ -16,6 +18,7 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 - Tool annotations: `logcat_export` is not read-only and not idempotent, and `logcat_status` is no longer annotated read-only (it starts recording, and `record_for` pins it). An MCP host that auto-approves read-only tools may now ask first. The tool definition carries the new optional fields `writes` and `not_idempotent`; an older MCP process ignores them.
 - [docs/GOALS.md](docs/GOALS.md) principle 5 now reads: a report meant for other people is redacted by default; a log file exported for the developer's own review is written as recorded unless redaction is requested, and says so. `report` still redacts by default.
 - The MCP process no longer retries `logcat_export` after a lost connection to the service (a retry could write a second file); it answers `error code=service_unreachable`.
+- The `logcat_export` tool description is about 1 KB shorter in `tools/list` (details stay in docs/reference.md) and a repeated sentence of `logcat_search` was folded: `out.tools_list.bytes` 13,730 → 13,097. No behaviour change.
 
 ### Fixed
 
