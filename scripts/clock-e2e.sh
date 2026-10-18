@@ -63,7 +63,18 @@ fmt() { # epoch seconds → device wall clock string
 devnow() { adbs date +%s; }
 NOW() { echo $(( $(date +%s) + OFF0 )); }
 log() { echo "clock-e2e: $*"; }
-mark() { adbsh "log -t $TAG '$1'"; }
+# The marker needs the device online: adb can drop it for a few seconds
+# (adbd restart after root/unroot, emulator hiccup: "device offline", #248),
+# and a marker that was never logged only shows up as a wrong count later.
+mark() {
+  local i
+  for i in 1 2 3; do
+    wait_dev || true
+    "$ADB" -s "$SERIAL" shell "log -t $TAG '$1'" >/dev/null 2>&1 && return 0
+    log "mark failed (attempt $i): $("$ADB" devices -l 2>&1 | tr '\n' ';')"
+  done
+  return 1
+}
 
 AT0=$(adbs settings get global auto_time)
 ROOTED=0
