@@ -96,8 +96,28 @@ def cli(*args, env=None):
     return r.returncode, r.stdout, r.stderr
 
 
+def wait_device(what, timeout=90):
+    """Wait until adb sees the emulator online and a shell answers. The CI
+    emulator's adb connection sometimes drops for a few seconds ("device
+    offline" / "not found", #248); that is not a product failure, so the
+    checks that need the device wait for it and say so in the log."""
+    t0 = time.time()
+    while True:
+        r = subprocess.run([adb, "-s", serial, "shell", "true"], capture_output=True, text=True)
+        if r.returncode == 0:
+            if time.time() - t0 > 1:
+                log(f"adb: {serial} was unreachable for {time.time() - t0:.0f}s before {what}")
+            return True
+        if time.time() - t0 > timeout:
+            d = subprocess.run([adb, "devices", "-l"], capture_output=True, text=True)
+            log(f"adb: {serial} still unreachable after {timeout}s before {what}: {r.stderr.strip()!r}; adb devices: {d.stdout.strip()!r}")
+            return False
+        time.sleep(1)
+
+
 def marker(n):
     m = f"alm-{run_id}-{n}"
+    wait_device(f"marker {n}")
     subprocess.run([adb, "-s", serial, "shell", "log", "-t", "ALMCHECK", m], check=True)
     log("logged marker", m)
     return m
@@ -273,8 +293,16 @@ log("service stop:", out.strip())
 wait_gone(pd, 30)
 
 # 5. record --for without clients
+wait_device("record --for")
 code, out, err = cli("record", "--device", serial, "--for", "20s", env={"ANDROID_LOG_MCP_LINGER": "1s"})
 log("record --for 20s:", out.strip(), err.strip())
+if code != 0 and "is not connected" in err + out:
+    # the device dropped off adb at the moment the service looked for it
+    # (#248): wait for it and ask once more, it is not a lifecycle result
+    if wait_device("the record --for retry"):
+        cli("service", "stop")
+        code, out, err = cli("record", "--device", serial, "--for", "20s", env={"ANDROID_LOG_MCP_LINGER": "1s"})
+        log("record --for 20s (retry after the device came back):", out.strip(), err.strip())
 code2, out2, _ = cli("service", "status", "--json")
 pr = json.loads(out2).get("pid", 0) if code2 == 0 else 0
 check(code == 0 and re.search(r"pinned_until=\d", out) and pr > 0, f"record --for started service {pr} detached")
