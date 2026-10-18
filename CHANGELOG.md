@@ -6,9 +6,14 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-18
+
+Highlights: (1) **Recording now resumes** for previously wanted devices after the service process is killed or replaced (new `run/wanted.json`, [#234](https://github.com/s1crab/android-log-mcp/pull/234)); set `ANDROID_LOG_MCP_LINGER=0` to opt out. (2) `service stop --force` and the automatic replacement of a hung service now **wait for the old holder process to exit** (Windows; the Unix wait is deferred), bounded by 5 s ([#247](https://github.com/s1crab/android-log-mcp/pull/247), [#226](https://github.com/s1crab/android-log-mcp/issues/226)). (3) **Crash and ANR identity (R2, [#225](https://github.com/s1crab/android-log-mcp/issues/225))**: one crash or ANR stays one row across service restarts, ANR sources are paired by ordinal ([#229](https://github.com/s1crab/android-log-mcp/pull/229), [#235](https://github.com/s1crab/android-log-mcp/pull/235), [#238](https://github.com/s1crab/android-log-mcp/pull/238), [#245](https://github.com/s1crab/android-log-mcp/pull/245)). (4) Redaction is about 30x faster ([#177](https://github.com/s1crab/android-log-mcp/issues/177)). The additive optional fields (`inc`, `incw`, `ev`, `n` in `crashes.jsonl`, the new `run/wanted.json`) do not change the format version: segment files are unchanged and older binaries ignore them.
+
+Platform status: Windows and macOS are covered by CI only (unit tests with the fake adb); they were not tested with a real or emulator-attached adb for this release and are **unverified**. The emulator checks are summarised in [validation/0.10.0/README.md](validation/0.10.0/README.md).
+
 ### Changed
 
-- Recording now resumes for previously wanted devices after the service process is killed and replaced: a new service process (after a crash, a kill or an automatic replacement) keeps recording the devices that were still within their linger time, with no new log tool call needed ([#234](https://github.com/s1crab/android-log-mcp/pull/234)). Set `ANDROID_LOG_MCP_LINGER=0` to opt out.
 - After a crash, a kill or an automatic replacement (a newer MCP or CLI process, a hung service process), the new service process resumes recording the devices that were still within their linger time (default 10 min to 1 h after the last log tool call), even if the MCP or CLI process that used them has gone ([#226](https://github.com/s1crab/android-log-mcp/issues/226)). Each device stops at the end of that linger as before; an idle exit, `service stop` and `service stop --force` restore nothing, nor does a cold start; `ANDROID_LOG_MCP_LINGER=0` disables it. The devices are carried in the new optional file `run/wanted.json` (the writer's pid and start time, the write time, per device the idle time and linger; unknown keys and a garbage file are ignored, and older binaries never read it).
 - Performance: redaction (`report`, `logcat_export redact=true`, `export --redact`) is several times faster on typical logs ([#177](https://github.com/s1crab/android-log-mcp/issues/177)). Each message is scanned once and a rule's regular expression only runs when the text can contain what it matches. On the real API 29 captures, per-line redaction went from about 1.6 MiB/s to about 49 MiB/s (about 15,600 to about 476,000 lines/s); logs with many sensitive values, and one `Text` call on a whole multi-line text that contains matches, gain less. The output is byte-identical (the old implementation is kept as a test reference), so the numbers of the `[REDACTED:<type>#<n>]` placeholders do not change.
 
@@ -389,7 +394,8 @@ Upgrade notes are in the **Breaking** entries below.
 - First release: an MCP stdio server giving AI agents read-only access to Android logcat, with background recording of every connected device, the tools `logcat_status`, `logcat_search` (Android Studio filter syntax with strict errors), `logcat_crashes` and `logcat_app_launches`, and the `call` debug subcommand.
 - npm packaging: a Node launcher plus per-platform binary packages (linux / darwin / win32 × x64 / arm64), CI and release workflows.
 
-[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/s1crab/android-log-mcp/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/s1crab/android-log-mcp/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/s1crab/android-log-mcp/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/s1crab/android-log-mcp/compare/v0.8.0...v0.8.1
