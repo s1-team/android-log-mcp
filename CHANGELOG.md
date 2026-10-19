@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-10-20
+
+CI and test reliability only; no change to the binary's behavior. Fixes the Windows `cmd` package race-gate timeout ([#251](https://github.com/s1crab/android-log-mcp/issues/251)), an API 29 emulator job that could hang at shutdown ([#242](https://github.com/s1crab/android-log-mcp/issues/242)), tightens the first emulator validation attempt timeout from 32 to 25 minutes ([#204](https://github.com/s1crab/android-log-mcp/issues/204)), and fixes a read/rename race in the test fake adb that made a Windows race-gate test fail ([#256](https://github.com/s1crab/android-log-mcp/issues/256)). Platform status is unchanged: Windows and macOS are covered by CI only and remain **unverified** with a real or emulator-attached adb. Details: [validation/0.10.1/README.md](validation/0.10.1/README.md).
+
 ## [0.10.0] - 2026-10-18
 
 Highlights: (1) **Recording now resumes** for previously wanted devices after the service process is killed or replaced (new `run/wanted.json`, [#234](https://github.com/s1crab/android-log-mcp/pull/234)); set `ANDROID_LOG_MCP_LINGER=0` to opt out. (2) `service stop --force` and the automatic replacement of a hung service now **wait for the old holder process to exit** (Windows; the Unix wait is deferred), bounded by 5 s ([#247](https://github.com/s1crab/android-log-mcp/pull/247), [#226](https://github.com/s1crab/android-log-mcp/issues/226)). (3) **Crash and ANR identity (R2, [#225](https://github.com/s1crab/android-log-mcp/issues/225))**: one crash or ANR stays one row across service restarts, ANR sources are paired by ordinal ([#229](https://github.com/s1crab/android-log-mcp/pull/229), [#235](https://github.com/s1crab/android-log-mcp/pull/235), [#238](https://github.com/s1crab/android-log-mcp/pull/238), [#245](https://github.com/s1crab/android-log-mcp/pull/245)). (4) Redaction is about 30x faster ([#177](https://github.com/s1crab/android-log-mcp/issues/177)). The additive optional fields (`inc`, `incw`, `ev`, `n` in `crashes.jsonl`, the new `run/wanted.json`) do not change the format version: segment files are unchanged and older binaries ignore them.
@@ -394,7 +398,8 @@ Upgrade notes are in the **Breaking** entries below.
 - First release: an MCP stdio server giving AI agents read-only access to Android logcat, with background recording of every connected device, the tools `logcat_status`, `logcat_search` (Android Studio filter syntax with strict errors), `logcat_crashes` and `logcat_app_launches`, and the `call` debug subcommand.
 - npm packaging: a Node launcher plus per-platform binary packages (linux / darwin / win32 × x64 / arm64), CI and release workflows.
 
-[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/s1crab/android-log-mcp/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/s1crab/android-log-mcp/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/s1crab/android-log-mcp/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/s1crab/android-log-mcp/compare/v0.8.1...v0.9.0
