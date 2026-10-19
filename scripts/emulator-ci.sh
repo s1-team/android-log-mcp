@@ -135,4 +135,9 @@ step crash-gate-control crash_gate_control
 step fixtures fixtures
 stop_services > "$OUT/service-logs/stop.txt" 2>&1
 column -t -s $'\t' "$OUT/results.tsv" || cat "$OUT/results.tsv"
+# #242: android-emulator-runner's post-script adb emu kill can hang 14+ min on
+# API 29 after a snapshot boot. Stop with a bound so the runner finds nothing
+# left to wait on; pkill covers a qemu that ignores emu kill.
+timeout 60 "$ADB" -s "$SERIAL" emu kill 2>/dev/null || true
+pkill -9 -f qemu-system 2>/dev/null || true
 [ "$FAILED" -eq 0 ]
