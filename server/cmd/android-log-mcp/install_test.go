@@ -10,7 +10,7 @@ import (
 )
 
 func TestInstallCommand(t *testing.T) {
-	t.Parallel()
+	heavyParallel(t)
 	// its own home: install is not idempotent across -count runs in one test home
 	env := isoEnv(t)
 	out, errOut, code := cli(t, env, "install", "--json")

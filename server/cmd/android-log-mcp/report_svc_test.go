@@ -33,7 +33,7 @@ func seedStore(t *testing.T, root string) {
 // report goes through the service; with none running it starts one
 // detached (issue #11 §9), never building it in this process.
 func TestReportStartsService(t *testing.T) {
-	t.Parallel()
+	heavyParallel(t)
 	env := isoEnv(t)
 	seedStore(t, controlDirOf(env))
 	out1 := filepath.Join(t.TempDir(), "r1.zip")

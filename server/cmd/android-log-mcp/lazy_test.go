@@ -35,8 +35,9 @@ func lazyEnv(t *testing.T, extra ...string) ([]string, fakeadb.Env) {
 	t.Cleanup(func() {
 		os.RemoveAll(filepath.Join(dir, "dev"))
 		// wait for the orphans to notice instead of sleeping; bounded, and
-		// not a failure (TempDir removal reports a real problem)
-		deadline := time.Now().Add(scaled(30 * time.Second))
+		// not a failure (TempDir removal reports a real problem). Keep the
+		// budget short: under -race a long wait holds the heavyParallel slot (#251).
+		deadline := time.Now().Add(scaled(5 * time.Second))
 		for e.AnyChildRunning() && time.Now().Before(deadline) {
 			time.Sleep(20 * time.Millisecond)
 		}
@@ -68,7 +69,7 @@ func eventually(t *testing.T, what string, d time.Duration, ok func() bool) {
 // linger the device's logcat stops again while the client stays connected,
 // and the service stays.
 func TestLazyRecording(t *testing.T) {
-	t.Parallel()
+	heavyParallel(t)
 	env, e := lazyEnv(t, "ANDROID_LOG_MCP_LINGER=2s")
 	s := startMCP(t, env)
 	pid := statePID(t, env)
@@ -117,14 +118,15 @@ func TestLazyRecording(t *testing.T) {
 // record --for with no service spawns it detached; recording runs without
 // clients until the pin ends, then the service exits.
 func TestRecordForWithoutService(t *testing.T) {
-	t.Parallel()
+	heavyParallel(t)
 	env, e := lazyEnv(t, "ALM_TEST_EXIT_GRACE=1s", "ANDROID_LOG_MCP_LINGER=1s")
 	t0 := time.Now()
-	// long enough for slow fake-adb starts on starved runners (-race: ~1 s per
-	// adb call); the pin is observed, never slept through (#226)
+	// Long enough for fake-adb starts; the pin is observed, never slept
+	// through (#226). Under -race use 10s (#251): a 40s pin (and even 20s
+	// with full Windows serialization) pushed nightly count=20 past 50m.
 	pin := 20 * time.Second
 	if raceEnabled {
-		pin = 40 * time.Second
+		pin = 10 * time.Second
 	}
 	out, errOut, code := cliEnv(t, env, "record", "--for", pin.String())
 	if code != 0 || !strings.HasPrefix(out, "ok record action=pinned ") || !strings.Contains(out, "device id=FAKEA state=recording ") {
@@ -159,7 +161,7 @@ func TestRecordForWithoutService(t *testing.T) {
 
 // record --stop stops recording and removes the pin at once.
 func TestRecordStop(t *testing.T) {
-	t.Parallel()
+	heavyParallel(t)
 	env, e := lazyEnv(t, "ALM_TEST_EXIT_GRACE=1s")
 	if out, errOut, code := cliEnv(t, env, "record", "--for", "1h"); code != 0 {
 		t.Fatalf("record --for: %d\n%s\n%s", code, out, errOut)
@@ -180,7 +182,7 @@ func TestRecordStop(t *testing.T) {
 // once (no tool call needed) and resumes recording the pinned device; the
 // crash is counted in record.json.
 func TestClientRestartsPinnedService(t *testing.T) {
-	t.Parallel()
+	heavyParallel(t)
 	env, e := lazyEnv(t)
 	s := startMCP(t, env)
 	old := statePID(t, env)
@@ -206,7 +208,7 @@ func TestClientRestartsPinnedService(t *testing.T) {
 // A version handoff keeps the pins (the new service resumes recording) and,
 // through run/wanted.json (#226), the devices started by tool calls.
 func TestHandoffKeepsPins(t *testing.T) {
-	t.Parallel()
+	heavyParallel(t)
 	env, e := lazyEnv(t)
 	// Generous bounds (#230): on a starved CI runner (Windows, other jobs in
 	// parallel) each fake adb call is a process spawn and the handoff plus
@@ -250,7 +252,7 @@ func TestHandoffKeepsPins(t *testing.T) {
 // client that starts it is for another device; an explicit `service stop`
 // resumes nothing.
 func TestKilledServiceResumesWantedDevice(t *testing.T) {
-	t.Parallel()
+	heavyParallel(t)
 	env, e := lazyEnv(t)
 	e.AddDevice("FAKEB", "boot-b")
 	e.SetDevices(map[string]string{"FAKEA": "device", "FAKEB": "device"})

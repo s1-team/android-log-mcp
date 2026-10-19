@@ -39,10 +39,16 @@ func isoEnv(t *testing.T, extra ...string) []string {
 			if p, err := os.FindProcess(pid); err == nil {
 				p.Kill()
 			}
+			// Wait for exit before RemoveAll: on Windows a dying process still
+			// holds directory handles and the retry loop below would burn the
+			// parallel slot (#251). Bound tightly: stop already waited, this is
+			// only residual reaping (unlike waitGoneQuiet's 60s stage budget).
+			for deadline := time.Now().Add(scaled(10 * time.Second)); processAlive(pid) && time.Now().Before(deadline); {
+				time.Sleep(50 * time.Millisecond)
+			}
 		}
-		// the service is gone (killed above); RemoveAll retries while Windows
-		// still holds a handle of the dying process
-		for deadline := time.Now().Add(scaled(30 * time.Second)); os.RemoveAll(d) != nil && time.Now().Before(deadline); {
+		// brief retry only for residual Windows handle release after exit
+		for deadline := time.Now().Add(scaled(5 * time.Second)); os.RemoveAll(d) != nil && time.Now().Before(deadline); {
 			time.Sleep(50 * time.Millisecond)
 		}
 	})
@@ -156,7 +162,7 @@ func waitGone(t *testing.T, pid int) {
 // Two MCP clients share one service; when the service is killed, both
 // recover on their next call with one new service.
 func TestClientsShareServiceAndRecover(t *testing.T) {
-	t.Parallel()
+	heavyParallel(t)
 	env := isoEnv(t)
 	a, b := startMCP(t, env), startMCP(t, env)
 	pa, _ := servicePID(t, a.status(t))
@@ -184,7 +190,7 @@ func TestClientsShareServiceAndRecover(t *testing.T) {
 // When a detached start is impossible, the first MCP client runs the service
 // itself and other clients use it; when it exits, they take over.
 func TestEmbeddedFallback(t *testing.T) {
-	t.Parallel()
+	heavyParallel(t)
 	env := isoEnv(t, "ALM_TEST_NO_SPAWN=1")
 	a := startMCP(t, env)
 	txt := a.status(t)
@@ -207,7 +213,7 @@ func TestEmbeddedFallback(t *testing.T) {
 // A client replaces only an older service; an older client uses a newer
 // service if the protocol is compatible and fails clearly otherwise.
 func TestVersionHandoff(t *testing.T) {
-	t.Parallel()
+	heavyParallel(t)
 	env := isoEnv(t)
 	call := func(v string, extra ...string) (string, string, int) {
 		return cliEnv(t, append(append(env, "ALM_TEST_VERSION="+v), extra...), "call", "logcat_status")
@@ -250,7 +256,7 @@ func serviceLog(env []string) string {
 // `--offline <root> report --logs-only` works with no service and no adb and
 // makes a zip that holds only diagnostics.
 func TestReportLogsOnlyOffline(t *testing.T) {
-	t.Parallel()
+	heavyParallel(t)
 	env := isoEnv(t)
 	root := controlDirOf(env)
 	if err := os.MkdirAll(filepath.Join(root, "log"), 0o755); err != nil {

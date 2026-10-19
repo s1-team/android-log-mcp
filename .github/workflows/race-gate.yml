@@ -46,7 +46,7 @@ jobs:
           - { pkg: device, target: ./internal/device, job: 180, gotest: 170m }
           - { pkg: mcpserver, target: ./internal/mcpserver, job: 120, gotest: 110m }
           - { pkg: service, target: ./internal/service, job: 340, gotest: 330m }
-          - { pkg: cmd, target: ./cmd/..., job: 60, gotest: 50m }
+          - { pkg: cmd, target: ./cmd/..., job: 75, gotest: 65m }  # 50m was tight on Windows count=20 (#251); hang ruled out
     runs-on: ${{ matrix.os }}
     timeout-minutes: ${{ matrix.job }}
     defaults:
