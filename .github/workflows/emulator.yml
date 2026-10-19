@@ -123,9 +123,9 @@ jobs:
       # The checks never fail this step (results.tsv decides below), so a
       # failure here is the emulator itself: boot it once more. A run takes
       # about 8 minutes (about 20 with the crash gate); the step timeout covers an emulator that never exits
-      # after a failed boot. scripts/emulator-ci.sh also bound-kills the
-      # emulator at the end (#242: API 29 snapshot-boot hung ~14 min on the
-      # runner's own adb emu kill after checks passed).
+      # after a failed boot. scripts/emulator-ci.sh (+ script epilogue below)
+      # pkill qemu and adb kill-server before the action's unbounded
+      # `adb emu kill` (#242: that call hung ~14 min on API 29 snapshot-boot).
       - name: Run the validation
         id: run1
         continue-on-error: true
@@ -138,7 +138,11 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-save
           disable-animations: true
-          script: bash scripts/emulator-ci.sh emulator-5554 "$OUT" || echo "some checks failed (see results.tsv)"
+          script: |
+            bash scripts/emulator-ci.sh emulator-5554 "$OUT" || echo "some checks failed (see results.tsv)"
+            # belt: ensure runner's post-script adb emu kill cannot hang (#242)
+            pkill -9 -f qemu-system 2>/dev/null || true
+            adb kill-server 2>/dev/null || true
       - name: Stop a leftover emulator
         if: steps.run1.outcome != 'success'
         run: |
@@ -155,7 +159,10 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-save -no-snapshot-load
           disable-animations: true
-          script: rm -rf "$OUT" && bash scripts/emulator-ci.sh emulator-5554 "$OUT" || echo "some checks failed (see results.tsv)"
+          script: |
+            rm -rf "$OUT" && bash scripts/emulator-ci.sh emulator-5554 "$OUT" || echo "some checks failed (see results.tsv)"
+            pkill -9 -f qemu-system 2>/dev/null || true
+            adb kill-server 2>/dev/null || true
       - name: Results
         if: always()
         run: |
