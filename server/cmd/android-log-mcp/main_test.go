@@ -49,7 +49,7 @@ func TestMain(m *testing.M) {
 // `call` reports a usage or JSON mistake as one coded line with an executable
 // next step (#85), never a Go error or the usage block.
 func TestCallErrorsAreCoded(t *testing.T) {
-	t.Parallel()
+	heavyParallel(t)
 	env := isoEnv(t)
 	for _, c := range []struct {
 		args []string

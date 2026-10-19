@@ -10,7 +10,7 @@ import (
 // `export` goes through the service (started detached when none runs) and
 // writes --out; refusals and --force (issue #172).
 func TestExportCLIThroughService(t *testing.T) {
-	t.Parallel()
+	heavyParallel(t)
 	env := isoEnv(t)
 	ctrl := controlDirOf(env)
 	seedStore(t, ctrl)
@@ -81,7 +81,7 @@ func TestExportCLIThroughService(t *testing.T) {
 
 // --offline DIR export needs --out and never writes into the dataset.
 func TestExportCLIOffline(t *testing.T) {
-	t.Parallel()
+	heavyParallel(t)
 	env := isoEnv(t)
 	root := t.TempDir()
 	seedStore(t, root)

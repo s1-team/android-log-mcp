@@ -32,17 +32,22 @@ func timeoutFactor() float64 {
 
 func scaled(d time.Duration) time.Duration { return time.Duration(float64(d) * timeoutFactor()) }
 
-// parallelUnlessWindowsRace marks t parallel except on Windows under -race.
-// There the process-spawn heavy service/cmd tests starve each other (cleanup
-// waits hold parallel slots; pins and waitGone stretch) and the package hits
-// the race-gate 50m budget at -count=20 (#251). Linux/macOS and non-race
-// Windows keep full parallelism.
-func parallelUnlessWindowsRace(t *testing.T) {
+// windowsRaceHeavy limits concurrent isoEnv/lazyEnv service tests on Windows
+// under -race. Full parallelism starves process starts and cleanup (#251
+// nightly 50m timeout at -count=20); full serialization sums past 50m too.
+// Cap 2 keeps overlap without the free-for-all. Other platforms are unlimited.
+var windowsRaceHeavy = make(chan struct{}, 2)
+
+// heavyParallel marks t parallel, and on Windows under -race also takes a
+// windowsRaceHeavy slot for the test body + cleanup.
+func heavyParallel(t *testing.T) {
 	t.Helper()
-	if runtime.GOOS == "windows" && raceEnabled {
+	t.Parallel()
+	if runtime.GOOS != "windows" || !raceEnabled {
 		return
 	}
-	t.Parallel()
+	windowsRaceHeavy <- struct{}{}
+	t.Cleanup(func() { <-windowsRaceHeavy })
 }
 
 var testDiags sync.Map // *testing.T -> []func() string
