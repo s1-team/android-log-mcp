@@ -140,8 +140,8 @@ jobs:
           disable-animations: true
           script: |
             bash scripts/emulator-ci.sh emulator-5554 "$OUT" || echo "some checks failed (see results.tsv)"
-            # belt: ensure runner's post-script adb emu kill cannot hang (#242)
-            pkill -9 -f qemu-system 2>/dev/null || true
+            # bracket pattern: pkill -f must not match this sh -c line itself (#242)
+            pkill -9 -f '[q]emu-system' 2>/dev/null || true
             adb kill-server 2>/dev/null || true
       - name: Stop a leftover emulator
         if: steps.run1.outcome != 'success'
@@ -161,7 +161,7 @@ jobs:
           disable-animations: true
           script: |
             rm -rf "$OUT" && bash scripts/emulator-ci.sh emulator-5554 "$OUT" || echo "some checks failed (see results.tsv)"
-            pkill -9 -f qemu-system 2>/dev/null || true
+            pkill -9 -f '[q]emu-system' 2>/dev/null || true
             adb kill-server 2>/dev/null || true
       - name: Results
         if: always()

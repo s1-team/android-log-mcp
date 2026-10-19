@@ -140,6 +140,6 @@ column -t -s $'\t' "$OUT/results.tsv" || cat "$OUT/results.tsv"
 # Kill qemu ourselves, then adb kill-server so the runner's own emu kill
 # restarts adb, sees no device, and fails fast (caught by the action).
 timeout 15 "$ADB" -s "$SERIAL" emu kill 2>/dev/null || true
-pkill -9 -f qemu-system 2>/dev/null || true
+pkill -9 -f '[q]emu-system' 2>/dev/null || true
 "$ADB" kill-server 2>/dev/null || true
 [ "$FAILED" -eq 0 ]
