@@ -129,7 +129,7 @@ jobs:
       - name: Run the validation
         id: run1
         continue-on-error: true
-        timeout-minutes: 32
+        timeout-minutes: 25
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api }}
