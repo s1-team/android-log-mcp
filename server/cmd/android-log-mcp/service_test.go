@@ -41,8 +41,11 @@ func isoEnv(t *testing.T, extra ...string) []string {
 			}
 			// Wait for exit before RemoveAll: on Windows a dying process still
 			// holds directory handles and the retry loop below would burn the
-			// parallel slot for up to the full budget (#251).
-			waitGoneQuiet(pid)
+			// parallel slot (#251). Bound tightly: stop already waited, this is
+			// only residual reaping (unlike waitGoneQuiet's 60s stage budget).
+			for deadline := time.Now().Add(scaled(10 * time.Second)); processAlive(pid) && time.Now().Before(deadline); {
+				time.Sleep(50 * time.Millisecond)
+			}
 		}
 		// brief retry only for residual Windows handle release after exit
 		for deadline := time.Now().Add(scaled(5 * time.Second)); os.RemoveAll(d) != nil && time.Now().Before(deadline); {
