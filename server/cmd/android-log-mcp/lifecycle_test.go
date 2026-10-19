@@ -74,7 +74,7 @@ func waitGoneQuiet(pid int) bool {
 // The adb server is shared with other tools: stopping or killing the
 // service ends its own adb children but never the server.
 func TestADBServerSurvivesService(t *testing.T) {
-	t.Parallel()
+	parallelUnlessWindowsRace(t)
 	adbEnv, state := fakeADBEnv(t)
 	env := isoEnv(t, adbEnv...)
 	for _, how := range []string{"stop", "kill"} {
@@ -109,7 +109,7 @@ func TestADBServerSurvivesService(t *testing.T) {
 // recorded device; the per-device linger default is the planned 10 min
 // (2 × buffer span, ≤ 1 h).
 func TestServiceExitsAfterLastClient(t *testing.T) {
-	t.Parallel()
+	parallelUnlessWindowsRace(t)
 	env := isoEnv(t)
 	out, _, code := cliEnv(t, env, "call", "logcat_status")
 	if code != 0 || !strings.Contains(out, "linger: per device, after its last log tool call: max(10m0s, 2 × the device's log buffer span), at most 1h0m0s (default") ||

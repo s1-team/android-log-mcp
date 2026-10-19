@@ -32,6 +32,19 @@ func timeoutFactor() float64 {
 
 func scaled(d time.Duration) time.Duration { return time.Duration(float64(d) * timeoutFactor()) }
 
+// parallelUnlessWindowsRace marks t parallel except on Windows under -race.
+// There the process-spawn heavy service/cmd tests starve each other (cleanup
+// waits hold parallel slots; pins and waitGone stretch) and the package hits
+// the race-gate 50m budget at -count=20 (#251). Linux/macOS and non-race
+// Windows keep full parallelism.
+func parallelUnlessWindowsRace(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" && raceEnabled {
+		return
+	}
+	t.Parallel()
+}
+
 var testDiags sync.Map // *testing.T -> []func() string
 
 func diagFor(t *testing.T, f func() string) {
