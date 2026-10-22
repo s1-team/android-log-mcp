@@ -301,12 +301,20 @@ func (e Env) AnyChildRunning() bool {
 	return false
 }
 
+// writeAtomic replaces p (tmp file + rename). On Windows the rename fails
+// while another process (a fake adb reading the file) has p open; it is
+// retried briefly (#256).
 func writeAtomic(p, s string) error {
 	tmp := p + ".tmp"
 	if err := os.WriteFile(tmp, []byte(s), 0o644); err != nil {
 		return err
 	}
-	return os.Rename(tmp, p)
+	for end := time.Now().Add(2 * time.Second); ; time.Sleep(5 * time.Millisecond) {
+		err := os.Rename(tmp, p)
+		if err == nil || time.Now().After(end) {
+			return err
+		}
+	}
 }
 
 func appendLine(p, s string) {
@@ -336,13 +344,17 @@ func Main(args []string) int {
 	case "start-server", "kill-server":
 		return 0
 	case "devices":
-		fmt.Print("List of devices attached\n" + readDevices(e) + "\n")
+		cur, _ := readDevices(e)
+		fmt.Print("List of devices attached\n" + cur + "\n")
 		return 0
 	case "track-devices":
 		appendLine(filepath.Join(e.Dir, "track"), strconv.Itoa(os.Getpid()))
 		last := "\x00"
 		for end := time.Now().Add(10 * time.Minute); time.Now().Before(end); time.Sleep(50 * time.Millisecond) {
-			cur := readDevices(e)
+			cur, ok := readDevices(e)
+			if !ok && last != "\x00" {
+				continue // unreadable now: keep the last list, never report a spurious empty one (#256)
+			}
 			if cur != last {
 				if _, err := fmt.Fprintf(os.Stdout, "%04x%s", len(cur), cur); err != nil {
 					return 1
@@ -385,9 +397,22 @@ func Main(args []string) int {
 	return 0
 }
 
-func readDevices(e Env) string {
-	b, _ := os.ReadFile(filepath.Join(e.Dir, "devices"))
-	return string(b)
+// readDevices is the device list; ok is false if the file could not be
+// read. On Windows a read racing SetDevices' rename fails transiently (the
+// file is being replaced: access denied, sharing violation, not found);
+// such a read is retried briefly instead of being taken as an empty list,
+// which the manager sees as every device gone (#256).
+func readDevices(e Env) (string, bool) {
+	p := filepath.Join(e.Dir, "devices")
+	for end := time.Now().Add(500 * time.Millisecond); ; time.Sleep(5 * time.Millisecond) {
+		b, err := os.ReadFile(p)
+		if err == nil {
+			return string(b), true
+		}
+		if time.Now().After(end) || (os.IsNotExist(err) && runtime.GOOS != "windows") {
+			return "", false // never written (rename is atomic for readers outside Windows)
+		}
+	}
 }
 
 func props(e Env, serial string) map[string]string {

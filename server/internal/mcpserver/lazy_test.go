@@ -281,11 +281,14 @@ func TestStatusShowsLateHandover(t *testing.T) {
 	}
 	release := device.HoldSessionEndForTest(l.m, "FAKEA", 1, 200*time.Millisecond)
 	defer release()
-	l.e.SetDevices(map[string]string{"FAKEA": "offline"})
-	// Each phase has its own generous bound (#220): on a starved CI runner
-	// (Windows, -race, many packages at once) spawning the fake adb alone can
-	// take more than 15 s. On any failure the device state, the last
-	// status response and the fake adb call log say where it stopped.
+	if err := l.e.SetDevices(map[string]string{"FAKEA": "offline"}); err != nil {
+		t.Fatal(err)
+	}
+	// Each phase has its own generous bound (#220). A state that stays ""
+	// here means the device vanished from the adb list: the fake adb must
+	// not report an empty list while SetDevices replaces it (#256). On any
+	// failure the device state, the last status response and the fake adb
+	// call log say where it stopped.
 	var out string
 	t.Cleanup(func() {
 		if t.Failed() {
@@ -295,7 +298,9 @@ func TestStatusShowsLateHandover(t *testing.T) {
 	waitUntil(t, "the disconnect to be seen (state offline)", lazyWait, func() bool {
 		return l.m.Get("FAKEA").Status().State == "offline"
 	})
-	l.e.SetDevices(map[string]string{"FAKEA": "device"})
+	if err := l.e.SetDevices(map[string]string{"FAKEA": "device"}); err != nil {
+		t.Fatal(err)
+	}
 	waitUntil(t, "logcat_status to show the late handover (note code=handoff)", lazyWait, func() bool {
 		out, _ = l.call(t, "logcat_status", `{}`)
 		if strings.Contains(out, "note code=handoff") {
