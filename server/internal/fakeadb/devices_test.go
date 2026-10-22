@@ -1,6 +1,7 @@
 package fakeadb
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -23,22 +24,25 @@ func TestDevicesListReplacedWhileRead(t *testing.T) {
 		wg         sync.WaitGroup
 		stop       atomic.Bool
 		reads, bad atomic.Int64
+		readErr    atomic.Value
 		writes     int
 		writeErrs  int
 		firstErr   error
 	)
-	// two readers polling every millisecond: far denser than track-devices'
-	// 50 ms. Before the fix, Windows CI saw 116 of 17309 reads without a
-	// list and 1875 of 1934 renames fail ("Access is denied") with 4
-	// readers in a busy loop.
+	// Two readers poll every millisecond (track-devices: 50 ms) while the
+	// list is replaced every 10 ms. Before the fix, with 4 readers and the
+	// writer in busy loops, Windows CI saw 116 of 17309 reads without a list
+	// and 1875 of 1934 renames fail ("Access is denied").
 	for i := 0; i < 2; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for !stop.Load() {
 				reads.Add(1)
-				if cur, ok := readDevices(e); !ok || cur == "" {
-					bad.Add(1)
+				if cur, err := readDevices(e); err != nil || cur == "" {
+					if bad.Add(1) == 1 {
+						readErr.Store(fmt.Sprintf("%q, %v", cur, err))
+					}
 				}
 				time.Sleep(time.Millisecond)
 			}
@@ -53,12 +57,13 @@ func TestDevicesListReplacedWhileRead(t *testing.T) {
 					firstErr = err
 				}
 			}
+			time.Sleep(10 * time.Millisecond) // tests change the list now and then, not in a busy loop
 		}
 	}
 	stop.Store(true)
 	wg.Wait()
 	t.Logf("%d reads, %d replaces", reads.Load(), writes)
 	if bad.Load() != 0 || writeErrs != 0 {
-		t.Fatalf("%d of %d reads saw no device list; %d of %d replaces failed (first: %v)", bad.Load(), reads.Load(), writeErrs, writes, firstErr)
+		t.Fatalf("%d of %d reads saw no device list (first: %v); %d of %d replaces failed (first: %v)", bad.Load(), reads.Load(), readErr.Load(), writeErrs, writes, firstErr)
 	}
 }

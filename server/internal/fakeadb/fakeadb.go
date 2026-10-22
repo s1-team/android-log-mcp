@@ -351,10 +351,7 @@ func Main(args []string) int {
 		appendLine(filepath.Join(e.Dir, "track"), strconv.Itoa(os.Getpid()))
 		last := "\x00"
 		for end := time.Now().Add(10 * time.Minute); time.Now().Before(end); time.Sleep(50 * time.Millisecond) {
-			cur, ok := readDevices(e)
-			if !ok && last != "\x00" {
-				continue // unreadable now: keep the last list, never report a spurious empty one (#256)
-			}
+			cur, _ := readDevices(e)
 			if cur != last {
 				if _, err := fmt.Fprintf(os.Stdout, "%04x%s", len(cur), cur); err != nil {
 					return 1
@@ -397,20 +394,22 @@ func Main(args []string) int {
 	return 0
 }
 
-// readDevices is the device list; ok is false if the file could not be
-// read. On Windows a read racing SetDevices' rename fails transiently (the
-// file is being replaced: access denied, sharing violation, not found);
-// such a read is retried briefly instead of being taken as an empty list,
-// which the manager sees as every device gone (#256).
-func readDevices(e Env) (string, bool) {
+// readDevices is the device list. On Windows a read racing SetDevices'
+// rename fails transiently (the file is being replaced: access denied,
+// sharing violation, not found); such a read is retried briefly instead of
+// being taken as an empty list, which the manager sees as every device gone
+// (#256). A read that keeps failing returns "" with the error: the state
+// directory was removed, and an orphaned track-devices then reports the
+// empty list to its dead parent and exits.
+func readDevices(e Env) (string, error) {
 	p := filepath.Join(e.Dir, "devices")
 	for end := time.Now().Add(500 * time.Millisecond); ; time.Sleep(5 * time.Millisecond) {
 		b, err := os.ReadFile(p)
 		if err == nil {
-			return string(b), true
+			return string(b), nil
 		}
 		if time.Now().After(end) || (os.IsNotExist(err) && runtime.GOOS != "windows") {
-			return "", false // never written (rename is atomic for readers outside Windows)
+			return "", err // rename is atomic for readers outside Windows: missing is final
 		}
 	}
 }
