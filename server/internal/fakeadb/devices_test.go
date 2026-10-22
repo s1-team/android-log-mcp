@@ -27,15 +27,20 @@ func TestDevicesListReplacedWhileRead(t *testing.T) {
 		writeErrs  int
 		firstErr   error
 	)
-	for i := 0; i < 4; i++ {
+	// two readers polling every millisecond: far denser than track-devices'
+	// 50 ms. Before the fix, Windows CI saw 116 of 17309 reads without a
+	// list and 1875 of 1934 renames fail ("Access is denied") with 4
+	// readers in a busy loop.
+	for i := 0; i < 2; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for !stop.Load() {
 				reads.Add(1)
-				if cur := readDevices(e); cur == "" {
+				if cur, ok := readDevices(e); !ok || cur == "" {
 					bad.Add(1)
 				}
+				time.Sleep(time.Millisecond)
 			}
 		}()
 	}
