@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/s1crab/android-log-mcp/server/internal/clock"
 	"github.com/s1crab/android-log-mcp/server/internal/logcat"
 	"github.com/s1crab/android-log-mcp/server/internal/model"
 	"github.com/s1crab/android-log-mcp/server/internal/procs"
@@ -107,7 +108,7 @@ type Detector struct {
 	tombs    map[int]*tombstone // DEBUG lines by crash_dump pid
 	lastTs   int64              // continuous time (adj) of the newest record
 	lastHost time.Time
-	jumpNs   int64 // sum of the device clock jumps seen (ClockJump)
+	deltas   clock.SumDeltas // running Σ real jump deltas (EventClock Continuous; R1 #258)
 	// Now is the host clock Tick(0) advances by (nil: time.Now).
 	Now func() time.Time
 }
@@ -309,7 +310,7 @@ func (d *Detector) Feed(r *model.Record) {
 			}
 		}
 	}()
-	u := r.TimeNs - d.jumpNs
+	u := d.deltas.Adj(clock.DeviceInstant(r.TimeNs))
 	d.lastTs, d.lastHost = u, d.now()
 	emit = append(emit, d.expireLocked(u)...)
 
@@ -503,7 +504,7 @@ func (d *Detector) Feed(r *model.Record) {
 // Do not call it for a "possible" jump (a quiet hour, not a clock set).
 func (d *Detector) ClockJump(deltaNs int64) {
 	d.mu.Lock()
-	d.jumpNs += deltaNs
+	d.deltas.Add(deltaNs)
 	d.mu.Unlock()
 }
 
@@ -526,7 +527,7 @@ func (d *Detector) Tick(nowNs int64) {
 			nowNs += d.now().Sub(d.lastHost).Nanoseconds()
 		}
 	} else {
-		nowNs -= d.jumpNs
+		nowNs = d.deltas.Adj(clock.DeviceInstant(nowNs))
 	}
 	out := d.expireLocked(nowNs)
 	d.mu.Unlock()

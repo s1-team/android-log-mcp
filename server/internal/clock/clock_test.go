@@ -231,6 +231,47 @@ func TestShiftCompareMatchesDropboxDelta(t *testing.T) {
 	}
 }
 
+func TestShiftSignedMatchesSignedDelta(t *testing.T) {
+	ref := func(anchorNs int64, anchorSeq uint64, evNs int64, jumps []Jump) int64 {
+		d := evNs - anchorNs
+		var sh int64
+		if anchorSeq != 0 {
+			for _, j := range jumps {
+				if j.Source != "possible" && j.Seq > anchorSeq {
+					sh += j.DeltaNs
+				}
+			}
+		}
+		if sh != 0 {
+			if ds := evNs - (anchorNs + sh); abs64(ds) < abs64(d) {
+				return ds
+			}
+		}
+		return d
+	}
+	const t0 = int64(1_800_000_000e9)
+	fwd := jumps(Jump{Seq: 20, DeltaNs: 3600 * s, Source: "set"})
+	cases := []struct {
+		name string
+		js   []Jump
+		seq  uint64
+		ev   int64
+	}{
+		{"raw", nil, 10, t0 + 5*s},
+		{"fwd shifted", fwd, 10, t0 + 3600*s + 5*s},
+		{"seq0", fwd, 0, t0 + 3600*s + 5*s},
+		{"negative", fwd, 10, t0 - 10*s},
+	}
+	for _, tc := range cases {
+		want := ref(t0, tc.seq, tc.ev, tc.js)
+		c := NewEventClock(tc.js)
+		got := c.ShiftSigned(c.Stamp(ArrivalSeq(tc.seq), DeviceInstant(t0)), DeviceInstant(tc.ev))
+		if got != want {
+			t.Errorf("%s: got %d want %d", tc.name, got, want)
+		}
+	}
+}
+
 func TestSumDeltasPropertyMatchesContinuous(t *testing.T) {
 	rng := rand.New(rand.NewSource(258))
 	for trial := 0; trial < 50; trial++ {

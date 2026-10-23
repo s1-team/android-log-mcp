@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/s1crab/android-log-mcp/server/internal/analysis"
+	"github.com/s1crab/android-log-mcp/server/internal/clock"
 	"github.com/s1crab/android-log-mcp/server/internal/logcat"
 	"github.com/s1crab/android-log-mcp/server/internal/model"
 	"github.com/s1crab/android-log-mcp/server/internal/procs"
@@ -564,9 +565,10 @@ func (p *Pipeline) bindInc(out, latest *analysis.Crash, fromDropbox bool) {
 }
 
 // dropboxJumps are the stored clock jumps of this pipeline's boot session
-// that DropBox matching shifts crash times by (issue #93): "possible"
-// jumps carry no reliable delta and are left out, and so are jumps before
-// the session's first line (an earlier boot).
+// that DropBox matching shifts crash times by (issue #93): built via
+// EventClock at the store/device boundary (R1 #258). "possible" jumps and
+// jumps before the session's first line (an earlier boot) are left out.
+// ClockJump apply-before-Feed order in Drain is unchanged.
 func (p *Pipeline) dropboxJumps() []analysis.ClockShift {
 	m := p.Store.Meta()
 	var first uint64
@@ -575,11 +577,16 @@ func (p *Pipeline) dropboxJumps() []analysis.ClockShift {
 			first = s.FirstSeq
 		}
 	}
-	var out []analysis.ClockShift
+	js := make([]clock.Jump, 0)
 	for _, j := range p.Store.ClockJumps() {
-		if j.Source != "possible" && j.Seq > first {
-			out = append(out, analysis.ClockShift{Seq: j.Seq, DeltaNs: j.DeltaNs})
+		if j.Seq > first {
+			js = append(js, clock.Jump{Seq: j.Seq, DeltaNs: j.DeltaNs, Source: j.Source})
 		}
+	}
+	ec := clock.NewEventClock(js)
+	out := make([]analysis.ClockShift, 0, len(ec.RealJumps()))
+	for _, j := range ec.RealJumps() {
+		out = append(out, analysis.ClockShift{Seq: j.Seq, DeltaNs: j.DeltaNs})
 	}
 	return out
 }

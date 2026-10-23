@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/s1crab/android-log-mcp/server/internal/clock"
 )
 
 // DropboxEntry is one entry of `dumpsys dropbox --print <tag>`.
@@ -127,40 +129,17 @@ func MatchDropbox(list []*Crash, e DropboxEntry) (c *Crash, isNew bool) {
 // it: Seq is the first stored line after the jump, DeltaNs its size
 // (+ forward, − back). Callers pass only real jumps, never "possible" ones
 // (a quiet hour carries no reliable delta), and only those of the boot
-// session being matched.
+// session being matched. Converted to EventClock via eventClockOf (R1 #258).
 type ClockShift struct {
 	Seq     uint64
 	DeltaNs int64
 }
 
-// shiftAfter sums the jumps that happened after the line seq (issue #93).
-// A crash without a seq (DropBox only) has no place to measure from.
-func shiftAfter(jumps []ClockShift, seq uint64) int64 {
-	if seq == 0 {
-		return 0
-	}
-	var sum int64
-	for _, j := range jumps {
-		if j.Seq > seq {
-			sum += j.DeltaNs
-		}
-	}
-	return sum
-}
-
 // dropboxDelta is the distance between a crash (device time crashNs, line
-// crashSeq) and a DropBox entry (entryNs): the smaller of the raw
-// difference and the one with the crash time moved by the jumps stored
-// after the crash. The entry may have been written on either side of a
-// jump, so both readings count. shifted reports that the shift won.
+// crashSeq) and a DropBox entry (entryNs): EventClock.ShiftCompare (issue #93/#152).
 func dropboxDelta(crashNs int64, crashSeq uint64, entryNs int64, jumps []ClockShift) (d int64, shifted bool) {
-	d = abs(crashNs - entryNs)
-	if sh := shiftAfter(jumps, crashSeq); sh != 0 {
-		if ds := abs(crashNs + sh - entryNs); ds < d {
-			return ds, true
-		}
-	}
-	return d, false
+	ec := eventClockOf(jumps)
+	return ec.ShiftCompare(ec.Stamp(clock.ArrivalSeq(crashSeq), clock.DeviceInstant(crashNs)), clock.DeviceInstant(entryNs))
 }
 
 // anrEntrySlack is how far after a DropBox entry's header time an ANR may

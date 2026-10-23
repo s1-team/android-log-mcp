@@ -1,6 +1,10 @@
 package analysis
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/s1crab/android-log-mcp/server/internal/clock"
+)
 
 // ANR pairing by ordinal and interval (issue #225, design revision 2, PR2).
 //
@@ -42,16 +46,10 @@ func ReasonCompatible(a, b string) (ok, known bool) {
 }
 
 // signedDelta is the evidence time minus the anchor time on the jump
-// normalized axis: the raw difference, or the one with the anchor moved by
-// the jumps stored after it, whichever is smaller (as dropboxDelta).
+// normalized axis: EventClock.ShiftSigned (same min-abs choice as dropboxDelta).
 func signedDelta(anchorNs int64, anchorSeq uint64, evNs int64, jumps []ClockShift) int64 {
-	d := evNs - anchorNs
-	if sh := shiftAfter(jumps, anchorSeq); sh != 0 {
-		if ds := evNs - (anchorNs + sh); abs(ds) < abs(d) {
-			return ds
-		}
-	}
-	return d
+	ec := eventClockOf(jumps)
+	return ec.ShiftSigned(ec.Stamp(clock.ArrivalSeq(anchorSeq), clock.DeviceInstant(anchorNs)), clock.DeviceInstant(evNs))
 }
 
 // anchoredBefore is the interval rule's order test: the anchor of x is not
