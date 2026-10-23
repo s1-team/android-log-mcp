@@ -79,6 +79,11 @@ type Device struct {
 	rollbackSkipped atomic.Int64 // lines dropped as already stored after it
 	recovered       atomic.Int64 // lines the live stream skipped, stored late (reconcileLoop, issue #65)
 	repairSince     int64        // host ns the repair mode started (0: off; under mu)
+
+	// resumeRing is the live #259 ResumeRing for the current boot (maintain
+	// on append). Resume Take uses a counts copy so Active MergeExport and
+	// replay drops do not corrupt the maintain multiset.
+	resumeRing *store.ResumeRing
 }
 
 // errExecOut ends a recording session whose `adb exec-out logcat` failed
@@ -499,6 +504,54 @@ func (d *Device) run(ctx context.Context) {
 	}
 }
 
+// ensureResumeRing returns the live ResumeRing for bootID, rebuilding from
+// the store when missing or keyed to another boot (#259 Phase B).
+func (d *Device) ensureResumeRing(bootID string) *store.ResumeRing {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.resumeRing != nil && d.resumeRing.Boot() == bootID {
+		return d.resumeRing
+	}
+	d.resumeRing = store.RebuildResumeRing(d.Store, store.DefaultResumeRingCap)
+	return d.resumeRing
+}
+
+// resetResumeRing replaces the live ring on a boot change (empty for the
+// new boot; rebuild is unnecessary — the session has no lines yet).
+func (d *Device) resetResumeRing(bootID string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.resumeRing = store.NewResumeRing(bootID, store.DefaultResumeRingCap)
+}
+
+// observeResumeRecords feeds accepted (non-duplicate) appends into the live
+// ring. Must not run for lines dropped by known.take during replay.
+func (d *Device) observeResumeRecords(batch []*model.Record) {
+	if len(batch) == 0 {
+		return
+	}
+	d.mu.Lock()
+	ring := d.resumeRing
+	d.mu.Unlock()
+	if ring == nil {
+		return
+	}
+	for _, r := range batch {
+		ring.ObserveRecord(r)
+	}
+}
+
+// flushResumeRing closes any open multi-line run on the live ring at the
+// end of a recordOnce session (#192 / #259).
+func (d *Device) flushResumeRing() {
+	d.mu.Lock()
+	ring := d.resumeRing
+	d.mu.Unlock()
+	if ring != nil {
+		ring.FlushRun()
+	}
+}
+
 func recHash(r *model.Record) uint64 {
 	h := fnv.New64a()
 	fmt.Fprintf(h, "%d|%d|%d|%c|%s|%s", r.TimeNs, r.PID, r.TID, r.Level, r.Tag, r.Msg)
@@ -540,8 +593,10 @@ func (d *Device) recordOnce(ctx context.Context) error {
 	}
 	tEnd := end.k.ns
 	resume := ""
-	// stored lines the replayed part of the stream can repeat (issue #52):
-	// nil on a new boot; whole = read the whole buffer, not -T
+	// stored lines the replayed part of the stream can repeat (issue #52 /
+	// #259): nil on a new boot; whole = read the whole buffer, not -T.
+	// Compare set is always the ResumeRing (session tail), for both -T
+	// and whole — boundaryMultiset (device-time slack) is gone.
 	var known multiset
 	whole := false
 	arrNs := meta.ArrivalNs()
@@ -581,30 +636,27 @@ func (d *Device) recordOnce(ctx context.Context) error {
 			whole = true
 		}
 	}
-	if whole {
-		// any stored line of the session may still be in the buffer: one
-		// buffer (system) can hold boot lines while another (main) rotated
-		// many times, so the stored lines it spans are not bounded by its
-		// entries (issue #75)
-		known = tailMultiset(d.Store, maxResumeHashes)
-	} else if sameBoot {
-		resume = logcat.FormatResumeTime(arrNs)
-		known = boundaryMultiset(d.Store, arrNs)
-	}
-	if rd := meta.ResumeDedup; rd != nil {
-		// stored in the previous root (set-root, issue #56): used by every
-		// resume until the boot changes or enough lines are stored here
-		if rd.Active(bootID, arrNs, d.Store.LastSeq()) {
-			if known != nil {
+	if sameBoot {
+		// -T vs whole is adb efficiency / jump safety only; known is always
+		// the ring (issue #259 Phase B). Take uses a counts copy so replay
+		// drops and set-root MergeExport do not mutate the live ring.
+		if !whole {
+			resume = logcat.FormatResumeTime(arrNs)
+		}
+		ring := d.ensureResumeRing(bootID)
+		known = multiset(ring.Counts())
+		if rd := meta.ResumeDedup; rd != nil {
+			// previous root (set-root, issue #56 / #259 Phase C): every
+			// resume while Active merges the carried export into known
+			if rd.Active(bootID, arrNs, d.Store.LastSeq()) {
 				for _, h := range d.Store.LoadResumeDedup() {
 					known[h]++
 				}
+			} else {
+				d.Store.ClearResumeDedup()
 			}
-		} else {
-			d.Store.ClearResumeDedup()
 		}
-	}
-	if !sameBoot {
+	} else {
 		// new boot (or first contact): import the device's whole ring buffer
 		now := time.Now().UnixNano()
 		nextSeq := d.Store.LastSeq() + 1 // not inside UpdateMeta: store lock is held there
@@ -618,9 +670,14 @@ func (d *Device) recordOnce(ctx context.Context) error {
 				m.RecordingSince = now
 			}
 		})
+		d.resetResumeRing(bootID)
 		// processes of earlier boots are certainly gone now
 		CloseOtherBoots(d.Store, boot)
+		if meta.ResumeDedup != nil {
+			d.Store.ClearResumeDedup()
+		}
 	}
+	defer d.flushResumeRing()
 	switch {
 	case ctx.Err() != nil:
 		return ctx.Err()
@@ -751,6 +808,9 @@ func (d *Device) recordOnce(ctx context.Context) error {
 			}
 			m.Gaps = kept
 		})
+	}
+	pipe.AfterAppend = func(batch []*model.Record) {
+		d.observeResumeRecords(batch)
 	}
 	off0, off0ok := d.clockOffset() // the connect clock read
 	if tEnd == 0 && terr == nil {

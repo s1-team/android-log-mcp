@@ -38,9 +38,10 @@ func TestResumeMultisetsCountSplitEntries(t *testing.T) {
 		t.Fatal(err)
 	}
 	whole := splitRec(ns+1000, "part1\npart2\npart3")
+	// #259: ResumeRing (≡ tailMultiset) is the only compare set; boundaryMultiset gone.
 	for name, set := range map[string]multiset{
-		"tail":     tailMultiset(st, 100),
-		"boundary": boundaryMultiset(st, ns+int64(time.Second)),
+		"tail": tailMultiset(st, 100),
+		"ring": multiset(store.RebuildResumeRing(st, 100).Counts()),
 	} {
 		if !set.take(recHash(whole)) {
 			t.Errorf("%s: the replayed whole entry is not recognised", name)

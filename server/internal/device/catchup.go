@@ -329,10 +329,6 @@ func (m multiset) take(h uint64) bool {
 // maxResumeHashes caps a multiset (≈ 20 MB).
 const maxResumeHashes = 500000
 
-// resumeSlack: stored lines this far before the -T resume point are still
-// compared (logd interleaves its buffers by device time).
-const resumeSlack = 10 * time.Second
-
 // sessionFirst is the seq before the current boot session's first line.
 func sessionFirst(st *store.Store) uint64 {
 	m := st.Meta()
@@ -346,8 +342,9 @@ func sessionFirst(st *store.Store) uint64 {
 }
 
 // tailMultiset counts the last n stored lines of the current boot session,
-// chosen by seq, not by device time: after a clock jump device time says
-// nothing about what is still in the device buffer (issue #52 D2).
+// chosen by seq, not by device time (issue #52 D2). Production resume uses
+// store.ResumeRing (#259); this remains the rebuild-equivalence oracle for
+// tests (≡ store.RebuildResumeRing multiset).
 func tailMultiset(st *store.Store, n int) multiset {
 	set := multiset{}
 	if n > maxResumeHashes || n <= 0 {
@@ -360,30 +357,6 @@ func tailMultiset(st *store.Store, n int) multiset {
 		runs.add(set, r)
 		seen++
 		return seen < n
-	})
-	runs.end(set)
-	return set
-}
-
-// boundaryMultiset counts the stored lines that logcat -T arrNs can
-// repeat: newest first by seq, back to the first line dated more than
-// resumeSlack before arrNs. Used only when no clock jump lies among the
-// lines still in the device buffer, so device time follows arrival order.
-func boundaryMultiset(st *store.Store, arrNs int64) multiset {
-	set := multiset{}
-	if arrNs == 0 {
-		return set
-	}
-	seen := 0
-	var runs splitRuns
-	st.Scan(sessionFirst(st), st.LastSeq()+1, true, func(r *model.Record) bool {
-		if r.TimeNs < arrNs-int64(resumeSlack) {
-			return false
-		}
-		set[recHash(r)]++
-		runs.add(set, r)
-		seen++
-		return seen < maxResumeHashes
 	})
 	runs.end(set)
 	return set

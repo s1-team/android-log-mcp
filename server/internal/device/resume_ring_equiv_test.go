@@ -10,8 +10,8 @@ import (
 	"github.com/s1crab/android-log-mcp/server/internal/store"
 )
 
-// Phase A of #259: RebuildResumeRing multiset must equal tailMultiset
-// (including splitRuns). recordOnce is unchanged until Phase B.
+// #259: RebuildResumeRing multiset must equal tailMultiset (including
+// splitRuns). Phase B also pins maintain-on-append ≡ rebuild.
 
 func equivRec(ns int64, pid int, tag, msg string) *model.Record {
 	return &model.Record{
@@ -49,7 +49,7 @@ func sameMultiset(t *testing.T, name string, want multiset, got map[uint64]int32
 func TestRebuildResumeRingEqualsTailMultiset(t *testing.T) {
 	t.Parallel()
 	st := openEquivStore(t, "boot-eq")
-	ns := time.Now().Add(-2 * time.Minute).UnixNano() / 1000 * 1000
+	ns := time.Now().Add(-2*time.Minute).UnixNano() / 1000 * 1000
 	recs := []*model.Record{
 		equivRec(ns, 100, "A", "single"),
 		equivRec(ns+1000, 100, "ML", "part1"),
@@ -106,15 +106,14 @@ func TestRebuildResumeRingEqualsTailAcrossSessions(t *testing.T) {
 	}
 }
 
-// Documents #259 answer 7: the session-tail ring (≡ tailMultiset) is a
-// broader -T compare set than today's boundaryMultiset (10s slack). Phase B
-// will switch -T resumes onto the ring; Phase A only pins the property so
-// the intentional broadening stays tested.
+// Documents #259 answer 7: -T resumes use the session-tail ring (last N),
+// not a 10s device-time slack window. A replayed identical line older than
+// 10s but still in the ring is droppable (intentional broader compare set).
 func TestResumeRingBroaderThanBoundarySlack(t *testing.T) {
 	t.Parallel()
 	st := openEquivStore(t, "boot-slack")
 	arrNs := time.Now().UnixNano() / 1000 * 1000
-	oldNs := arrNs - int64(30*time.Second) // older than resumeSlack (10s)
+	oldNs := arrNs - int64(30*time.Second) // would have been outside old 10s slack
 	nearNs := arrNs - int64(2*time.Second)
 	recs := []*model.Record{
 		equivRec(oldNs, 10, "OLD", "outside-slack"),
@@ -126,21 +125,53 @@ func TestResumeRingBroaderThanBoundarySlack(t *testing.T) {
 	}
 	st.UpdateMeta(func(m *store.Meta) { m.ArrivalTimeNs = arrNs })
 
-	boundary := boundaryMultiset(st, arrNs)
 	ring := store.RebuildResumeRing(st, 100)
+	known := multiset(ring.Counts()) // same shape recordOnce uses for -T
 	oldH := recHash(recs[0])
 	nearH := recHash(recs[1])
 
-	if boundary.take(oldH) {
-		t.Fatal("boundaryMultiset should exclude the >10s-old line")
+	if !known.take(oldH) {
+		t.Fatal("ring/-T known must include the >10s-old line (broader compare set)")
 	}
-	if !boundary.take(nearH) {
-		t.Fatal("boundaryMultiset should include the near line")
+	if !known.take(nearH) {
+		t.Fatal("ring/-T known must include the near line")
 	}
-	if ring.Count(store.RecordHash(recs[0])) != 1 {
-		t.Fatal("ring must include the >10s-old line (broader -T compare set)")
+	if ring.Count(store.RecordHash(recs[0])) != 1 || ring.Count(store.RecordHash(recs[1])) != 1 {
+		t.Fatal("rebuild ring counts wrong")
 	}
-	if ring.Count(store.RecordHash(recs[1])) != 1 {
-		t.Fatal("ring must include the near line")
+}
+
+// Phase B: after N ObserveRecord appends, the live ring multiset equals
+// RebuildResumeRing from the store (maintain ≡ rebuild).
+func TestMaintainResumeRingEqualsRebuild(t *testing.T) {
+	t.Parallel()
+	st := openEquivStore(t, "boot-maint")
+	ns := time.Now().Add(-time.Minute).UnixNano() / 1000 * 1000
+	recs := []*model.Record{
+		equivRec(ns, 100, "A", "single"),
+		equivRec(ns+1000, 100, "ML", "part1"),
+		equivRec(ns+1000, 100, "ML", "part2"),
+		equivRec(ns+1000, 100, "ML", "part3"),
+		equivRec(ns+2000, 101, "B", "other"),
+		equivRec(ns+3000, 100, "A", "dup"),
+		equivRec(ns+3000, 100, "A", "dup"),
+	}
+	live := store.NewResumeRing("boot-maint", 100)
+	for _, r := range recs {
+		if err := st.Append([]*model.Record{r}); err != nil {
+			t.Fatal(err)
+		}
+		// seq assigned by store — re-read
+	}
+	// Observe in store seq order
+	st.Scan(0, st.LastSeq()+1, false, func(r *model.Record) bool {
+		live.ObserveRecord(r)
+		return true
+	})
+	live.FlushRun()
+	got := store.RebuildResumeRing(st, 100)
+	sameMultiset(t, "maintain", multiset(got.Counts()), live.Counts())
+	if live.Len() != got.Len() {
+		t.Fatalf("len live=%d rebuild=%d", live.Len(), got.Len())
 	}
 }

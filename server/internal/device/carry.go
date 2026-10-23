@@ -81,20 +81,13 @@ func carryStateFiles() []string {
 	return append([]string{"meta.json", store.ResumeDedupFile}, store.CarriedFiles...)
 }
 
-// carriedHashes are the hashes of the newest stored lines of the current
-// boot, chosen by seq (see tailMultiset): the lines a resume in the new
-// root can repeat, whatever the device clock did (issue #56). The new root
-// does not have them to deduplicate against.
+// carriedHashes exports the current-boot ResumeRing for set-root
+// (issue #56 / #259 Phase C): Snapshot of RebuildResumeRing, same
+// resume_dedup.bin layout. No warm-persist without set-root (Q1).
 func carriedHashes(st *store.Store) []uint64 {
 	m := st.Meta()
 	if m.LastBootID == "" {
 		return nil
 	}
-	var out []uint64
-	for h, n := range tailMultiset(st, store.MaxResumeDedup) {
-		for ; n > 0; n-- {
-			out = append(out, h)
-		}
-	}
-	return out
+	return store.RebuildResumeRing(st, store.DefaultResumeRingCap).Snapshot()
 }
