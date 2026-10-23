@@ -6,9 +6,20 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-23
+
+Highlights: (1) **Cold index load** for closed segments via `seg-*.idx` sidecars (G1, [#260](https://github.com/s1crab/android-log-mcp/issues/260) / [#263](https://github.com/s1crab/android-log-mcp/pull/263)). (2) **Unified EventClock** for jump-normalized time across detector, DropBox, launches and process table (R1, [#258](https://github.com/s1crab/android-log-mcp/issues/258) / [#261](https://github.com/s1crab/android-log-mcp/pull/261) / [#264](https://github.com/s1crab/android-log-mcp/pull/264)). (3) **ResumeRing** — one boot+seq hash ring for resume/dedup, replacing the device-time-bounded compare set (R5, [#259](https://github.com/s1crab/android-log-mcp/issues/259) / [#262](https://github.com/s1crab/android-log-mcp/pull/262) / [#265](https://github.com/s1crab/android-log-mcp/pull/265)). No format-version bump: `.idx` is a derived cache; older binaries ignore it, and `resume_dedup.bin` / `Meta.ResumeDedup` layout is unchanged.
+
+Platform status: Windows and macOS are covered by CI only (unit tests with the fake adb); they were not tested with a real or emulator-attached adb for this release and are **unverified**. The emulator checks are summarised in [validation/0.11.0/README.md](validation/0.11.0/README.md).
+
 ### Added
 
-- Closed log segments now keep a derived block-index sidecar (`seg-<first>.idx`) so a cold `EnsureIndex` can load class counts and `minT`/`maxT` without re-scanning JSONL ([#260](https://github.com/s1crab/android-log-mcp/issues/260), [#173](https://github.com/s1crab/android-log-mcp/issues/173) G1). The sidecar is validated with magic `ALMI`, format version 1, first seq, size, and CRC64 of the segment and payload (no mtime); any miss rebuilds and rewrites it. The writer's open (last) segment stays memory-only. Sweep deletes each `.idx` with its segment (and orphans).
+- Closed log segments now keep a derived block-index sidecar (`seg-<first>.idx`) so a cold `EnsureIndex` can load class counts and `minT`/`maxT` without re-scanning JSONL ([#260](https://github.com/s1crab/android-log-mcp/issues/260), [#173](https://github.com/s1crab/android-log-mcp/issues/173) G1, [#263](https://github.com/s1crab/android-log-mcp/pull/263)). The sidecar is validated with magic `ALMI`, format version 1, first seq, size, and CRC64 of the segment and payload (no mtime); any miss rebuilds and rewrites it. The writer's open (last) segment stays memory-only. Sweep deletes each `.idx` with its segment (and orphans). At ~512 MiB retained, full `seg_crc64` verify-on-load is about 417 ms median versus about 1883 ms to rebuild (`index.load_ms` / `index.build_ms`); an optional fast-path that skips `seg_crc64` on load is a follow-up and does not block this release.
+
+### Changed
+
+- Jump-normalized time across the crash detector, DropBox / ANR matching, launches and the process table now goes through one `EventClock` (Continuous, ShiftCompare, SameEpoch, SumDeltas) instead of each subsystem inventing its own adj / cum / shift math ([#258](https://github.com/s1crab/android-log-mcp/issues/258), [#261](https://github.com/s1crab/android-log-mcp/pull/261), [#264](https://github.com/s1crab/android-log-mcp/pull/264)). Behavior is intended to match the previous helpers (equivalence tests pin the old formulas); `fmt=1`, cursors, `Meta.ClockJumps` and product copy are unchanged.
+- Resume / backfill de-dup uses a rolling `ResumeRing` of content hashes for the last N arrivals of the current boot (seq-ordered, maintain-on-append, rebuild-on-open ≡ today's tail multiset), for both `-T` and whole-buffer resumes ([#259](https://github.com/s1crab/android-log-mcp/issues/259), [#262](https://github.com/s1crab/android-log-mcp/pull/262), [#265](https://github.com/s1crab/android-log-mcp/pull/265)). The old device-time-bounded compare set (`boundaryMultiset` / 10 s slack) is gone, so the `-T` known set is broader. Set-root still exports into `resume_dedup.bin` + `Meta.ResumeDedup`. `-T` versus whole remains an adb / jump-safety choice only.
 
 ## [0.10.1] - 2026-10-20
 
@@ -402,7 +413,8 @@ Upgrade notes are in the **Breaking** entries below.
 - First release: an MCP stdio server giving AI agents read-only access to Android logcat, with background recording of every connected device, the tools `logcat_status`, `logcat_search` (Android Studio filter syntax with strict errors), `logcat_crashes` and `logcat_app_launches`, and the `call` debug subcommand.
 - npm packaging: a Node launcher plus per-platform binary packages (linux / darwin / win32 × x64 / arm64), CI and release workflows.
 
-[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.10.1...HEAD
+[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/s1crab/android-log-mcp/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/s1crab/android-log-mcp/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/s1crab/android-log-mcp/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/s1crab/android-log-mcp/compare/v0.9.0...v0.9.1
