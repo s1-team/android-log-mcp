@@ -109,8 +109,8 @@ func (s *Store) EnsureIndex() {
 	s.mu.RLock()
 	segs := append([]segment(nil), s.segs...)
 	s.mu.RUnlock()
-	for _, sg := range segs {
-		s.segIndexFor(sg.path)
+	for i, sg := range segs {
+		s.segIndexFor(sg.path, i < len(segs)-1)
 	}
 }
 
@@ -387,7 +387,7 @@ func (s *Store) AggClasses(after, before uint64, fromNs, toNs int64, ids map[uin
 		if sg.first >= hi || end <= lo {
 			continue
 		}
-		ix := s.segIndexFor(sg.path)
+		ix := s.segIndexFor(sg.path, i < len(segs)-1)
 		if ix == nil {
 			continue
 		}

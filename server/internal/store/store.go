@@ -127,15 +127,16 @@ type Store struct {
 	tailOff int64
 
 	// history: block index per segment + byte-capped LRU of decoded blocks
-	hmu     sync.Mutex
-	idx     map[string]*segIndex
-	blocks  map[blockKey]*list.Element
-	lru     *list.List
-	hBytes  int64
-	classes classDict // per-store class dictionary for block counts (issue #37)
-	lastUse time.Time
-	idleT   *time.Timer
-	closed  atomic.Bool
+	hmu        sync.Mutex
+	idx        map[string]*segIndex
+	idxPending map[string]struct{} // closed segments whose .idx rename still needs retry (#260)
+	blocks     map[blockKey]*list.Element
+	lru        *list.List
+	hBytes     int64
+	classes    classDict // per-store class dictionary for block counts (issue #37)
+	lastUse    time.Time
+	idleT      *time.Timer
+	closed     atomic.Bool
 
 	auxMu sync.Mutex // serializes aux appends with compaction
 }
@@ -429,7 +430,7 @@ func (s *Store) loadWindowLocked() {
 	count, size := 0, int64(0)
 	n := len(s.segs)
 	for i := n - 1; i >= 0 && count < s.cfg.MemRecords && size < s.cfg.MemBytes; i-- {
-		ix := s.segIndexFor(s.segs[i].path)
+		ix := s.segIndexFor(s.segs[i].path, i < n-1)
 		if ix == nil {
 			continue
 		}
@@ -839,6 +840,9 @@ func (s *Store) Flush() {
 		s.meta.LastSeenHostNs = time.Now().UnixNano()
 		s.saveMetaLocked()
 	}
+	s.hmu.Lock()
+	s.flushIdxPendingLocked()
+	s.hmu.Unlock()
 	if runtime.GOOS == "windows" && s.lockF != nil {
 		now := time.Now()
 		os.Chtimes(s.lockF.Name(), now, now)
@@ -859,6 +863,19 @@ func (s *Store) Close() {
 	for i := 0; s.writer && s.dirty && i < 5; i++ {
 		time.Sleep(20 * time.Millisecond)
 		s.saveMetaLocked()
+	}
+	for i := 0; s.writer && i < 5; i++ {
+		s.hmu.Lock()
+		n := len(s.idxPending)
+		if n > 0 {
+			s.flushIdxPendingLocked()
+			n = len(s.idxPending)
+		}
+		s.hmu.Unlock()
+		if n == 0 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 	if s.cur != nil {
 		s.cur.Close()
@@ -930,9 +947,10 @@ func (s *Store) pruneLocked() {
 		if total <= s.cfg.MaxBytes && !tooOld {
 			break
 		}
+		// Prefer .idx first so an orphan sidecar is not the steady state (#260).
 		// On Windows a segment a follower is reading right now cannot be
-		// deleted; keep it and retry on the next rotation instead of
-		// forgetting it on disk.
+		// deleted; keep the jsonl (and retry) — idx may already be gone.
+		_ = removeIdxBeside(old.path)
 		if err := os.Remove(old.path); err != nil && !os.IsNotExist(err) {
 			break
 		}
@@ -1003,6 +1021,7 @@ func (s *Store) RemoveOldestSegment(path string) (int64, bool) {
 		return 0, false
 	}
 	old := s.segs[0]
+	idxBytes := removeIdxBeside(old.path)
 	if err := os.Remove(old.path); err != nil && !os.IsNotExist(err) {
 		return 0, false
 	}
@@ -1010,7 +1029,7 @@ func (s *Store) RemoveOldestSegment(path string) (int64, bool) {
 	s.dropCache(old.path)
 	s.dropMemBeforeLocked()
 	s.trimMetaLocked()
-	return old.size, true
+	return old.size + idxBytes, true
 }
 
 // Refresh (followers) picks up records appended by the writer process.
@@ -1289,7 +1308,7 @@ func (s *Store) scanTime(after, before uint64, desc bool, fromNs, toNs int64, id
 			}
 		}
 		for _, i := range idx {
-			ix := s.segIndexFor(segs[i].path)
+			ix := s.segIndexFor(segs[i].path, i < len(segs)-1)
 			if ix == nil {
 				continue
 			}
@@ -1382,7 +1401,7 @@ func (s *Store) Count(after, before uint64) uint64 {
 		if sg.first >= hi || end <= lo {
 			continue
 		}
-		ix := s.segIndexFor(sg.path)
+		ix := s.segIndexFor(sg.path, i < len(segs)-1)
 		if ix == nil {
 			continue
 		}
@@ -1462,7 +1481,7 @@ func (s *Store) CountMatch(after, before uint64, fromNs, toNs int64, ids map[uin
 		if sg.first >= hi || end <= lo {
 			continue
 		}
-		ix := s.segIndexFor(sg.path)
+		ix := s.segIndexFor(sg.path, i < len(segs)-1)
 		if ix == nil {
 			continue
 		}

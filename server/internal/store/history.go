@@ -129,7 +129,10 @@ func lineTime(line []byte) (int64, bool) {
 // under hmu: extendIndex reopens the trailing block and appends in place, so
 // handing out the shared index let a reader race with a concurrent extension
 // (issue #197).
-func (s *Store) segIndexFor(path string) *segIndex {
+//
+// closed is false for the store's last (open) segment: that segment is
+// memory-only and never loads or writes a seg-*.idx sidecar (#260 / #173 G1).
+func (s *Store) segIndexFor(path string, closed bool) *segIndex {
 	st, err := os.Stat(path)
 	s.hmu.Lock()
 	defer s.hmu.Unlock()
@@ -140,12 +143,37 @@ func (s *Store) segIndexFor(path string) *segIndex {
 		}
 		return nil
 	}
+	size := st.Size()
+	if ix == nil && closed {
+		first, ok := firstFromSegPath(path)
+		if ok && s.tryLoadIdx(path, first, size) {
+			ix = s.idx[path]
+		}
+	}
 	if ix == nil {
 		ix = &segIndex{}
 		s.idx[path] = ix
 	}
-	if st.Size() > ix.end {
+	rebuilt := false
+	if size > ix.end {
 		s.extendIndex(path, ix)
+		rebuilt = true
+	}
+	// Persist sidecar for a closed segment once the in-memory index covers
+	// the whole file (writer only; pending rename retried on Flush/Close).
+	if closed && s.writer && ix.end == size {
+		_, pending := s.idxPending[path]
+		need := rebuilt || pending
+		if !need {
+			if _, err := os.Stat(idxPathBeside(path)); err != nil {
+				need = true // no sidecar yet
+			}
+		}
+		if need {
+			if first, ok := firstFromSegPath(path); ok {
+				s.persistIdxLocked(path, first, size, ix)
+			}
+		}
 	}
 	return &segIndex{blocks: slices.Clone(ix.blocks), end: ix.end}
 }
@@ -341,6 +369,7 @@ func (s *Store) removeBlockLocked(e *list.Element) {
 // dropPathLocked forgets the index and cached blocks of a (deleted) segment.
 func (s *Store) dropPathLocked(path string) {
 	delete(s.idx, path)
+	delete(s.idxPending, path)
 	for e := s.lru.Front(); e != nil; {
 		next := e.Next()
 		if e.Value.(*cachedBlock).key.path == path {
@@ -419,5 +448,6 @@ func (s *Store) DropIndexes() {
 	s.hmu.Lock()
 	defer s.hmu.Unlock()
 	s.idx = map[string]*segIndex{}
+	s.idxPending = nil
 	s.classes = classDict{}
 }

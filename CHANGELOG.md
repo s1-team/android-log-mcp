@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+### Added
+
+- Closed log segments now keep a derived block-index sidecar (`seg-<first>.idx`) so a cold `EnsureIndex` can load class counts and `minT`/`maxT` without re-scanning JSONL ([#260](https://github.com/s1crab/android-log-mcp/issues/260), [#173](https://github.com/s1crab/android-log-mcp/issues/173) G1). The sidecar is validated with magic `ALMI`, format version 1, first seq, size, and CRC64 of the segment and payload (no mtime); any miss rebuilds and rewrites it. The writer's open (last) segment stays memory-only. Sweep deletes each `.idx` with its segment (and orphans).
+
 ## [0.10.1] - 2026-10-20
 
 CI and test reliability only; no change to the binary's behavior. Fixes the Windows `cmd` package race-gate timeout ([#251](https://github.com/s1crab/android-log-mcp/issues/251)), an API 29 emulator job that could hang at shutdown ([#242](https://github.com/s1crab/android-log-mcp/issues/242)), tightens the first emulator validation attempt timeout from 32 to 25 minutes ([#204](https://github.com/s1crab/android-log-mcp/issues/204)), and fixes a read/rename race in the test fake adb that made a Windows race-gate test fail ([#256](https://github.com/s1crab/android-log-mcp/issues/256)). Platform status is unchanged: Windows and macOS are covered by CI only and remain **unverified** with a real or emulator-attached adb. Details: [validation/0.10.1/README.md](validation/0.10.1/README.md).
