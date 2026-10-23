@@ -5,6 +5,7 @@ import (
 	"hash/fnv"
 	"strings"
 
+	"github.com/s1crab/android-log-mcp/server/internal/clock"
 	"github.com/s1crab/android-log-mcp/server/internal/model"
 )
 
@@ -23,11 +24,11 @@ func RecordHash(r *model.Record) uint64 {
 }
 
 // ResumeRing is a rolling multiset of content hashes for the last N
-// arrivals of one boot, ordered by ArrivalSeq. Phase A of #259: type +
-// rebuild-on-open equivalent to today's device.tailMultiset + splitRuns
-// (#192). Seq is raw uint64 until #258 ArrivalSeq helpers soft-alias.
-// Maintain-on-append and switching resume off boundaryMultiset are Phase B;
-// set-root export is Phase C. Day-one persistence is memory + rebuild only.
+// arrivals of one boot, ordered by ArrivalSeq. Rebuild-on-open is equivalent
+// to today's device.tailMultiset + splitRuns (#192). Device maintains the
+// ring on append and uses it as the unified resume compare set (#259 Phase
+// B); set-root exports via Snapshot (#259 Phase C). Day-one persistence is
+// memory + rebuild only (no warm-persist without set-root).
 type ResumeRing struct {
 	boot   string
 	n      int
@@ -75,12 +76,12 @@ func (r *ResumeRing) Cap() int { return r.n }
 // splitRuns whole-entry hashes add to the multiset without a slot).
 func (r *ResumeRing) Len() int { return r.length }
 
-// Observe appends one arrival's content hash. seq is the ArrivalSeq
-// (uint64 today; soft-alias when #258 Phase A lands) and is recorded only
-// as append order within a boot. When over capacity, the oldest arrival
-// hash is dropped from the multiset.
-func (r *ResumeRing) Observe(seq uint64, h uint64) {
-	_ = seq // soft-alias ArrivalSeq (#258); ring membership is seq-ordered
+// Observe appends one arrival's content hash. seq is ArrivalSeq (#258
+// soft-alias); membership is seq-ordered within a boot, never EventClock
+// Continuous/DeviceInstant. When over capacity, the oldest arrival hash
+// is dropped from the multiset.
+func (r *ResumeRing) Observe(seq clock.ArrivalSeq, h uint64) {
+	_ = seq // order is append order; seq documents the ArrivalSeq seam
 	if r.length == r.n {
 		old := r.order[r.head]
 		r.order[r.head] = h
@@ -125,7 +126,8 @@ func (r *ResumeRing) Counts() map[uint64]int32 {
 	return out
 }
 
-// Snapshot expands the multiset to a slice (set-root carry shape, Phase C).
+// Snapshot expands the multiset to a slice for set-root carry
+// (resume_dedup.bin / ContinueIn).
 func (r *ResumeRing) Snapshot() []uint64 {
 	var out []uint64
 	for h, n := range r.counts {
@@ -137,7 +139,9 @@ func (r *ResumeRing) Snapshot() []uint64 {
 }
 
 // MergeExport adds set-root carried hashes into the multiset without
-// touching the ArrivalSeq deque (Phase C wiring).
+// touching the ArrivalSeq deque. Callers that keep a live ring across
+// resumes should merge into a per-resume counts copy (Active can span
+// many resumes) rather than the live ring itself.
 func (r *ResumeRing) MergeExport(hashes []uint64) {
 	for _, h := range hashes {
 		r.counts[h]++
@@ -147,13 +151,13 @@ func (r *ResumeRing) MergeExport(hashes []uint64) {
 // ObserveRecord hashes the record, observes it at rec.Seq, and tracks
 // multi-line runs so a whole-entry hash is counted when a run of
 // same-header pieces ends (#192). Ascending arrival order — the live
-// append path for Phase B. Call FlushRun after a batch if the last run
-// may still be open.
+// append path. Call FlushRun when the session ends if the last run may
+// still be open.
 func (r *ResumeRing) ObserveRecord(rec *model.Record) {
 	if rec == nil {
 		return
 	}
-	r.Observe(rec.Seq, RecordHash(rec))
+	r.Observe(clock.ArrivalSeq(rec.Seq), RecordHash(rec))
 	rh := recordRunHeader(rec)
 	if len(r.runMsgs) > 0 && rh != r.runHead {
 		r.endRunAscending()

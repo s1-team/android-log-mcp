@@ -39,6 +39,9 @@ type Pipeline struct {
 	NeedDropbox  func(tag string)     // a crash wants DropBox evidence
 	OnUnknownUID func(uid int)        // a device process has an app uid missing from the package list
 	BeforeAppend func(first *model.Record)
+	// AfterAppend runs after a successful Store.Append of the drained
+	// batch (ResumeRing maintain-on-append, issue #259).
+	AfterAppend func(batch []*model.Record)
 	// DeviceNow returns device now in ns (0 = unknown); it sets the
 	// DropBox import cutoff (issue #53). Nil: the newest stored line.
 	DeviceNow func() int64
@@ -313,6 +316,9 @@ func (p *Pipeline) Drain(all bool, now time.Time) error {
 	}
 	if err := p.Store.Append(batch); err != nil {
 		return err
+	}
+	if p.AfterAppend != nil {
+		p.AfterAppend(batch)
 	}
 
 	// the batch leaves the queue only once the store has it: a failed
