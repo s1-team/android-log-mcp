@@ -9,8 +9,8 @@
 //   - ShiftCompare: DropBox dropboxDelta (min of raw and shift-after
 //     distances).
 //
-// "possible" jumps are never epoch boundaries. Phase A is helpers + tests
-// only; call-site migration is Phase B.
+// "possible" jumps are never epoch boundaries. Phase B migrates analysis /
+// procs / launches call sites onto these helpers.
 package clock
 
 import "sort"
@@ -169,6 +169,19 @@ func (c *EventClock) ShiftCompare(anchor EventStamp, other DeviceInstant) (dist 
 		}
 	}
 	return d, false
+}
+
+// ShiftSigned is the signed (other − anchor.T) form of ShiftCompare: raw
+// difference, or the one with the anchor moved by shift-after, whichever
+// has the smaller absolute value. Used by ANR fact pairing (signedDelta).
+func (c *EventClock) ShiftSigned(anchor EventStamp, other DeviceInstant) int64 {
+	d := int64(other) - int64(anchor.T)
+	if sh := c.shiftAfter(anchor.Seq); sh != 0 {
+		if ds := int64(other) - (int64(anchor.T) + sh); abs64(ds) < abs64(d) {
+			return ds
+		}
+	}
+	return d
 }
 
 func abs64(x int64) int64 {

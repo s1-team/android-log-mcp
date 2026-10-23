@@ -4,7 +4,7 @@ package clock
 // path (ClockJump applied before Feed of the first line after the jump).
 // For any stamp whose jumps have all been Add'd in arrival order,
 // Adj(stamp.T) must equal NewEventClock(those jumps).Continuous(stamp)
-// (issue #258 Phase A property; full detector migrate is Phase B).
+// (issue #258; detector ClockJump uses SumDeltas; property vs Continuous).
 type SumDeltas struct {
 	sum int64
 }

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/s1crab/android-log-mcp/server/internal/clock"
 	"github.com/s1crab/android-log-mcp/server/internal/logcat"
 	"github.com/s1crab/android-log-mcp/server/internal/model"
 )
@@ -48,7 +49,8 @@ type Launch struct {
 
 // ClockStep is a device clock jump as the launch analysis uses it: the
 // first stored line after it (Seq) and its size (device time after −
-// device time before; + forward, − back).
+// device time before; + forward, − back). Converted to clock.EventClock
+// at the LaunchesAcross boundary (R1 #258).
 type ClockStep struct {
 	Seq     uint64
 	DeltaNs int64
@@ -159,20 +161,12 @@ type clockRec struct {
 // still belongs to the launch; it is marked AfterJump (no duration).
 // jumps: the device clock jumps, any order; pkg=="" means all.
 func LaunchesAcross(in []*model.Record, pkg string, jumps []ClockStep) []*Launch {
-	js := append([]ClockStep(nil), jumps...)
-	sort.Slice(js, func(i, j int) bool { return js[i].Seq < js[j].Seq })
-	cum := make([]int64, len(js)+1) // cum[k]: sum of the first k jumps
-	for i, j := range js {
-		cum[i+1] = cum[i] + j.DeltaNs
-	}
+	ec := eventClockSteps(jumps)
 	recs := make([]clockRec, 0, len(in))
 	for _, r := range in {
 		if LaunchTag(r) {
-			seg := 0
-			if len(js) > 0 {
-				seg = sort.Search(len(js), func(i int) bool { return js[i].Seq > r.Seq })
-			}
-			recs = append(recs, clockRec{r, seg, r.TimeNs - cum[seg]})
+			st := ec.Stamp(clock.ArrivalSeq(r.Seq), clock.DeviceInstant(r.TimeNs))
+			recs = append(recs, clockRec{r, int(st.Epoch), ec.Continuous(st)})
 		}
 	}
 	sort.SliceStable(recs, func(i, j int) bool {

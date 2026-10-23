@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/s1crab/android-log-mcp/server/internal/analysis"
+	eventclock "github.com/s1crab/android-log-mcp/server/internal/clock"
 	"github.com/s1crab/android-log-mcp/server/internal/model"
 	"github.com/s1crab/android-log-mcp/server/internal/store"
 )
@@ -259,12 +260,15 @@ func renderLaunch(n int, l *analysis.Launch, loc *time.Location) string {
 // count). Returns recs in arrival order and whether the scan budget ran
 // out.
 func afterJumps(st *store.Store, recs []*model.Record, jumps []store.ClockJump, start time.Time) ([]*model.Record, bool) {
-	// continuous time: device time minus the jumps before it
-	cum := make([]int64, len(jumps)+1)
+	// continuous time via EventClock (R1 #258); possible jumps excluded
+	js := make([]eventclock.Jump, len(jumps))
 	for i, j := range jumps {
-		cum[i+1] = cum[i] + j.DeltaNs
+		js[i] = eventclock.Jump{Seq: j.Seq, DeltaNs: j.DeltaNs, Source: j.Source}
 	}
-	seg := func(seq uint64) int { return sort.Search(len(jumps), func(i int) bool { return jumps[i].Seq > seq }) }
+	ec := eventclock.NewEventClock(js)
+	cont := func(seq uint64, tNs int64) int64 {
+		return ec.Continuous(ec.Stamp(eventclock.ArrivalSeq(seq), eventclock.DeviceInstant(tNs)))
+	}
 	var reqs []*model.Record
 	for _, r := range recs {
 		if analysis.LaunchRequest(r) {
@@ -277,14 +281,17 @@ func afterJumps(st *store.Store, recs []*model.Record, jumps []store.ClockJump, 
 	}
 	stopped := false
 	added := false
-	for ji, j := range jumps {
+	for _, j := range jumps {
+		if j.Source == "possible" {
+			continue
+		}
 		near := false
 		for _, r := range reqs {
 			if r.Seq >= j.Seq {
 				continue
 			}
-			c := r.TimeNs - cum[seg(r.Seq)]
-			at := j.AfterNs - cum[ji+1] // continuous time of the jump
+			c := cont(r.Seq, r.TimeNs)
+			at := cont(j.Seq, j.AfterNs) // continuous time of the jump
 			if j.AfterNs == 0 || (at >= c-store.ClockJumpThreshold && at-c <= analysis.DisplayedSlackNs) {
 				near = true
 				break

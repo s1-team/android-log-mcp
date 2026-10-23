@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/s1crab/android-log-mcp/server/internal/clock"
 	"github.com/s1crab/android-log-mcp/server/internal/logcat"
 	"github.com/s1crab/android-log-mcp/server/internal/model"
 )
@@ -57,9 +58,10 @@ const startSlackNs = int64(2e9)
 type Tracker struct {
 	mu       sync.RWMutex
 	boot     string
-	byPID    map[int][]*Proc // per pid in creation (arrival) order
-	created  uint64          // creation counter (Proc.n)
-	jumps    []uint64        // seqs of the lines that carry a new device clock, ascending
+	byPID    map[int][]*Proc   // per pid in creation (arrival) order
+	created  uint64            // creation counter (Proc.n)
+	jumps    []uint64          // seqs of the lines that carry a new device clock, ascending
+	ec       *clock.EventClock // rebuilt from jumps; SameEpoch source of truth (R1 #258)
 	uidPkgs  map[int][]string
 	packages map[string]bool
 	// OnChange is called (without the lock) for every start/end so the caller can persist it.
@@ -182,20 +184,26 @@ func (t *Tracker) ClockJump(seq uint64) {
 	t.jumps = append(t.jumps, 0)
 	copy(t.jumps[i+1:], t.jumps[i:])
 	t.jumps[i] = seq
+	t.rebuildEventClockLocked()
+}
+
+func (t *Tracker) rebuildEventClockLocked() {
+	js := make([]clock.Jump, len(t.jumps))
+	for i, s := range t.jumps {
+		js[i] = clock.Jump{Seq: s}
+	}
+	t.ec = clock.NewEventClock(js)
 }
 
 // sameEpochLocked reports whether no known clock jump lies between seq a
 // and seq b (device times of the two are comparable). Unknown seq (0): true,
-// the caller then has only the time to go by.
+// the caller then has only the time to go by. Delegates to EventClock.SameEpoch (R1 #258).
 func (t *Tracker) sameEpochLocked(a, b uint64) bool {
-	if a == 0 || b == 0 {
-		return true
+	ec := t.ec
+	if ec == nil {
+		ec = clock.NewEventClock(nil)
 	}
-	if a > b {
-		a, b = b, a
-	}
-	i := sort.Search(len(t.jumps), func(i int) bool { return t.jumps[i] > a })
-	return i >= len(t.jumps) || t.jumps[i] > b
+	return ec.SameEpoch(clock.ArrivalSeq(a), clock.ArrivalSeq(b))
 }
 
 // SetPackages installs the uid map from `pm list packages -U` and
