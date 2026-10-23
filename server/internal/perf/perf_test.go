@@ -553,12 +553,12 @@ func scaleMetrics(t *testing.T, r *Results) {
 		Desc: fmt.Sprintf("live heap after the idle release (%.1f MiB freed)", float64(freed)/(1<<20))})
 }
 
-// indexMetrics measures the cold block+class index build and its memory
-// (issue #37).
+// indexMetrics measures the cold block+class index build, sidecar load, and
+// index memory (issue #37, #260 G1).
 func indexMetrics(t *testing.T, r *Results, st *store.Store) {
 	st.ReleaseCaches()
-	// drop the segment indexes so EnsureIndex rebuilds from scratch
 	st.DropIndexes()
+	st.RemoveIndexSidecars() // force extendIndex, not sidecar load
 	t0 := time.Now()
 	st.EnsureIndex()
 	el := time.Since(t0)
@@ -567,6 +567,13 @@ func indexMetrics(t *testing.T, r *Results, st *store.Store) {
 	kib := float64(st.IndexBytes()) / 1024
 	r.Set("mem.index_kib", Metric{Value: round(kib, 1), Unit: "KiB", Kind: Mem,
 		Desc: "class dictionary + per-block class lists after EnsureIndex"})
+	// Sidecars were written for closed segments during the build; measure load.
+	st.DropIndexes()
+	t0 = time.Now()
+	st.EnsureIndex()
+	el = time.Since(t0)
+	r.Set("index.load_ms", Metric{Value: ms(el), Unit: "ms", Kind: Info,
+		Desc: "EnsureIndex from seg-*.idx sidecars after DropIndexes (#260 G1)"})
 }
 
 // scanMetrics measures the raw store scan over the whole history (no time

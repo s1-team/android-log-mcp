@@ -55,6 +55,8 @@ var versionDir = regexp.MustCompile(`^v[0-9]+$`)
 func deviceFile(name string) bool {
 	switch {
 	case strings.HasPrefix(name, "seg-") && strings.HasSuffix(name, ".jsonl"),
+		strings.HasPrefix(name, "seg-") && strings.HasSuffix(name, ".idx"),
+		strings.HasPrefix(name, "seg-") && strings.HasSuffix(name, ".idx.tmp"),
 		strings.HasSuffix(name, ".jsonl"), strings.HasSuffix(name, ".tmp"),
 		strings.HasPrefix(name, "dropbox_status_"),
 		name == "meta.json", name == "packages.json", name == store.ResumeDedupFile, name == "writer.lock":
@@ -167,6 +169,13 @@ func Sweep(o SweepOptions) SweepResult {
 			res.expireDir(dd, o.MaxAge, o.Now)
 		}
 	}
+	// orphan seg-*.idx with no matching .jsonl (#260)
+	for _, dd := range deviceDirs(o.Base) {
+		if busy(dd) {
+			continue
+		}
+		res.purgeOrphanIdx(dd.path)
+	}
 	// total cap
 	res.TotalBefore = TotalBytes(o.Base)
 	total := res.TotalBefore
@@ -245,15 +254,17 @@ func Sweep(o SweepOptions) SweepResult {
 				skip[c.dd.path] = true
 				continue
 			}
-			err := os.Remove(c.path)
+			// idx first, then jsonl (#260); count both sizes toward the cap
+			freed, n := removeSegWithIdx(c.path)
 			store.ReleaseLock(f)
-			if err != nil {
+			total -= freed
+			res.Freed += freed
+			res.Files += n
+			if _, err := os.Stat(c.path); err == nil {
+				// jsonl still present (Windows open handle): retry later
 				skip[c.dd.path] = true
 				continue
 			}
-			total -= c.size
-			res.Freed += c.size
-			res.Files++
 		}
 		// a non-current device dir whose segments are all gone goes entirely
 		for _, dd := range deviceDirs(o.Base) {
@@ -301,10 +312,9 @@ func (r *SweepResult) expireDir(dd dataDir, maxAge time.Duration, now time.Time)
 		expired++
 	}
 	for _, sg := range segs[:expired] {
-		if os.Remove(sg.Path) == nil {
-			r.Freed += sg.Size
-			r.Files++
-		}
+		freed, n := removeSegWithIdx(sg.Path)
+		r.Freed += freed
+		r.Files += n
 	}
 	if expired < len(segs) {
 		// something stays: persist the normalized stamps of the survivors
@@ -314,7 +324,7 @@ func (r *SweepResult) expireDir(dd dataDir, maxAge time.Duration, now time.Time)
 	newest := time.Time{}
 	ents, _ := os.ReadDir(dd.path)
 	for _, e := range ents {
-		if e.IsDir() || e.Name() == "writer.lock" || (strings.HasPrefix(e.Name(), "seg-") && strings.HasSuffix(e.Name(), ".jsonl")) {
+		if e.IsDir() || e.Name() == "writer.lock" || (strings.HasPrefix(e.Name(), "seg-") && (strings.HasSuffix(e.Name(), ".jsonl") || strings.HasSuffix(e.Name(), ".idx") || strings.HasSuffix(e.Name(), ".idx.tmp"))) {
 			continue
 		}
 		if fi, err := e.Info(); err == nil && fi.ModTime().After(newest) {
@@ -560,4 +570,57 @@ func SweepRun(dir string, maxAge time.Duration, now time.Time) int {
 		}
 	}
 	return n
+}
+
+// removeSegWithIdx deletes the .idx sidecar (preferred first) then the
+// segment jsonl. Returns bytes and file count removed. A missing idx is not
+// an error; a failure to remove the jsonl leaves it for retry (Windows).
+func removeSegWithIdx(jsonlPath string) (freed int64, files int) {
+	idx := jsonlPath
+	if strings.HasSuffix(jsonlPath, ".jsonl") {
+		idx = strings.TrimSuffix(jsonlPath, ".jsonl") + ".idx"
+	} else {
+		idx = jsonlPath + ".idx"
+	}
+	if fi, err := os.Stat(idx); err == nil {
+		if os.Remove(idx) == nil {
+			freed += fi.Size()
+			files++
+		}
+	}
+	fi, err := os.Stat(jsonlPath)
+	if err != nil {
+		return freed, files
+	}
+	if os.Remove(jsonlPath) != nil {
+		return freed, files
+	}
+	return freed + fi.Size(), files + 1
+}
+
+// purgeOrphanIdx deletes seg-*.idx files that have no matching .jsonl.
+func (r *SweepResult) purgeOrphanIdx(dir string) {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range ents {
+		n := e.Name()
+		if e.IsDir() || !strings.HasPrefix(n, "seg-") || !strings.HasSuffix(n, ".idx") || strings.HasSuffix(n, ".idx.tmp") {
+			continue
+		}
+		jsonl := filepath.Join(dir, strings.TrimSuffix(n, ".idx")+".jsonl")
+		if _, err := os.Stat(jsonl); err == nil {
+			continue
+		}
+		p := filepath.Join(dir, n)
+		fi, err := e.Info()
+		if err != nil {
+			continue
+		}
+		if os.Remove(p) == nil {
+			r.Freed += fi.Size()
+			r.Files++
+		}
+	}
 }
