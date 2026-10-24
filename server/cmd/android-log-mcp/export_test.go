@@ -81,7 +81,8 @@ func TestExportCLIThroughService(t *testing.T) {
 
 // --offline DIR export needs --out and never writes into the dataset.
 func TestExportCLIOffline(t *testing.T) {
-	heavyParallel(t)
+	// Offline path never starts a service; keep off windowsRaceHeavy (#267).
+	t.Parallel()
 	env := isoEnv(t)
 	root := t.TempDir()
 	seedStore(t, root)

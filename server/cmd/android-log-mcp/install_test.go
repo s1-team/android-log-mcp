@@ -10,7 +10,9 @@ import (
 )
 
 func TestInstallCommand(t *testing.T) {
-	heavyParallel(t)
+	// No service spawn: plain Parallel so Windows -race does not queue this
+	// behind windowsRaceHeavy (#267 wall-clock under count=20).
+	t.Parallel()
 	// its own home: install is not idempotent across -count runs in one test home
 	env := isoEnv(t)
 	out, errOut, code := cli(t, env, "install", "--json")
