@@ -32,10 +32,13 @@ func timeoutFactor() float64 {
 
 func scaled(d time.Duration) time.Duration { return time.Duration(float64(d) * timeoutFactor()) }
 
-// windowsRaceHeavy limits concurrent isoEnv/lazyEnv service tests on Windows
-// under -race. Full parallelism starves process starts and cleanup (#251
-// nightly 50m timeout at -count=20); full serialization sums past 50m too.
-// Cap 2 keeps overlap without the free-for-all. Other platforms are unlimited.
+// windowsRaceHeavy limits concurrent service-spawning isoEnv/lazyEnv tests on
+// Windows under -race. Full parallelism starves process starts and cleanup
+// (#251 nightly 50m at -count=20); full serialization sums past the budget
+// too. Cap 2 keeps overlap without the free-for-all. Other platforms are
+// unlimited. Only tests that start a service (or fake-adb recording) should
+// call heavyParallel; light isoEnv CLI checks use t.Parallel so they do not
+// queue on this semaphore and waste testing.Parallel slots (#267).
 var windowsRaceHeavy = make(chan struct{}, 2)
 
 // heavyParallel marks t parallel, and on Windows under -race also takes a

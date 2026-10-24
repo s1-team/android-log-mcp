@@ -49,7 +49,8 @@ func TestMain(m *testing.M) {
 // `call` reports a usage or JSON mistake as one coded line with an executable
 // next step (#85), never a Go error or the usage block.
 func TestCallErrorsAreCoded(t *testing.T) {
-	heavyParallel(t)
+	// Usage/JSON refusals only; no service spawn — off windowsRaceHeavy (#267).
+	t.Parallel()
 	env := isoEnv(t)
 	for _, c := range []struct {
 		args []string
