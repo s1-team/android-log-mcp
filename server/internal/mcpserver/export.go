@@ -48,19 +48,19 @@ var (
 )
 
 type exportArgs struct {
-	Device      string   `json:"device"`
-	Filter      string   `json:"filter"`
-	Package     string   `json:"package"`
-	Tags        []string `json:"tags"`
-	MinLevel    string   `json:"min_level"`
-	From        string   `json:"from"`
-	To          string   `json:"to"`
-	Before      string   `json:"before"`
-	After       string   `json:"after"`
-	Redact      bool     `json:"redact"`
-	RedactExtra []string `json:"redact_extra"`
-	MaxMB       int      `json:"max_mb"`
-	Verbose     bool     `json:"verbose"`
+	Device      string      `json:"device"`
+	Filter      string      `json:"filter"`
+	Package     PackageList `json:"package"`
+	Tags        []string    `json:"tags"`
+	MinLevel    string      `json:"min_level"`
+	From        string      `json:"from"`
+	To          string      `json:"to"`
+	Before      string      `json:"before"`
+	After       string      `json:"after"`
+	Redact      bool        `json:"redact"`
+	RedactExtra []string    `json:"redact_extra"`
+	MaxMB       int         `json:"max_mb"`
+	Verbose     bool        `json:"verbose"`
 
 	// The CLI's destination (ExportToFile); never decoded from tool
 	// arguments, so a model cannot choose where the file goes.
@@ -159,7 +159,7 @@ func (t *Tools) export(ctx context.Context, a exportArgs) (out string, err error
 		}
 	}()
 	d.Store.Refresh()
-	q, err := t.buildQuery(d, commonArgs{verbose: a.Verbose, filter: a.Filter, pkg: a.Package, minLevel: a.MinLevel, from: a.From, to: a.To, before: a.Before, after: a.After, tags: a.Tags})
+	q, err := t.buildQuery(d, commonArgs{verbose: a.Verbose, filter: a.Filter, pkgs: a.Package, minLevel: a.MinLevel, from: a.From, to: a.To, before: a.Before, after: a.After, tags: a.Tags})
 	if err != nil {
 		return "", err
 	}
