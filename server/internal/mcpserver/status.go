@@ -412,7 +412,9 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 			hk = append(hk, "tz", d.TZName())
 		}
 		hk = append(hk, clockKV(d.Clock(), a.Verbose)...)
-		if a.Package != "" {
+		if a.Package != "" { // #269: package crash/ANR counts on header + package fact line
+			hk = append(hk, packageCrashKV(d, a.Package, false)...)
+			tail.WriteString(packageCrashNote(d, a.Package))
 			tail.WriteString(t.packageStatus(d, a.Package, a.Verbose))
 		}
 	}
@@ -571,6 +573,7 @@ func (t *Tools) packageStatus(d *device.Device, pkg string, verbose bool) string
 		kv = append(kv, "uid", uid)
 	}
 	kv = append(kv, "running", len(alive))
+	kv = append(kv, packageCrashKV(d, pkg, false)...) // #269 store-known counts on package fact line
 	if len(alive) == 0 && len(dead) > 0 {
 		kv = append(kv, "last_pid", dead[0].PID, "ended", isoLocalSec(dead[0].EndNs, loc))
 	}

@@ -161,7 +161,11 @@ func TestSearchSummary(t *testing.T) {
 	t.Parallel()
 	tl := fixture(t)
 	out, e := call(t, tl, "logcat_search", `{"view":"summary"}`)
-	must(t, out, e, "\ntags ", "Noise", "\ncrashes=1 anrs=0")
+	// #269: legacy body crashes=/anrs= removed; without package= no counts on header
+	must(t, out, e, "\ntags ", "Noise")
+	if strings.Contains(firstLine(out), " crashes=") || strings.Contains(out, "\ncrashes=") {
+		t.Errorf("unexpected crashes= without package=:\n%s", out)
+	}
 }
 
 func TestSearchErrors(t *testing.T) {

@@ -97,6 +97,8 @@ func TestPackageSharedUID(t *testing.T) {
 	out = e.ok("logcat_crashes", `{"package":"com.android.contacts"}`, "acore broke", note)
 	notContains(t, out, "package=android ")
 	dump(t, out)
+	// #269: package-scoped search counts include shared-UID crashes (crashPkgMatch)
+	e.ok("logcat_search", `{"package":"com.android.contacts","limit":1}`, " crashes=1 ", " anrs=0 ", "note code=package_crash_counts")
 	e.ok("logcat_crashes", `{"package":"android"}`, "empty view=list", "hint code=no_crash_for_package")
 	out = e.ok("logcat_crashes", `{"package":"android"}`, "empty view=list", "hint code=no_crash_for_package")
 	e.ok("logcat_crashes", `{"kinds":["java"]}`, "media broke", "acore broke")

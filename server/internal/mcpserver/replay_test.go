@@ -436,7 +436,7 @@ func TestReplayProcesses(t *testing.T) {
 	t.Parallel()
 	e := replayWithSnapshots(t)
 	out := e.ok("logcat_status", `{"package":"com.example.logtest"}`,
-		"running=2 device_connected=0 running_as_of=last_seen",
+		"running=2 crashes=4 anrs=1 device_connected=0 running_as_of=last_seen",
 		"proc pid=8076 name=com.example.logtest:remote state=running since=2026-10-10T03:07:42",
 		"proc pid=7815 name=com.example.logtest state=running since=2026-10-10T03:03:44",
 		"proc pid=6713 name=com.example.logtest state=ended start=2026-10-10T02:56:33 end=2026-10-10T02:57:57 reason=force-stopped",
