@@ -90,8 +90,11 @@ func (t *Tools) launches(ctx context.Context, a launchArgs) (out string, err err
 	}
 	shown := min(len(ls), a.Limit)
 	kv := []any{"view", "launches", "device", d.Serial, "launches", len(ls), "shown", shown, "order", "newest_first", "since", isoNs(fromNs, loc)}
+	var crashNote string
 	if a.Package != "" { // #269 store-known crash/ANR counts
-		kv = append(kv, packageCrashKV(d, a.Package, true)...)
+		var pckv []any
+		pckv, crashNote = packageCrashAttach(d, a.Package, true)
+		kv = append(kv, pckv...)
 	}
 	if a.Verbose {
 		kv = append(kv, "tz", d.TZName())
@@ -107,9 +110,7 @@ func (t *Tools) launches(ctx context.Context, a launchArgs) (out string, err err
 	}
 	kv = append(kv, "fmt", fmtVersion)
 	b.WriteString(hdr(word, kv...) + "\n")
-	if a.Package != "" {
-		b.WriteString(packageCrashNote(d, a.Package))
-	}
+	b.WriteString(crashNote)
 	if len(ls) == 0 {
 		if st := d.Store.Stats(); st.OldestNs > fromNs {
 			b.WriteString(hdr("note", "code", "history_starts", "oldest", isoNs(st.OldestNs, loc)) + "\n")

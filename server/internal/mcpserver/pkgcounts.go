@@ -34,28 +34,29 @@ func packageCrashCounts(d *device.Device, pkg string) (crashes, anrs int, ok boo
 	return crashes, anrs, true
 }
 
-// packageCrashKV returns header KV for package-scoped MCP ok/empty responses.
-// withPackage adds package=<pkg>. When counts are unavailable, only package=
-// is returned (when withPackage) so primary responses stay ok.
-func packageCrashKV(d *device.Device, pkg string, withPackage bool) []any {
-	var kv []any
+// packageCrashAttach builds header KV (and the optional next: note) for a
+// package-scoped MCP ok/empty response. withPackage adds package=<pkg>.
+// Counts are computed once.
+func packageCrashAttach(d *device.Device, pkg string, withPackage bool) (kv []any, note string) {
 	if withPackage {
 		kv = append(kv, "package", pkg)
 	}
 	crashes, anrs, ok := packageCrashCounts(d, pkg)
 	if !ok {
-		return kv
+		return kv, ""
 	}
-	return append(kv, "crashes", crashes, "anrs", anrs)
+	kv = append(kv, "crashes", crashes, "anrs", anrs)
+	if crashes+anrs > 0 {
+		note = hdr("note", "code", "package_crash_counts", "crashes", crashes, "anrs", anrs) +
+			nextClause("logcat_crashes "+param("package", pkg)) + "\n"
+	}
+	return kv, note
 }
 
-// packageCrashNote is the optional body line when crashes+anrs > 0, pointing
-// agents at logcat_crashes for the same package (store-known, no from/to).
-func packageCrashNote(d *device.Device, pkg string) string {
-	crashes, anrs, ok := packageCrashCounts(d, pkg)
-	if !ok || crashes+anrs == 0 {
-		return ""
-	}
-	return hdr("note", "code", "package_crash_counts", "crashes", crashes, "anrs", anrs) +
-		nextClause("logcat_crashes "+param("package", pkg)) + "\n"
+// packageCrashKV is header KV only (for call sites that already have the note
+// or need counts on a second line without recomputing via Attach when note is
+// handled separately). Prefer packageCrashAttach when both are needed.
+func packageCrashKV(d *device.Device, pkg string, withPackage bool) []any {
+	kv, _ := packageCrashAttach(d, pkg, withPackage)
+	return kv
 }

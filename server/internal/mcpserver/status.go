@@ -413,9 +413,10 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 		}
 		hk = append(hk, clockKV(d.Clock(), a.Verbose)...)
 		if a.Package != "" { // #269: package crash/ANR counts on header + package fact line
-			hk = append(hk, packageCrashKV(d, a.Package, false)...)
-			tail.WriteString(packageCrashNote(d, a.Package))
-			tail.WriteString(t.packageStatus(d, a.Package, a.Verbose))
+			pckv, note := packageCrashAttach(d, a.Package, false)
+			hk = append(hk, pckv...)
+			tail.WriteString(note)
+			tail.WriteString(t.packageStatus(d, a.Package, a.Verbose, pckv))
 		}
 	}
 	hk = append(hk, "fmt", fmtVersion)
@@ -519,7 +520,7 @@ func gapText(g store.Gap, loc *time.Location) string {
 	return fmt.Sprintf("%s..%s %s", from, to, noSpace(g.Reason))
 }
 
-func (t *Tools) packageStatus(d *device.Device, pkg string, verbose bool) string {
+func (t *Tools) packageStatus(d *device.Device, pkg string, verbose bool, crashKV ...[]any) string {
 	var b strings.Builder
 	loc := d.Loc()
 	pk := d.Packages()
@@ -573,7 +574,11 @@ func (t *Tools) packageStatus(d *device.Device, pkg string, verbose bool) string
 		kv = append(kv, "uid", uid)
 	}
 	kv = append(kv, "running", len(alive))
-	kv = append(kv, packageCrashKV(d, pkg, false)...) // #269 store-known counts on package fact line
+	if len(crashKV) > 0 { // #269 precomputed store-known counts (same as header)
+		kv = append(kv, crashKV[0]...)
+	} else {
+		kv = append(kv, packageCrashKV(d, pkg, false)...)
+	}
 	if len(alive) == 0 && len(dead) > 0 {
 		kv = append(kv, "last_pid", dead[0].PID, "ended", isoLocalSec(dead[0].EndNs, loc))
 	}
