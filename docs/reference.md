@@ -266,6 +266,7 @@ Set them in the MCP host's `env` for android-log-mcp; recording settings are rea
 | `ANDROID_LOG_MCP_HISTORY_CACHE_MB` | Per-device cache of decoded history blocks in MiB (default 32, LRU over ~512 KiB blocks) |
 | `ANDROID_LOG_MCP_REPORT_HINT` | Developer option, off by default (`1` / `true` turns it on); read by the MCP and CLI processes only. When a connect or start error means android-log-mcp itself is broken, the error text then also tells the agent to **ask the user first**, and only if they agree to run `android-log-mcp --offline <root> report --logs-only --out <file>`; the user reviews the zip and submits the issue by hand. It changes only error text: nothing is collected or sent, and the tool has no network code |
 | `ANDROID_LOG_MCP_IDLE_RELEASE` | Release the history cache after this long without queries (default `2m`; `0` = never) |
+| `ANDROID_LOG_MCP_SKIP_SEG_CRC64` | Opt-in: skip full-segment CRC64 verify when loading `seg-*.idx` on cold `EnsureIndex` (`1` / `true` / `yes` / `on`). Default off (verify). Payload CRC, magic, format version, first seq and size still checked; corrupt payload still fails closed. Speeds cold load when CRC dominates (~417 ms median at ~512 MiB with verify). Read by the service process via `ConfigFromEnv` when it starts |
 
 `ANDROID_LOG_MCP_HOME` and `--home` were removed in 0.4.0; if either is set, the program exits with an error saying so.
 

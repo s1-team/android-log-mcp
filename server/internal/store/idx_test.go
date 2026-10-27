@@ -294,3 +294,105 @@ func TestIdxRemoveOldestSegmentFreesIdxBytes(t *testing.T) {
 		t.Fatal("idx should be gone")
 	}
 }
+
+func TestIdxSkipSegCRC64AcceptsBadSegCRC(t *testing.T) {
+	dir := t.TempDir()
+	cfg := Config{SegmentBytes: 4 << 10, MemRecords: 10, BlockBytes: 1 << 10, IdleRelease: -1, SkipSegCRC64: true}
+	s, err := OpenDir(dir, "d", cfg, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	fillPastRotate(t, s)
+	s.EnsureIndex()
+	closed := ListSegments(s.Dir)[0]
+	idxP := idxPathBeside(closed.Path)
+	raw, err := os.ReadFile(idxP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binary.LittleEndian.PutUint64(raw[24:32], 0xdeadbeef)
+	if err := os.WriteFile(idxP, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before := crc64.Checksum(raw, idxCRCTable)
+	s.DropIndexes()
+	s.EnsureIndex()
+	raw2, err := os.ReadFile(idxP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if crc64.Checksum(raw2, idxCRCTable) != before {
+		t.Fatal("skip path should keep idx with bad seg_crc64 (not rebuild)")
+	}
+	if binary.LittleEndian.Uint64(raw2[24:32]) != 0xdeadbeef {
+		t.Fatal("seg_crc64 field should still be planted value under skip")
+	}
+	ix := s.segIndexFor(closed.Path, true)
+	if ix == nil || len(ix.blocks) == 0 {
+		t.Fatal("expected loaded index under skip with bad seg_crc64")
+	}
+}
+
+func TestIdxSkipSegCRC64StillFailsBadPayloadCRC(t *testing.T) {
+	dir := t.TempDir()
+	cfg := Config{SegmentBytes: 4 << 10, MemRecords: 10, BlockBytes: 1 << 10, IdleRelease: -1, SkipSegCRC64: true}
+	s, err := OpenDir(dir, "d", cfg, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	fillPastRotate(t, s)
+	s.EnsureIndex()
+	closed := ListSegments(s.Dir)[0]
+	idxP := idxPathBeside(closed.Path)
+	raw, err := os.ReadFile(idxP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Corrupt payload while leaving header (incl. stale payload_crc64) intact.
+	if len(raw) <= idxHeaderSize {
+		t.Fatal("idx too short")
+	}
+	raw[idxHeaderSize] ^= 0xff
+	if err := os.WriteFile(idxP, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before := crc64.Checksum(raw, idxCRCTable)
+	s.DropIndexes()
+	s.EnsureIndex()
+	raw2, err := os.ReadFile(idxP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if crc64.Checksum(raw2, idxCRCTable) == before {
+		t.Fatal("corrupt payload must fail closed and rewrite idx even with skip on")
+	}
+	ix := s.segIndexFor(closed.Path, true)
+	if ix == nil || len(ix.blocks) == 0 {
+		t.Fatal("expected rebuilt index after bad payload")
+	}
+}
+
+func TestIdxSkipSegCRC64Env(t *testing.T) {
+	t.Setenv(SkipSegCRC64Env, "1")
+	c := ConfigFromEnv()
+	if !c.SkipSegCRC64 {
+		t.Fatal("expected SkipSegCRC64 from env=1")
+	}
+	t.Setenv(SkipSegCRC64Env, "true")
+	if !ConfigFromEnv().SkipSegCRC64 {
+		t.Fatal("expected SkipSegCRC64 from env=true")
+	}
+	t.Setenv(SkipSegCRC64Env, "")
+	if ConfigFromEnv().SkipSegCRC64 {
+		t.Fatal("empty env must keep default verify")
+	}
+	t.Setenv(SkipSegCRC64Env, "0")
+	if ConfigFromEnv().SkipSegCRC64 {
+		t.Fatal("env=0 must keep default verify")
+	}
+	if !EnvOn("yes") || !EnvOn("ON") || EnvOn("no") || EnvOn("") {
+		t.Fatal("EnvOn truth table")
+	}
+}

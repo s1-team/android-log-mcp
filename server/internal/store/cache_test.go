@@ -288,8 +288,9 @@ func TestConfigFromEnv(t *testing.T) {
 	t.Setenv("ANDROID_LOG_MCP_HISTORY_CACHE_MB", "16")
 	t.Setenv("ANDROID_LOG_MCP_IDLE_RELEASE", "0")
 	t.Setenv("ANDROID_LOG_MCP_MAX_DEVICE_MB", "256")
+	t.Setenv("ANDROID_LOG_MCP_SKIP_SEG_CRC64", "")
 	c := ConfigFromEnv()
-	if c.MemRecords != 15000 || c.MemBytes != 8<<20 || c.HistoryCacheBytes != 16<<20 || c.IdleRelease >= 0 || c.MaxBytes != 256<<20 {
+	if c.MemRecords != 15000 || c.MemBytes != 8<<20 || c.HistoryCacheBytes != 16<<20 || c.IdleRelease >= 0 || c.MaxBytes != 256<<20 || c.SkipSegCRC64 {
 		t.Fatalf("%+v", c)
 	}
 	t.Setenv("ANDROID_LOG_MCP_IDLE_RELEASE", "30s")

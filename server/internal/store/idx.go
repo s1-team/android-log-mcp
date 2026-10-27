@@ -367,12 +367,18 @@ func (s *Store) tryLoadIdx(path string, first uint64, segSize int64) bool {
 	wantSegCRC := binary.LittleEndian.Uint64(raw[24:32])
 	wantPayCRC := binary.LittleEndian.Uint64(raw[32:40])
 	payload := raw[idxHeaderSize:]
+	// Payload CRC always runs (fail-closed on corrupt idx payload).
 	if crc64.Checksum(payload, idxCRCTable) != wantPayCRC {
 		return false
 	}
-	gotSegCRC, err := crc64File(path)
-	if err != nil || gotSegCRC != wantSegCRC {
-		return false
+	// Full-segment CRC64 is the expensive cold-load check (~417 ms @ 512 MiB).
+	// Opt-in skip via ANDROID_LOG_MCP_SKIP_SEG_CRC64 / Config.SkipSegCRC64 (#271);
+	// size+first_seq still bind identity for append-only segments.
+	if !s.cfg.SkipSegCRC64 {
+		gotSegCRC, err := crc64File(path)
+		if err != nil || gotSegCRC != wantSegCRC {
+			return false
+		}
 	}
 	ix, ok := s.decodeIdxPayload(payload, segSize)
 	if !ok {

@@ -9,6 +9,20 @@ import (
 	"time"
 )
 
+// SkipSegCRC64Env is the opt-in to skip full-segment CRC64 verify when loading
+// seg-*.idx sidecars (#271). Default off: verify. Payload CRC and header
+// identity checks (magic, version, first_seq, size) still run.
+const SkipSegCRC64Env = "ANDROID_LOG_MCP_SKIP_SEG_CRC64"
+
+// EnvOn reports whether v turns an opt-in flag on (1 / true / yes / on).
+func EnvOn(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
+
 // EnvInt64 reads a non-negative integer environment variable (ok=false if
 // unset or invalid; invalid values are reported on stderr).
 func EnvInt64(name string) (int64, bool) {
@@ -67,6 +81,7 @@ func FormatRetention(d time.Duration) string {
 //	ANDROID_LOG_MCP_IDLE_RELEASE      release caches after this long without queries (2m; 0 = never)
 //	ANDROID_LOG_MCP_MAX_DEVICE_MB     stored logs per device, MiB (512)
 //	ANDROID_LOG_MCP_MAX_AGE           retention: Go duration or days, e.g. 72h, 7d, 1.5d (1d)
+//	ANDROID_LOG_MCP_SKIP_SEG_CRC64    skip seg_crc64 verify on idx load (off; 1/true/yes/on)
 func ConfigFromEnv() Config {
 	var c Config
 	if v, ok := EnvInt64("ANDROID_LOG_MCP_MEM_RECORDS"); ok && v > 0 {
@@ -99,6 +114,9 @@ func ConfigFromEnv() Config {
 		} else {
 			log.Printf("ignoring ANDROID_LOG_MCP_MAX_AGE=%q: %v (use e.g. 72h or 7d); using the default %s", s, err, FormatRetention(DefaultMaxAge))
 		}
+	}
+	if EnvOn(os.Getenv(SkipSegCRC64Env)) {
+		c.SkipSegCRC64 = true
 	}
 	return c
 }
