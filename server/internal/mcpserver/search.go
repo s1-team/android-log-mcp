@@ -545,9 +545,11 @@ func (t *Tools) search(ctx context.Context, a searchArgs) (out string, err error
 func (t *Tools) head(q *query, word, view string, extra ...any) string {
 	kv := append([]any{"view", view, "device", q.d.Serial}, extra...)
 	var note string
-	if q.pkg != "" { // #269: store-known crash/ANR counts on package-scoped ok/empty
+	if q.pkg != "" { // #269: crashes+anrs share effective from/to/age + after/before
 		var pckv []any
-		pckv, note = packageCrashAttach(q.d, q.pkg, true)
+		pckv, note = packageCrashAttach(q.d, q.pkg, true, packageCrashBounds{
+			fromNs: q.fromNs, toNs: q.toNs, afterSeq: q.afterSeq, beforeSeq: q.beforeSeq,
+		})
 		kv = append(kv, pckv...)
 	}
 	if q.verbose {
