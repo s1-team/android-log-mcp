@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+### Added
+
+- Package-scoped MCP `ok`/`empty` responses (`logcat_search` lines+summary, `logcat_status`, `logcat_app_launches`, `logcat_export` MCP ok text) now include store-known `crashes=` and `anrs=` counts for that package from the existing crash index (`CrashSummaries` + `crashPkgMatch`, including shared-UID), always shown (including zeros), independent of `from`/`to`/limit; when counts are non-zero a short `next: logcat_crashes package="…"` note is added. No crash-detector change; `logcat_crashes` itself is unchanged; export file `# crashes=` remains all-apps; no format-version bump ([#269](https://github.com/s1crab/android-log-mcp/issues/269)).
+
 ## [0.11.0] - 2026-10-23
 
 Highlights: (1) **Cold index load** for closed segments via `seg-*.idx` sidecars (G1, [#260](https://github.com/s1crab/android-log-mcp/issues/260) / [#263](https://github.com/s1crab/android-log-mcp/pull/263)). (2) **Unified EventClock** for jump-normalized time across detector, DropBox, launches and process table (R1, [#258](https://github.com/s1crab/android-log-mcp/issues/258) / [#261](https://github.com/s1crab/android-log-mcp/pull/261) / [#264](https://github.com/s1crab/android-log-mcp/pull/264)). (3) **ResumeRing** — one boot+seq hash ring for resume/dedup, replacing the device-time-bounded compare set (R5, [#259](https://github.com/s1crab/android-log-mcp/issues/259) / [#262](https://github.com/s1crab/android-log-mcp/pull/262) / [#265](https://github.com/s1crab/android-log-mcp/pull/265)). No format-version bump: `.idx` is a derived cache; older binaries ignore it, and `resume_dedup.bin` / `Meta.ResumeDedup` layout is unchanged.

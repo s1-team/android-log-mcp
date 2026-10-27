@@ -544,12 +544,19 @@ func (t *Tools) search(ctx context.Context, a searchArgs) (out string, err error
 // key=value fields, ending with the clock fields and fmt.
 func (t *Tools) head(q *query, word, view string, extra ...any) string {
 	kv := append([]any{"view", view, "device", q.d.Serial}, extra...)
+	if q.pkg != "" { // #269: store-known crash/ANR counts on package-scoped ok/empty
+		kv = append(kv, packageCrashKV(q.d, q.pkg, true)...)
+	}
 	if q.verbose {
 		kv = append(kv, "tz", q.d.TZName())
 	}
 	kv = append(kv, clockKV(q.clock, q.verbose)...)
 	kv = append(kv, "fmt", fmtVersion)
-	return hdr(word, kv...) + "\n"
+	s := hdr(word, kv...) + "\n"
+	if q.pkg != "" {
+		s += packageCrashNote(q.d, q.pkg)
+	}
+	return s
 }
 
 // clockNotes: the clock jumps inside the scanned range. Default: ONE line,
@@ -1238,24 +1245,28 @@ func (t *Tools) summary(q *query) string {
 		}
 		b.WriteString("msgs " + strings.Join(parts, ",") + "\n")
 	}
-	// crashes in range: counts and the call that lists them
-	var crs, anrs []string
-	own := procspkg.NameOwner(q.d.Packages())
-	for _, c := range q.d.Crashes() {
-		if (q.fromNs != 0 && c.TimeNs < q.fromNs) || (q.toNs != 0 && c.TimeNs >= q.toNs) || c.TimeNs < oldest || c.TimeNs > newest+int64(time.Second) {
-			continue
-		}
-		if q.pkg != "" && c.Package != q.pkg && own(c.Process) != q.pkg {
-			continue
-		}
-		if c.Kind == "anr" {
-			anrs = append(anrs, c.ID)
-		} else {
+	// #269: package-scoped crash/ANR counts live on the header (via head);
+	// the old non-zero in-range body line is gone. Keep first crash id for next:.
+	var crs []string
+	if q.pkg != "" {
+		own := procspkg.NameOwner(q.d.Packages())
+		su := newSharedUID(q.pkg, q.d.Packages(), q.d.Procs)
+		for _, c := range q.d.Crashes() {
+			if c == nil || c.Kind == "anr" || !crashPkgMatch(c, q.pkg, own, su) {
+				continue
+			}
 			crs = append(crs, c.ID)
 		}
-	}
-	if len(crs)+len(anrs) > 0 {
-		fmt.Fprintf(&b, "crashes=%d anrs=%d%s\n", len(crs), len(anrs), nextClause("logcat_crashes "+param("from", isoNs(oldest, q.loc))+" "+param("to", isoNs(newest+int64(time.Second), q.loc))))
+	} else {
+		for _, c := range q.d.Crashes() {
+			if c == nil || c.Kind == "anr" {
+				continue
+			}
+			if (q.fromNs != 0 && c.TimeNs < q.fromNs) || (q.toNs != 0 && c.TimeNs >= q.toNs) || c.TimeNs < oldest || c.TimeNs > newest+int64(time.Second) {
+				continue
+			}
+			crs = append(crs, c.ID)
+		}
 	}
 	if len(errs) > 0 {
 		fmt.Fprintf(&b, "latest_errors=%d\n", len(errs))
