@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// maxPackages caps the structured package parameter (#276), same as tags.
+// maxPackages caps the structured package parameter (#276); same as tags.
 const maxPackages = 20
 
 // PackageList is one or more exact application ids for the structured
