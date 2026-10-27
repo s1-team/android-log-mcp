@@ -119,6 +119,8 @@ func seqTimeNs(d *device.Device, seq uint64) int64 {
 
 // packageCrashAttach builds header KV (and the optional next: note) for a
 // package-scoped MCP ok/empty response. withPackage adds package=<pkg>.
+// Only non-zero crashes=/anrs= keys are emitted; when both are zero the
+// package_crash_counts note is omitted too (#269 follow-up).
 func packageCrashAttach(d *device.Device, pkg string, withPackage bool, b packageCrashBounds) (kv []any, note string) {
 	if withPackage {
 		kv = append(kv, "package", pkg)
@@ -127,7 +129,12 @@ func packageCrashAttach(d *device.Device, pkg string, withPackage bool, b packag
 	if !ok {
 		return kv, ""
 	}
-	kv = append(kv, "crashes", crashes, "anrs", anrs)
+	if crashes != 0 {
+		kv = append(kv, "crashes", crashes)
+	}
+	if anrs != 0 {
+		kv = append(kv, "anrs", anrs)
+	}
 	if crashes+anrs > 0 {
 		next := "logcat_crashes " + param("package", pkg)
 		if !b.empty() {
@@ -139,8 +146,14 @@ func packageCrashAttach(d *device.Device, pkg string, withPackage bool, b packag
 				next += " " + param("to", isoNs(b.toNs, loc))
 			}
 		}
-		note = hdr("note", "code", "package_crash_counts", "crashes", crashes, "anrs", anrs) +
-			nextClause(next) + "\n"
+		noteKV := []any{"code", "package_crash_counts"}
+		if crashes != 0 {
+			noteKV = append(noteKV, "crashes", crashes)
+		}
+		if anrs != 0 {
+			noteKV = append(noteKV, "anrs", anrs)
+		}
+		note = hdr("note", noteKV...) + nextClause(next) + "\n"
 	}
 	return kv, note
 }
