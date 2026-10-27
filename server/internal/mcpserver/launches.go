@@ -9,6 +9,7 @@ import (
 
 	"github.com/s1crab/android-log-mcp/server/internal/analysis"
 	eventclock "github.com/s1crab/android-log-mcp/server/internal/clock"
+	"github.com/s1crab/android-log-mcp/server/internal/device"
 	"github.com/s1crab/android-log-mcp/server/internal/model"
 	"github.com/s1crab/android-log-mcp/server/internal/store"
 )
@@ -39,50 +40,49 @@ func (t *Tools) launches(ctx context.Context, a launchArgs) (out string, err err
 	if err != nil {
 		return "", err
 	}
-	var recs []*model.Record
-	start := time.Now()
-	stopped := false
-	scanTo := int64(0)
-	if toNs != 0 {
-		scanTo = toNs + analysis.DisplayedSlackNs
-	}
-	// every record in the window, however it is stored (device clock
-	// changes): no early stop on record order (issue #48)
-	d.Store.ScanTime(0, 0, true, fromNs, scanTo, func(r *model.Record) bool {
-		if time.Since(start) > scanBudget {
-			stopped = true
-			return false
-		}
-		if r.TimeNs >= fromNs && (toNs == 0 || r.TimeNs < toNs+analysis.DisplayedSlackNs) && launchRelevant(r) {
-			recs = append(recs, r)
-		}
-		return true
-	})
-	for i, j := 0, len(recs)-1; i < j; i, j = i+1, j-1 {
-		recs[i], recs[j] = recs[j], recs[i]
-	}
 	jumps := d.Store.ClockJumps()
 	steps := make([]analysis.ClockStep, len(jumps))
 	for i, j := range jumps {
 		steps[i] = analysis.ClockStep{Seq: j.Seq, DeltaNs: j.DeltaNs}
 	}
-	if len(jumps) > 0 && !stopped {
-		recs, stopped = afterJumps(d.Store, recs, jumps, start)
+
+	// #270: prefer launches.jsonl index; lazy backfill; ScanTime fallback.
+	var ls []*analysis.Launch
+	var stopped bool
+	var backfillNote string
+	usedIndex := false
+	incomplete, bnote := device.EnsureLaunches(d.Store, scanBudget)
+	if incomplete && bnote != "" {
+		backfillNote = bnote
 	}
-	ls := analysis.LaunchesAcross(recs, a.Package, steps)
-	// requests in the window only (the lines after a clock jump can hold
-	// requests outside it)
-	keep := ls[:0]
-	for _, l := range ls {
-		if l.RequestNs >= fromNs && (toNs == 0 || l.RequestNs < toNs) {
-			keep = append(keep, l)
+	if !incomplete && device.LaunchIndexReady(d.Store) {
+		sums := device.LaunchSummaries(d.Store)
+		var ids []string
+		for _, s := range sums {
+			if a.Package != "" && s.Package != a.Package {
+				continue
+			}
+			if s.RequestNs < fromNs || (toNs != 0 && s.RequestNs >= toNs) {
+				continue
+			}
+			ids = append(ids, s.ID)
 		}
+		full := device.LaunchFull(d.Store, ids...)
+		for _, l := range full {
+			if l != nil {
+				ls = append(ls, l)
+			}
+		}
+		usedIndex = true
 	}
-	ls = keep
-	// newest first
-	for i, j := 0, len(ls)-1; i < j; i, j = i+1, j-1 {
-		ls[i], ls[j] = ls[j], ls[i]
+	if !usedIndex {
+		ls, stopped = launchesScanTime(d.Store, a.Package, fromNs, toNs, steps, jumps)
 	}
+	// recompute AfterJump from current jumps (strategy B), index or scan
+	for _, l := range ls {
+		analysis.ApplyLaunchJumps(l, steps)
+	}
+
 	var b strings.Builder
 	word := "ok"
 	if len(ls) == 0 {
@@ -111,6 +111,9 @@ func (t *Tools) launches(ctx context.Context, a launchArgs) (out string, err err
 	kv = append(kv, "fmt", fmtVersion)
 	b.WriteString(hdr(word, kv...) + "\n")
 	b.WriteString(crashNote)
+	if backfillNote != "" {
+		b.WriteString(hdr("note", "code", backfillNote) + "\n")
+	}
 	if len(ls) == 0 {
 		if st := d.Store.Stats(); st.OldestNs > fromNs {
 			b.WriteString(hdr("note", "code", "history_starts", "oldest", isoNs(st.OldestNs, loc)) + "\n")
@@ -122,7 +125,9 @@ func (t *Tools) launches(ctx context.Context, a launchArgs) (out string, err err
 		b.WriteString(hdr("hint", "code", "no_launch_requests") + nextClause(next...) + "\n")
 		return b.String(), nil
 	}
-	b.WriteString(launchJumps(recs, jumps, loc))
+	// jump lines among shown launches from stored seq range + meta jumps (#270)
+	shownLs := ls[:shown]
+	b.WriteString(launchJumpsFromLaunches(shownLs, jumps, loc))
 	for i, l := range ls {
 		if i >= a.Limit {
 			older := len(ls) - a.Limit
@@ -139,6 +144,96 @@ func (t *Tools) launches(ctx context.Context, a launchArgs) (out string, err err
 		b.WriteString(truncLine("scan_stopped_ms", int(scanBudget.Milliseconds()), false, nil, `from="10m"`))
 	}
 	return b.String(), nil
+}
+
+// launchesScanTime is the pre-index path: ScanTime + LaunchesAcross (#270 fallback).
+func launchesScanTime(st *store.Store, pkg string, fromNs, toNs int64, steps []analysis.ClockStep, jumps []store.ClockJump) ([]*analysis.Launch, bool) {
+	var recs []*model.Record
+	start := time.Now()
+	stopped := false
+	scanTo := int64(0)
+	if toNs != 0 {
+		scanTo = toNs + analysis.DisplayedSlackNs
+	}
+	st.ScanTime(0, 0, true, fromNs, scanTo, func(r *model.Record) bool {
+		if time.Since(start) > scanBudget {
+			stopped = true
+			return false
+		}
+		if r.TimeNs >= fromNs && (toNs == 0 || r.TimeNs < toNs+analysis.DisplayedSlackNs) && launchRelevant(r) {
+			recs = append(recs, r)
+		}
+		return true
+	})
+	for i, j := 0, len(recs)-1; i < j; i, j = i+1, j-1 {
+		recs[i], recs[j] = recs[j], recs[i]
+	}
+	if len(jumps) > 0 && !stopped {
+		recs, stopped = afterJumps(st, recs, jumps, start)
+	}
+	ls := analysis.LaunchesAcross(recs, pkg, steps)
+	keep := ls[:0]
+	for _, l := range ls {
+		if l.RequestNs >= fromNs && (toNs == 0 || l.RequestNs < toNs) {
+			keep = append(keep, l)
+		}
+	}
+	ls = keep
+	for i, j := 0, len(ls)-1; i < j; i, j = i+1, j-1 {
+		ls[i], ls[j] = ls[j], ls[i]
+	}
+	return ls, stopped
+}
+
+// launchJumpsFromLaunches: clock jumps whose Seq falls in the shown launches'
+// request/step seq range (meta jumps; #270 decision 6).
+func launchJumpsFromLaunches(ls []*analysis.Launch, jumps []store.ClockJump, loc *time.Location) string {
+	if len(ls) == 0 {
+		return ""
+	}
+	lo, hi := uint64(0), uint64(0)
+	for _, l := range ls {
+		if l == nil || l.Seq == 0 {
+			continue
+		}
+		if lo == 0 || l.Seq < lo {
+			lo = l.Seq
+		}
+		if l.Seq > hi {
+			hi = l.Seq
+		}
+		for _, s := range []analysis.Step{l.ProcStart, l.OnCreate, l.OnRestart, l.OnStart, l.OnResume, l.Displayed, l.FullyDrawn} {
+			if s.Seq != 0 {
+				if s.Seq < lo {
+					lo = s.Seq
+				}
+				if s.Seq > hi {
+					hi = s.Seq
+				}
+			}
+		}
+	}
+	if lo == 0 {
+		return ""
+	}
+	var in []store.ClockJump
+	for _, j := range jumps {
+		if j.Seq > lo && j.Seq <= hi {
+			in = append(in, j)
+		}
+	}
+	if len(in) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "clock_jumps=%d shown=%d\n", len(in), min(len(in), 3))
+	if len(in) > 3 {
+		in = in[len(in)-3:]
+	}
+	for i := len(in) - 1; i >= 0; i-- {
+		b.WriteString(jumpLines(in[i], loc, -1, -1, ""))
+	}
+	return b.String()
 }
 
 // launchNoteCodes maps the analysis' explanations to codes (the sentences

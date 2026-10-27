@@ -60,6 +60,13 @@ type Pipeline struct {
 
 	queue   []pending
 	crashMu sync.Mutex
+
+	// launch index ingest (#270): buffer of recent LaunchTag records and
+	// request-seq → id / last fingerprint so EmitLaunch appends versions.
+	launchMu   sync.Mutex
+	launchBuf  []*model.Record
+	launchIDs  map[uint64]string // request seq → lnN
+	launchLast map[string]string // id → fingerprint
 }
 
 // jumpState follows device time in arrival order for clock jumps.
@@ -212,6 +219,8 @@ func NewPipeline(st *store.Store, boot string, loc *time.Location) *Pipeline {
 			p.NeedDropbox(tag)
 		}
 	}
+	p.launchIDs = map[uint64]string{}
+	p.launchLast = map[string]string{}
 	return p
 }
 
@@ -337,6 +346,7 @@ func (p *Pipeline) Drain(all bool, now time.Time) error {
 		}
 		p.Det.Feed(r)
 	}
+	p.syncLaunches(batch)
 	if unknown && p.OnUnknownPID != nil {
 		p.OnUnknownPID(unknownNs)
 	}
@@ -344,7 +354,10 @@ func (p *Pipeline) Drain(all bool, now time.Time) error {
 }
 
 // Tick finalizes quiet native crashes (deviceNs 0: newest record time).
-func (p *Pipeline) Tick(deviceNs int64) { p.Det.Tick(deviceNs) }
+func (p *Pipeline) Tick(deviceNs int64) {
+	p.Det.Tick(deviceNs)
+	p.syncLaunches(nil) // seal open launches past DisplayedSlackNs
+}
 
 // EmitCrash assigns an ID (crN / anrN) to new crashes and persists the
 // current version (later lines with the same ID supersede earlier ones). The
@@ -828,4 +841,129 @@ func dropboxBodyKey(e analysis.DropboxEntry) string {
 // in crash and ANR headers, "pid: n," in tombstones).
 func namesPid(body string) bool {
 	return strings.Contains(body, "\nPID: ") || strings.HasPrefix(body, "PID: ") || strings.Contains(body, "pid: ")
+}
+
+// syncLaunches feeds launch-relevant records into the launches.jsonl index
+// (#270): keeps a recent LaunchTag buffer, runs LaunchesAcross (oracle), and
+// appends a version per request until Displayed/FullyDrawn/next START/slack.
+func (p *Pipeline) syncLaunches(batch []*model.Record) {
+	p.launchMu.Lock()
+	defer p.launchMu.Unlock()
+	added := false
+	for _, r := range batch {
+		if analysis.LaunchTag(r) {
+			p.launchBuf = append(p.launchBuf, r)
+			added = true
+		}
+	}
+	if !added && len(p.launchBuf) == 0 {
+		return
+	}
+	p.trimLaunchBufLocked()
+	if len(p.launchBuf) == 0 {
+		return
+	}
+	steps := launchClockSteps(p.Store)
+	ls := analysis.LaunchesAcross(p.launchBuf, "", steps)
+	bootOf := map[uint64]string{}
+	for _, r := range p.launchBuf {
+		bootOf[r.Seq] = r.Boot
+	}
+	for _, l := range ls {
+		p.emitLaunchLocked(l, bootOf[l.Seq])
+	}
+}
+
+// trimLaunchBufLocked drops launch tags older than DisplayedSlackNs of
+// continuous time before the newest buffered record (keeps open launches).
+func (p *Pipeline) trimLaunchBufLocked() {
+	if len(p.launchBuf) == 0 {
+		return
+	}
+	// Device-time trim with 1.5× DisplayedSlack headroom. Clock-jump
+	// correctness for pairing still comes from LaunchesAcross on the buffer.
+	newest := p.launchBuf[len(p.launchBuf)-1].TimeNs
+	cut := newest - analysis.DisplayedSlackNs - analysis.DisplayedSlackNs/2
+	i := 0
+	if cut > 0 {
+		for i < len(p.launchBuf) && p.launchBuf[i].TimeNs < cut {
+			i++
+		}
+	}
+	if i > 0 {
+		p.launchBuf = append([]*model.Record{}, p.launchBuf[i:]...)
+	}
+	const maxBuf = 20000
+	if len(p.launchBuf) > maxBuf {
+		p.launchBuf = p.launchBuf[len(p.launchBuf)-maxBuf:]
+	}
+}
+
+func (p *Pipeline) emitLaunchLocked(l *analysis.Launch, boot string) {
+	if l == nil || l.Seq == 0 {
+		return
+	}
+	normalizeLaunchSteps(l)
+	id := p.launchIDs[l.Seq]
+	if id == "" {
+		for _, s := range LaunchSummaries(p.Store) {
+			if s.Seq == l.Seq {
+				id = s.ID
+				break
+			}
+		}
+		if id != "" {
+			p.launchIDs[l.Seq] = id
+		}
+	}
+	if id == "" {
+		p.Store.UpdateMeta(func(m *store.Meta) {
+			m.LaunchSeq++
+			id = "ln" + strconv.Itoa(m.LaunchSeq)
+		})
+		p.launchIDs[l.Seq] = id
+	}
+	fp := launchFingerprint(l)
+	if p.launchLast[id] == fp {
+		return
+	}
+	p.launchLast[id] = fp
+	_ = p.Store.AppendAux("launches", launchAuxLine{
+		Launch: l, ID: id, Ver: analysis.LaunchFormatVer,
+		HostNs: time.Now().UnixNano(), Boot: boot,
+	})
+}
+
+// EmitLaunch persists one launch version (tests / backfill helpers).
+func (p *Pipeline) EmitLaunch(l *analysis.Launch, boot string) {
+	p.launchMu.Lock()
+	defer p.launchMu.Unlock()
+	if p.launchIDs == nil {
+		p.launchIDs = map[uint64]string{}
+	}
+	if p.launchLast == nil {
+		p.launchLast = map[string]string{}
+	}
+	p.emitLaunchLocked(l, boot)
+}
+
+func launchFingerprint(l *analysis.Launch) string {
+	if l == nil {
+		return ""
+	}
+	cp := *l
+	cp.ClockJumped = false
+	clearAJ := func(s *analysis.Step) { s.AfterJump = false }
+	clearAJ(&cp.ProcStart)
+	clearAJ(&cp.OnCreate)
+	clearAJ(&cp.OnRestart)
+	clearAJ(&cp.OnStart)
+	clearAJ(&cp.OnResume)
+	clearAJ(&cp.Displayed)
+	clearAJ(&cp.FullyDrawn)
+	b, err := json.Marshal(&cp)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }

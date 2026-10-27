@@ -11,7 +11,7 @@ import (
 
 // CarriedFiles are the per-device state files a recording takes along when
 // it moves to another data root (set-root). Segments stay where they are.
-var CarriedFiles = []string{"crashes.jsonl", "procs.jsonl", "dropbox_seen.jsonl", "packages.json"}
+var CarriedFiles = []string{"crashes.jsonl", "launches.jsonl", "procs.jsonl", "dropbox_seen.jsonl", "packages.json"}
 
 // ResumeDedupFile holds the hashes carried by a set-root move: 8 bytes per
 // line, little-endian, at most MaxResumeDedup of them (issue #56).
