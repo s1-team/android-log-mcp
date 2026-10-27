@@ -40,6 +40,9 @@ func (t *Tools) launches(ctx context.Context, a launchArgs) (out string, err err
 	if err != nil {
 		return "", err
 	}
+	if err := checkPackages(a.Package); err != nil {
+		return "", err
+	}
 	jumps := d.Store.ClockJumps()
 	steps := make([]analysis.ClockStep, len(jumps))
 	for i, j := range jumps {
@@ -58,8 +61,9 @@ func (t *Tools) launches(ctx context.Context, a launchArgs) (out string, err err
 	if !incomplete && device.LaunchIndexReady(d.Store) {
 		sums := device.LaunchSummaries(d.Store)
 		var ids []string
+		pkgSet := packageSet(a.Package)
 		for _, s := range sums {
-			if a.Package != "" && s.Package != a.Package {
+			if pkgSet != nil && !pkgSet[s.Package] {
 				continue
 			}
 			if s.RequestNs < fromNs || (toNs != 0 && s.RequestNs >= toNs) {
@@ -91,7 +95,7 @@ func (t *Tools) launches(ctx context.Context, a launchArgs) (out string, err err
 	shown := min(len(ls), a.Limit)
 	kv := []any{"view", "launches", "device", d.Serial, "launches", len(ls), "shown", shown, "order", "newest_first", "since", isoNs(fromNs, loc)}
 	var crashNote string
-	if a.Package != "" { // #269: same effective window as launches (incl. default from=30m)
+	if len(a.Package) > 0 { // #269/#276: same effective window as launches (incl. default from=30m)
 		var pckv []any
 		pckv, crashNote = packageCrashAttach(d, a.Package, true, packageCrashBounds{fromNs: fromNs, toNs: toNs})
 		kv = append(kv, pckv...)
@@ -119,8 +123,8 @@ func (t *Tools) launches(ctx context.Context, a launchArgs) (out string, err err
 			b.WriteString(hdr("note", "code", "history_starts", "oldest", isoNs(st.OldestNs, loc)) + "\n")
 		}
 		next := []string{`from="2h"`}
-		if a.Package != "" {
-			next = []string{"adb shell monkey -p " + a.Package + " -c android.intent.category.LAUNCHER 1", next[0]}
+		if len(a.Package) > 0 {
+			next = []string{"adb shell monkey -p " + a.Package[0] + " -c android.intent.category.LAUNCHER 1", next[0]}
 		}
 		b.WriteString(hdr("hint", "code", "no_launch_requests") + nextClause(next...) + "\n")
 		return b.String(), nil
@@ -147,7 +151,7 @@ func (t *Tools) launches(ctx context.Context, a launchArgs) (out string, err err
 }
 
 // launchesScanTime is the pre-index path: ScanTime + LaunchesAcross (#270 fallback).
-func launchesScanTime(st *store.Store, pkg string, fromNs, toNs int64, steps []analysis.ClockStep, jumps []store.ClockJump) ([]*analysis.Launch, bool) {
+func launchesScanTime(st *store.Store, pkgs []string, fromNs, toNs int64, steps []analysis.ClockStep, jumps []store.ClockJump) ([]*analysis.Launch, bool) {
 	var recs []*model.Record
 	start := time.Now()
 	stopped := false
@@ -171,9 +175,17 @@ func launchesScanTime(st *store.Store, pkg string, fromNs, toNs int64, steps []a
 	if len(jumps) > 0 && !stopped {
 		recs, stopped = afterJumps(st, recs, jumps, start)
 	}
-	ls := analysis.LaunchesAcross(recs, pkg, steps)
+	filterPkg := ""
+	if len(pkgs) == 1 {
+		filterPkg = pkgs[0]
+	}
+	ls := analysis.LaunchesAcross(recs, filterPkg, steps)
+	set := packageSet(pkgs)
 	keep := ls[:0]
 	for _, l := range ls {
+		if set != nil && !set[l.Package] {
+			continue
+		}
 		if l.RequestNs >= fromNs && (toNs == 0 || l.RequestNs < toNs) {
 			keep = append(keep, l)
 		}

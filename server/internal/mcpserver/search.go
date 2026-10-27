@@ -36,7 +36,7 @@ type query struct {
 	afterSeq   uint64
 	beforeSeq  uint64
 	ectx       *filter.Ctx
-	pkg        string
+	pkgs       []string
 	tags       []string
 	filterUsed bool
 	verbose    bool
@@ -123,10 +123,10 @@ func topLevelAge(n filter.Node) (time.Duration, string, bool) {
 }
 
 type commonArgs struct {
-	verbose                                        bool
-	filter, pkg, minLevel, from, to, before, after string
-	tags                                           []string
-	wait                                           bool // waiting for new lines (wait_ms): no upper bound
+	verbose                                   bool
+	filter, minLevel, from, to, before, after string
+	pkgs, tags                                []string
+	wait                                      bool // waiting for new lines (wait_ms): no upper bound
 }
 
 var reAgeHost = regexp.MustCompile(`(?i)(^|[\s(!-])age:\s*host:(\S*)`)
@@ -166,18 +166,38 @@ func (t *Tools) buildQuery(d *device.Device, a commonArgs) (*query, error) {
 	// device now comes from the stream: no device clock read per query
 	ci := d.Clock()
 	now := ci.Now
-	q := &query{d: d, loc: d.Loc(), ectx: &filter.Ctx{Now: now, Loc: d.Loc()}, verbose: a.verbose, pkg: a.pkg, tags: a.tags, clock: ci}
+	q := &query{d: d, loc: d.Loc(), ectx: &filter.Ctx{Now: now, Loc: d.Loc()}, verbose: a.verbose, pkgs: a.pkgs, tags: a.tags, clock: ci}
 	var kids []filter.Node
 	var root filter.Node // the parsed filter
-	if a.pkg != "" {
-		pkg := strings.TrimSpace(a.pkg)
-		q.pkg = pkg
-		su := newSharedUID(pkg, d.Packages(), d.Procs)
-		kids = append(kids, &filter.Pred{Desc: "package == " + pkg, ClassOnly: true, Fn: func(r *model.Record, _ *filter.Ctx) bool { return pkgMatches(r, pkg) || su.line(r.UID, r.Process) }})
-		if su != nil {
-			q.notes = append(q.notes, su.noteLine(a.verbose))
+	if len(a.pkgs) > 0 {
+		if err := checkPackages(a.pkgs); err != nil {
+			return nil, err
 		}
-		q.parts = append(q.parts, "package == "+pkg)
+		pkgs := a.pkgs
+		q.pkgs = pkgs
+		pk := d.Packages()
+		// OR across ids; per-id shared-UID via pkgMatches + sharedUID (#276)
+		sus := make([]*sharedUID, len(pkgs))
+		for i, pkg := range pkgs {
+			sus[i] = newSharedUID(pkg, pk, d.Procs)
+			if sus[i] != nil {
+				q.notes = append(q.notes, sus[i].noteLine(a.verbose))
+			}
+		}
+		ds := make([]string, len(pkgs))
+		for i, pkg := range pkgs {
+			ds[i] = "package == " + pkg
+		}
+		desc := strings.Join(ds, " OR ")
+		kids = append(kids, &filter.Pred{Desc: desc, ClassOnly: true, Fn: func(r *model.Record, _ *filter.Ctx) bool {
+			for i, pkg := range pkgs {
+				if pkgMatches(r, pkg) || (sus[i] != nil && sus[i].line(r.UID, r.Process)) {
+					return true
+				}
+			}
+			return false
+		}})
+		q.parts = append(q.parts, desc)
 	}
 	if len(a.tags) > 0 {
 		if len(a.tags) > 20 {
@@ -512,7 +532,7 @@ func (t *Tools) search(ctx context.Context, a searchArgs) (out string, err error
 		}
 	}()
 	d.Store.Refresh()
-	q, err := t.buildQuery(d, commonArgs{verbose: a.Verbose, filter: a.Filter, pkg: a.Package, minLevel: a.MinLevel, from: a.From, to: a.To, before: a.Before, after: a.After, tags: a.Tags, wait: a.WaitMs > 0})
+	q, err := t.buildQuery(d, commonArgs{verbose: a.Verbose, filter: a.Filter, pkgs: a.Package, minLevel: a.MinLevel, from: a.From, to: a.To, before: a.Before, after: a.After, tags: a.Tags, wait: a.WaitMs > 0})
 	if err != nil {
 		return "", err
 	}
@@ -545,9 +565,9 @@ func (t *Tools) search(ctx context.Context, a searchArgs) (out string, err error
 func (t *Tools) head(q *query, word, view string, extra ...any) string {
 	kv := append([]any{"view", view, "device", q.d.Serial}, extra...)
 	var note string
-	if q.pkg != "" { // #269: crashes+anrs share effective from/to/age + after/before
+	if len(q.pkgs) > 0 { // #269/#276: crashes+anrs share effective from/to/age + after/before
 		var pckv []any
-		pckv, note = packageCrashAttach(q.d, q.pkg, true, packageCrashBounds{
+		pckv, note = packageCrashAttach(q.d, q.pkgs, true, packageCrashBounds{
 			fromNs: q.fromNs, toNs: q.toNs, afterSeq: q.afterSeq, beforeSeq: q.beforeSeq,
 		})
 		kv = append(kv, pckv...)
@@ -1051,33 +1071,46 @@ func (t *Tools) zeroHints(q *query) (int, string) {
 		}
 		return n < 300000
 	})
-	if q.pkg != "" && pkgs[q.pkg] == 0 {
-		var names []string
-		for p := range pkgs {
-			names = append(names, p)
-		}
-		kv := []any{"code", "no_logs_for_package", "package", q.pkg}
-		if pk := q.d.Packages(); len(pk) > 0 {
-			inst := false
-			for _, p := range allPkgs(pk) {
-				if p == q.pkg {
-					inst = true
-				}
+	if len(q.pkgs) > 0 {
+		have := false
+		for _, pkg := range q.pkgs {
+			if pkgs[pkg] > 0 {
+				have = true
+				break
 			}
-			kv = append(kv, "installed", inst)
 		}
-		sim := similar(q.pkg, names)
-		if len(sim) > 0 {
-			kv = append(kv, "similar", strings.Join(sim, ","))
+		if !have {
+			var names []string
+			for p := range pkgs {
+				names = append(names, p)
+			}
+			kv := []any{"code", "no_logs_for_package", "package", packageHeader(q.pkgs)}
+			if pk := q.d.Packages(); len(pk) > 0 {
+				instN := 0
+				installed := map[string]bool{}
+				for _, p := range allPkgs(pk) {
+					installed[p] = true
+				}
+				for _, pkg := range q.pkgs {
+					if installed[pkg] {
+						instN++
+					}
+				}
+				kv = append(kv, "installed", instN == len(q.pkgs))
+			}
+			sim := similar(q.pkgs[0], names)
+			if len(sim) > 0 {
+				kv = append(kv, "similar", strings.Join(sim, ","))
+			}
+			if top := topKeys(pkgs, 8); top != "" {
+				kv = append(kv, "packages_in_range", top)
+			}
+			alt := []string{`view="summary"`}
+			if len(sim) > 0 {
+				alt = []string{param("package", sim[0])}
+			}
+			b.WriteString(hdr("hint", kv...) + nextClause(alt...) + "\n")
 		}
-		if top := topKeys(pkgs, 8); top != "" {
-			kv = append(kv, "packages_in_range", top)
-		}
-		alt := []string{`view="summary"`}
-		if len(sim) > 0 {
-			alt = []string{param("package", sim[0])}
-		}
-		b.WriteString(hdr("hint", kv...) + nextClause(alt...) + "\n")
 	}
 	for _, tg := range q.tags {
 		if tags[tg] == 0 {
@@ -1249,11 +1282,25 @@ func (t *Tools) summary(q *query) string {
 	// #269: package-scoped crash/ANR counts live on the header (via head);
 	// the old non-zero in-range body line is gone. Keep first crash id for next:.
 	var crs []string
-	if q.pkg != "" {
+	if len(q.pkgs) > 0 {
 		own := procspkg.NameOwner(q.d.Packages())
-		su := newSharedUID(q.pkg, q.d.Packages(), q.d.Procs)
+		pk := q.d.Packages()
+		sus := make([]*sharedUID, len(q.pkgs))
+		for i, pkg := range q.pkgs {
+			sus[i] = newSharedUID(pkg, pk, q.d.Procs)
+		}
 		for _, c := range q.d.Crashes() {
-			if c == nil || c.Kind == "anr" || !crashPkgMatch(c, q.pkg, own, su) {
+			if c == nil || c.Kind == "anr" {
+				continue
+			}
+			match := false
+			for i, pkg := range q.pkgs {
+				if crashPkgMatch(c, pkg, own, sus[i]) {
+					match = true
+					break
+				}
+			}
+			if !match {
 				continue
 			}
 			crs = append(crs, c.ID)

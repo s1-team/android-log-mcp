@@ -10,28 +10,28 @@ type toolDef struct {
 }
 
 type statusArgs struct {
-	Device    string `json:"device"`
-	Package   string `json:"package"`
-	RecordFor string `json:"record_for"`
-	Verbose   bool   `json:"verbose"`
+	Device    string      `json:"device"`
+	Package   PackageList `json:"package"`
+	RecordFor string      `json:"record_for"`
+	Verbose   bool        `json:"verbose"`
 }
 
 type searchArgs struct {
-	Device   string   `json:"device"`
-	Filter   string   `json:"filter"`
-	Package  string   `json:"package"`
-	Tags     []string `json:"tags"`
-	MinLevel string   `json:"min_level"`
-	From     string   `json:"from"`
-	To       string   `json:"to"`
-	View     string   `json:"view"`
-	Limit    int      `json:"limit"`
-	Context  int      `json:"context"`
-	Before   string   `json:"before"`
-	After    string   `json:"after"`
-	WaitMs   int      `json:"wait_ms"`
-	Stack    string   `json:"stack"`
-	Verbose  bool     `json:"verbose"`
+	Device   string      `json:"device"`
+	Filter   string      `json:"filter"`
+	Package  PackageList `json:"package"`
+	Tags     []string    `json:"tags"`
+	MinLevel string      `json:"min_level"`
+	From     string      `json:"from"`
+	To       string      `json:"to"`
+	View     string      `json:"view"`
+	Limit    int         `json:"limit"`
+	Context  int         `json:"context"`
+	Before   string      `json:"before"`
+	After    string      `json:"after"`
+	WaitMs   int         `json:"wait_ms"`
+	Stack    string      `json:"stack"`
+	Verbose  bool        `json:"verbose"`
 }
 
 type crashArgs struct {
@@ -48,12 +48,12 @@ type crashArgs struct {
 }
 
 type launchArgs struct {
-	Device  string `json:"device"`
-	Package string `json:"package"`
-	From    string `json:"from"`
-	To      string `json:"to"`
-	Limit   int    `json:"limit"`
-	Verbose bool   `json:"verbose"`
+	Device  string      `json:"device"`
+	Package PackageList `json:"package"`
+	From    string      `json:"from"`
+	To      string      `json:"to"`
+	Limit   int         `json:"limit"`
+	Verbose bool        `json:"verbose"`
 }
 
 func toolDefs() []toolDef {
@@ -72,7 +72,7 @@ func toolDefs() []toolDef {
 			schema: `{"type":"object","properties":{
 "device":{"type":"string","description":"adb serial or device ID. Omit when only one device is connected."},
 "record_for":{"type":"string","description":"Keep recording this long, independent of calls: a duration like 30m, 2h, 1h30m (max 24h; never shortens). \"0\" stops recording now and removes the pin."},
-"package":{"type":"string","description":"Exact application id, e.g. com.example.app. Optional."},
+"package":{"description":"Exact application id(s). Prefer a JSON array of up to 20 ids (ORed), e.g. [\"com.foo\",\"com.bar\"]. A single string remains valid; comma-separated ids are also accepted. Optional."},
 "verbose":{"type":"boolean","default":false,"description":"Always show the rarely changing lines (root, linger, lifetime, service log, adb, store); by default only on the first call of a session and when they change."}
 },"additionalProperties":false}`,
 		},
@@ -84,7 +84,7 @@ func toolDefs() []toolDef {
 				"Filter syntax: key:value contains (case-insensitive), key=:value exact, key~:regex (RE2), -key:value negates. Keys: tag message package process line level age is, plus pid tid buffer. level:error = error and above. age:5m. is:crash, is:stacktrace. Bare words search the whole line.\n" +
 				"`&` AND, `|` OR (spaces around them), parentheses group. Space-separated terms are ANDed, except repeated positive terms on one key are ORed (`tag:A tag:B` = A OR B). Quote values with spaces or colons: message:\"Start proc\".\n" +
 				"Examples:\n  tag=:OkHttp tag=:MyRepo level:debug\n  is:crash | tag~:\"^am_(anr|crash)$\"\n" +
-				"`package` is an EXACT application id covering all its processes (the filter's package: is a substring match).\n" +
+				"`package` is one or more EXACT application ids (JSON array preferred, cap 20; a single string or comma-separated ids also work), ORed; each covers all its processes (the filter's package: is a substring match and does not get crash counts).\n" +
 				"Response (fmt=1): `ok`/`empty`/`error` + key=value header (matched, exact, shown, range, ...); rows `HH:MM:SS.mmm L pid/tid process tag: message` (`| ` continues, `^ rep=N` repeats). Every cut is `truncated ... next: <params>`; `hint`/`error` lines end in `next:`, directly executable. See docs/reference.md.\n" +
 				"Paging: `newer: after=...` and (when cut) `next: before=...`. To wait for new lines, pass `after` plus `wait_ms` (max 25000).\n" +
 				"`note code=backfill` (the first call starts recording and backfills, up to 10 s): results may be incomplete, call again.\n" +
@@ -93,7 +93,7 @@ func toolDefs() []toolDef {
 			schema: `{"type":"object","properties":{
 "device":{"type":"string","description":"adb serial. Omit when only one device has logs."},
 "filter":{"type":"string","description":"Android Studio Logcat query, e.g. ` + "`tag=:OkHttp level:warn -message:heartbeat`" + `. | binds tighter than a space; quote values with spaces. Optional."},
-"package":{"type":"string","description":"Exact application id; matches ALL its processes (com.foo, com.foo:remote), including dead ones."},
+"package":{"description":"Exact application id(s); each id matches ALL its processes (com.foo, com.foo:remote), including dead ones. Prefer a JSON array of up to 20 ids (ORed), e.g. [\"com.foo\",\"com.bar\"]. A single string remains valid; comma-separated ids are also accepted."},
 "tags":{"type":"array","items":{"type":"string"},"maxItems":20,"description":"Exact tag names, ORed together, e.g. [\"OkHttp\",\"MyRepo\"]."},
 "min_level":{"type":"string","enum":["verbose","debug","info","warn","error","fatal"],"description":"Minimum priority."},
 "from":{"type":"string","description":"Start, inclusive, device time: ` + "`2026-10-10 01:20:00`" + `, ` + "`01:20:00`" + ` (device today), ISO-8601 with offset, or relative ` + "`30m`, `2h`" + ` (device now minus that; the window ends at device now + 2 s). Host time is not supported."},
@@ -136,7 +136,7 @@ func toolDefs() []toolDef {
 				"Response (fmt=1): `ok`/`empty` + header; `#N launch time= kind= component= pid= ttid_ms= ttfd_ms=` then `step name= at_ms= [took_ms=]` lines (at_ms: relative to the request); `unreliable=clock_jump` marks steps logged after a clock jump. See docs/reference.md.",
 			schema: `{"type":"object","properties":{
 "device":{"type":"string","description":"adb serial. Omit when only one device has logs."},
-"package":{"type":"string","description":"Exact application id. Omit for all apps."},
+"package":{"description":"Exact application id(s). Prefer a JSON array of up to 20 ids (ORed). A single string remains valid; comma-separated ids are also accepted. Omit for all apps."},
 "from":{"type":"string","description":"Device time. Default: 30m (device now minus 30 minutes, up to device now + 2 s). Same formats as logcat_search.from."},
 "to":{"type":"string","description":"Device time; same formats as logcat_search.to."},
 "limit":{"type":"integer","minimum":1,"maximum":20,"default":5},
@@ -155,7 +155,7 @@ func toolDefs() []toolDef {
 			schema: `{"type":"object","properties":{
 "device":{"type":"string","description":"adb serial. Omit when only one device has logs."},
 "filter":{"type":"string","description":"Android Studio Logcat query, as in logcat_search. Optional."},
-"package":{"type":"string","description":"Exact application id; matches ALL its processes, including dead ones."},
+"package":{"description":"Exact application id(s); each id matches ALL its processes, including dead ones. Prefer a JSON array of up to 20 ids (ORed). A single string remains valid; comma-separated ids are also accepted."},
 "tags":{"type":"array","items":{"type":"string"},"maxItems":20,"description":"Exact tag names, ORed together."},
 "min_level":{"type":"string","enum":["verbose","debug","info","warn","error","fatal"],"description":"Minimum priority."},
 "from":{"type":"string","description":"Start, inclusive, device time; same formats as logcat_search.from. Default: the start of the recorded history."},

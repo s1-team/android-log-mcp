@@ -161,12 +161,12 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 		defer done()
 		switch {
 		case errors.As(err, &several):
-			if a.RecordFor != "" || a.Package != "" {
+			if a.RecordFor != "" || len(a.Package) > 0 {
 				return "", err
 			}
 		case err != nil:
 			useErr = err
-			if a.RecordFor != "" || a.Package != "" {
+			if a.RecordFor != "" || len(a.Package) > 0 {
 				return "", err
 			}
 		default:
@@ -412,11 +412,19 @@ func (t *Tools) status(ctx context.Context, a statusArgs) (string, error) {
 			hk = append(hk, "tz", d.TZName())
 		}
 		hk = append(hk, clockKV(d.Clock(), a.Verbose)...)
-		if a.Package != "" { // #269: package crash/ANR counts on header + package fact line
-			pckv, note := packageCrashAttach(d, a.Package, false, packageCrashBounds{}) // status: store-known
+		if len(a.Package) > 0 { // #269/#276: package crash/ANR counts on header + package fact line(s)
+			if err := checkPackages(a.Package); err != nil {
+				return "", err
+			}
+			withPkg := len(a.Package) > 1                                                 // multi: parseable package= list on ok header
+			pckv, note := packageCrashAttach(d, a.Package, withPkg, packageCrashBounds{}) // status: store-known
 			hk = append(hk, pckv...)
 			tail.WriteString(note)
-			tail.WriteString(t.packageStatus(d, a.Package, a.Verbose, pckv))
+			for _, pkg := range a.Package {
+				// per-package fact line keeps single-package numeric counts
+				oneKV := packageCrashKVOne(d, pkg, packageCrashBounds{})
+				tail.WriteString(t.packageStatus(d, pkg, a.Verbose, oneKV))
+			}
 		}
 	}
 	hk = append(hk, "fmt", fmtVersion)
@@ -577,7 +585,7 @@ func (t *Tools) packageStatus(d *device.Device, pkg string, verbose bool, crashK
 	if len(crashKV) > 0 { // #269 precomputed store-known counts (same as header)
 		kv = append(kv, crashKV[0]...)
 	} else {
-		kv = append(kv, packageCrashKV(d, pkg, false, packageCrashBounds{})...)
+		kv = append(kv, packageCrashKVOne(d, pkg, packageCrashBounds{})...)
 	}
 	if len(alive) == 0 && len(dead) > 0 {
 		kv = append(kv, "last_pid", dead[0].PID, "ended", isoLocalSec(dead[0].EndNs, loc))
