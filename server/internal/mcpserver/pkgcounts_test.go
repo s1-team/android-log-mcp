@@ -153,5 +153,90 @@ func TestPackageCrashCountsReplayJavaAndANR(t *testing.T) {
 	}
 	e.ok("logcat_search", `{"view":"summary","package":"com.example.logtest"}`, wantC, wantA)
 	e.ok("logcat_status", `{"package":"com.example.logtest"}`, wantC, wantA)
-	e.ok(launches, `{"package":"com.example.logtest","from":"2026-10-10 02:50:00"}`, wantC, wantA)
+	// launches default from=30m still covers both events on this fixture
+	e.ok(launches, `{"package":"com.example.logtest"}`, wantC, wantA)
+	e.ok(launches, `{"package":"com.example.logtest","from":"2026-10-10 02:50:00","to":"2026-10-10 03:10:00"}`, wantC, wantA)
+}
+
+func TestPackageCrashCountsRespectsFromTo(t *testing.T) {
+	t.Parallel()
+	e := newReplay(t, fxBoot1)
+	e.file("java_crash.logcat.txt")
+	e.pipe.ApplyDropbox(fixtureFile(t, "dropbox-data_app_crash.txt"))
+	e.file("anr_broadcast.logcat.txt")
+	e.pipe.ApplyDropbox(fixtureFile(t, "dropbox-data_app_anr.txt"))
+
+	// store-known (no from/to): both java + anr
+	store := e.ok("logcat_search", `{"package":"com.example.logtest","limit":1}`, "note code=package_crash_counts")
+	storeHead := firstLine(store)
+	if !strings.Contains(storeHead, "crashes=") || !strings.Contains(storeHead, "anrs=") {
+		t.Fatalf("store-known header:\n%s", storeHead)
+	}
+
+	// window after the java crash, covering the ANR only (ANR at 03:05:53)
+	out := e.ok("logcat_search", `{"package":"com.example.logtest","from":"2026-10-10 03:05:00","to":"2026-10-10 03:06:00","limit":1}`,
+		" crashes=0 ", " anrs=1 ")
+	head := firstLine(out)
+	if !strings.Contains(head, "crashes=0") || !strings.Contains(head, "anrs=1") {
+		t.Errorf("windowed header want crashes=0 anrs=1:\n%s", head)
+	}
+	if strings.Contains(storeHead, "crashes=0") && strings.Contains(storeHead, "anrs=1") {
+		t.Errorf("store-known unexpectedly matched the narrow window:\n%s", storeHead)
+	}
+
+	// window before both events: zeros, no next note
+	out = e.ok("logcat_search", `{"package":"com.example.logtest","from":"2026-10-10 02:00:00","to":"2026-10-10 02:30:00","limit":1}`,
+		" crashes=0 ", " anrs=0 ")
+	notContains(t, out, "note code=package_crash_counts")
+
+	// limit does not further narrow: tiny limit still reports windowed counts
+	e.ok("logcat_search", `{"package":"com.example.logtest","from":"2026-10-10 03:00:00","to":"2026-10-10 03:10:00","limit":1}`,
+		" anrs=1 ")
+
+	// launches with from/to → windowed (same bounds for crashes and anrs)
+	e.ok(launches, `{"package":"com.example.logtest","from":"2026-10-10 03:05:00","to":"2026-10-10 03:06:00"}`,
+		" crashes=0 ", " anrs=1 ")
+}
+
+func TestPackageCrashCountsAgeAndAfter(t *testing.T) {
+	t.Parallel()
+	e := newReplay(t, fxBoot1)
+	e.file("java_crash.logcat.txt")
+	e.pipe.ApplyDropbox(fixtureFile(t, "dropbox-data_app_crash.txt"))
+	e.file("anr_broadcast.logcat.txt")
+	e.pipe.ApplyDropbox(fixtureFile(t, "dropbox-data_app_anr.txt"))
+
+	// age: same effective window as the line scan — java (earlier) excluded, ANR in the last 1m kept
+	out := e.ok("logcat_search", `{"package":"com.example.logtest","filter":"age:1m","limit":1}`,
+		" crashes=0 ", " anrs=1 ", "note code=package_crash_counts")
+	if !strings.Contains(firstLine(out), "crashes=0") || !strings.Contains(firstLine(out), "anrs=1") {
+		t.Errorf("age window header:\n%s", firstLine(out))
+	}
+
+	// after = newest status cursor → nothing newer; both kinds zero
+	st := e.ok("logcat_status", `{}`)
+	cur := ""
+	for _, part := range strings.Fields(firstLine(st)) {
+		if strings.HasPrefix(part, "cursor=") && part != "cursor=none" {
+			cur = strings.TrimPrefix(part, "cursor=")
+			break
+		}
+	}
+	if cur == "" {
+		t.Fatalf("no status cursor in:\n%s", st)
+	}
+	e.ok("logcat_search", fmt.Sprintf(`{"package":"com.example.logtest","after":%q,"limit":1}`, cur),
+		" crashes=0 ", " anrs=0 ")
+
+	// before = newest cursor → all retained crashes/anrs still in range (intersection open lower)
+	e.ok("logcat_search", fmt.Sprintf(`{"package":"com.example.logtest","before":%q,"limit":1}`, cur),
+		"note code=package_crash_counts")
+}
+
+func TestPackageCrashCountsLimitDoesNotNarrow(t *testing.T) {
+	t.Parallel()
+	tl := fixture(t)
+	// fixture has one java crash for com.foo; limit=1 still shows crashes=1
+	out, e := call(t, tl, "logcat_search", `{"package":"com.foo","limit":1}`)
+	must(t, out, e, " crashes=1 ", " anrs=0 ")
 }

@@ -91,9 +91,9 @@ func (t *Tools) launches(ctx context.Context, a launchArgs) (out string, err err
 	shown := min(len(ls), a.Limit)
 	kv := []any{"view", "launches", "device", d.Serial, "launches", len(ls), "shown", shown, "order", "newest_first", "since", isoNs(fromNs, loc)}
 	var crashNote string
-	if a.Package != "" { // #269 store-known crash/ANR counts
+	if a.Package != "" { // #269: same effective window as launches (incl. default from=30m)
 		var pckv []any
-		pckv, crashNote = packageCrashAttach(d, a.Package, true)
+		pckv, crashNote = packageCrashAttach(d, a.Package, true, packageCrashBounds{fromNs: fromNs, toNs: toNs})
 		kv = append(kv, pckv...)
 	}
 	if a.Verbose {
