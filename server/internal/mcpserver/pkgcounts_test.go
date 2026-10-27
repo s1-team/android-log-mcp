@@ -7,17 +7,17 @@ import (
 )
 
 // Issue #269: package-scoped MCP ok/empty headers carry store-known
-// crashes=/anrs= (crashPkgMatch), including zeros; filter-only package: does not.
+// crashes=/anrs= (crashPkgMatch); zeros are omitted. filter-only package: does not.
 
 func TestPackageCrashCountsZero(t *testing.T) {
 	t.Parallel()
 	tl := fixture(t)
 	out, e := call(t, tl, "logcat_search", `{"package":"com.missing","limit":5}`)
-	must(t, out, e, "package=com.missing", " crashes=0 ", " anrs=0 ")
+	must(t, out, e, "package=com.missing")
 	notContains(t, out, "note code=package_crash_counts")
 	head := firstLine(out)
-	if !strings.Contains(head, "crashes=0") || !strings.Contains(head, "anrs=0") {
-		t.Errorf("counts must be on header:\n%s", head)
+	if strings.Contains(head, "crashes=") || strings.Contains(head, "anrs=") {
+		t.Errorf("zero counts must be omitted from header:\n%s", head)
 	}
 }
 
@@ -25,11 +25,17 @@ func TestPackageCrashCountsSearchLines(t *testing.T) {
 	t.Parallel()
 	tl := fixture(t)
 	out, e := call(t, tl, "logcat_search", `{"package":"com.foo","min_level":"error"}`)
-	must(t, out, e, "package=com.foo", " crashes=1 ", " anrs=0 ",
-		"note code=package_crash_counts crashes=1 anrs=0 next: logcat_crashes package=\"com.foo\"")
+	must(t, out, e, "package=com.foo", " crashes=1 ",
+		"note code=package_crash_counts crashes=1 next: logcat_crashes package=\"com.foo\"")
 	head := firstLine(out)
-	if !strings.Contains(head, "crashes=1") || !strings.Contains(head, "anrs=0") {
+	if !strings.Contains(head, "crashes=1") {
 		t.Errorf("counts on header:\n%s", head)
+	}
+	if strings.Contains(head, "anrs=") {
+		t.Errorf("zero anrs= must be omitted:\n%s", head)
+	}
+	if strings.Contains(out, "anrs=0") {
+		t.Errorf("anrs=0 noise:\n%s", out)
 	}
 }
 
@@ -37,13 +43,16 @@ func TestPackageCrashCountsSearchSummary(t *testing.T) {
 	t.Parallel()
 	tl := fixture(t)
 	out, e := call(t, tl, "logcat_search", `{"view":"summary","package":"com.foo"}`)
-	must(t, out, e, "view=summary", "package=com.foo", " crashes=1 ", " anrs=0 ")
+	must(t, out, e, "view=summary", "package=com.foo", " crashes=1 ")
 	head := firstLine(out)
 	if !strings.Contains(head, "crashes=1") {
 		t.Errorf("summary header counts:\n%s", head)
 	}
+	if strings.Contains(head, "anrs=") {
+		t.Errorf("zero anrs= must be omitted:\n%s", head)
+	}
 	// no legacy body line (counts are header-only now)
-	if strings.Contains(out, "\ncrashes=1 anrs=0") {
+	if strings.Contains(out, "\ncrashes=1 anrs=0") || strings.Contains(out, "\ncrashes=1\n") {
 		t.Errorf("legacy body crashes= line still present:\n%s", out)
 	}
 }
@@ -75,14 +84,20 @@ func TestPackageCrashCountsStatus(t *testing.T) {
 	t.Parallel()
 	tl := fixture(t)
 	out, e := call(t, tl, "logcat_status", `{"package":"com.foo"}`)
-	must(t, out, e, "view=status", " crashes=1 ", " anrs=0 ",
+	must(t, out, e, "view=status", " crashes=1 ",
 		"note code=package_crash_counts")
 	head := firstLine(out)
-	if !strings.Contains(head, "crashes=1") || !strings.Contains(head, "anrs=0") {
+	if !strings.Contains(head, "crashes=1") {
 		t.Errorf("status header counts:\n%s", head)
+	}
+	if strings.Contains(head, "anrs=") {
+		t.Errorf("zero anrs= must be omitted:\n%s", head)
 	}
 	if !strings.Contains(out, "package id=com.foo") || !strings.Contains(out, " crashes=1 ") {
 		t.Errorf("package fact line should carry counts:\n%s", out)
+	}
+	if strings.Contains(out, "anrs=0") {
+		t.Errorf("anrs=0 noise:\n%s", out)
 	}
 }
 
@@ -90,10 +105,13 @@ func TestPackageCrashCountsLaunches(t *testing.T) {
 	t.Parallel()
 	tl := fixture(t)
 	out, e := call(t, tl, "logcat_app_launches", `{"package":"com.foo"}`)
-	must(t, out, e, "view=launches", "package=com.foo", " crashes=1 ", " anrs=0 ")
+	must(t, out, e, "view=launches", "package=com.foo", " crashes=1 ")
 	head := firstLine(out)
 	if !strings.Contains(head, "crashes=1") {
 		t.Errorf("launches header counts:\n%s", head)
+	}
+	if strings.Contains(head, "anrs=") {
+		t.Errorf("zero anrs= must be omitted:\n%s", head)
 	}
 }
 
@@ -102,8 +120,11 @@ func TestPackageCrashCountsExport(t *testing.T) {
 	fx := newExFx(t, 50)
 	out := fx.ok(t, `{"package":"com.missing"}`)
 	head := firstLine(out)
-	if !strings.Contains(head, "package=com.missing") || !strings.Contains(head, "crashes=0") || !strings.Contains(head, "anrs=0") {
-		t.Errorf("export MCP ok header package counts:\n%s", head)
+	if !strings.Contains(head, "package=com.missing") {
+		t.Errorf("export MCP ok header package:\n%s", head)
+	}
+	if strings.Contains(head, "crashes=") || strings.Contains(head, "anrs=") {
+		t.Errorf("zero package counts must be omitted from export MCP ok:\n%s", head)
 	}
 }
 
@@ -175,27 +196,36 @@ func TestPackageCrashCountsRespectsFromTo(t *testing.T) {
 
 	// window after the java crash, covering the ANR only (ANR at 03:05:53)
 	out := e.ok("logcat_search", `{"package":"com.example.logtest","from":"2026-10-10 03:05:00","to":"2026-10-10 03:06:00","limit":1}`,
-		" crashes=0 ", " anrs=1 ")
+		" anrs=1 ")
 	head := firstLine(out)
-	if !strings.Contains(head, "crashes=0") || !strings.Contains(head, "anrs=1") {
-		t.Errorf("windowed header want crashes=0 anrs=1:\n%s", head)
+	if !strings.Contains(head, "anrs=1") {
+		t.Errorf("windowed header want anrs=1:\n%s", head)
 	}
-	if strings.Contains(storeHead, "crashes=0") && strings.Contains(storeHead, "anrs=1") {
+	if strings.Contains(head, "crashes=") {
+		t.Errorf("zero crashes= must be omitted:\n%s", head)
+	}
+	if strings.Contains(storeHead, "anrs=1") && !strings.Contains(storeHead, "crashes=") {
 		t.Errorf("store-known unexpectedly matched the narrow window:\n%s", storeHead)
 	}
 
-	// window before both events: zeros, no next note
-	out = e.ok("logcat_search", `{"package":"com.example.logtest","from":"2026-10-10 02:00:00","to":"2026-10-10 02:30:00","limit":1}`,
-		" crashes=0 ", " anrs=0 ")
+	// window before both events: omit both keys, no next note
+	out = e.ok("logcat_search", `{"package":"com.example.logtest","from":"2026-10-10 02:00:00","to":"2026-10-10 02:30:00","limit":1}`)
 	notContains(t, out, "note code=package_crash_counts")
+	head = firstLine(out)
+	if strings.Contains(head, "crashes=") || strings.Contains(head, "anrs=") {
+		t.Errorf("both-zero window must omit count keys:\n%s", head)
+	}
 
 	// limit does not further narrow: tiny limit still reports windowed counts
 	e.ok("logcat_search", `{"package":"com.example.logtest","from":"2026-10-10 03:00:00","to":"2026-10-10 03:10:00","limit":1}`,
 		" anrs=1 ")
 
 	// launches with from/to → windowed (same bounds for crashes and anrs)
-	e.ok(launches, `{"package":"com.example.logtest","from":"2026-10-10 03:05:00","to":"2026-10-10 03:06:00"}`,
-		" crashes=0 ", " anrs=1 ")
+	out = e.ok(launches, `{"package":"com.example.logtest","from":"2026-10-10 03:05:00","to":"2026-10-10 03:06:00"}`,
+		" anrs=1 ")
+	if strings.Contains(firstLine(out), "crashes=") {
+		t.Errorf("zero crashes= must be omitted on launches:\n%s", firstLine(out))
+	}
 }
 
 func TestPackageCrashCountsAgeAndAfter(t *testing.T) {
@@ -208,12 +238,16 @@ func TestPackageCrashCountsAgeAndAfter(t *testing.T) {
 
 	// age: same effective window as the line scan — java (earlier) excluded, ANR in the last 1m kept
 	out := e.ok("logcat_search", `{"package":"com.example.logtest","filter":"age:1m","limit":1}`,
-		" crashes=0 ", " anrs=1 ", "note code=package_crash_counts")
-	if !strings.Contains(firstLine(out), "crashes=0") || !strings.Contains(firstLine(out), "anrs=1") {
-		t.Errorf("age window header:\n%s", firstLine(out))
+		" anrs=1 ", "note code=package_crash_counts")
+	head := firstLine(out)
+	if !strings.Contains(head, "anrs=1") {
+		t.Errorf("age window header:\n%s", head)
+	}
+	if strings.Contains(head, "crashes=") {
+		t.Errorf("zero crashes= must be omitted:\n%s", head)
 	}
 
-	// after = newest status cursor → nothing newer; both kinds zero
+	// after = newest status cursor → nothing newer; both kinds zero → omit keys + note
 	st := e.ok("logcat_status", `{}`)
 	cur := ""
 	for _, part := range strings.Fields(firstLine(st)) {
@@ -225,8 +259,12 @@ func TestPackageCrashCountsAgeAndAfter(t *testing.T) {
 	if cur == "" {
 		t.Fatalf("no status cursor in:\n%s", st)
 	}
-	e.ok("logcat_search", fmt.Sprintf(`{"package":"com.example.logtest","after":%q,"limit":1}`, cur),
-		" crashes=0 ", " anrs=0 ")
+	out = e.ok("logcat_search", fmt.Sprintf(`{"package":"com.example.logtest","after":%q,"limit":1}`, cur))
+	notContains(t, out, "note code=package_crash_counts")
+	head = firstLine(out)
+	if strings.Contains(head, "crashes=") || strings.Contains(head, "anrs=") {
+		t.Errorf("after-cursor both-zero must omit count keys:\n%s", head)
+	}
 
 	// before = newest cursor → all retained crashes/anrs still in range (intersection open lower)
 	e.ok("logcat_search", fmt.Sprintf(`{"package":"com.example.logtest","before":%q,"limit":1}`, cur),
@@ -238,5 +276,8 @@ func TestPackageCrashCountsLimitDoesNotNarrow(t *testing.T) {
 	tl := fixture(t)
 	// fixture has one java crash for com.foo; limit=1 still shows crashes=1
 	out, e := call(t, tl, "logcat_search", `{"package":"com.foo","limit":1}`)
-	must(t, out, e, " crashes=1 ", " anrs=0 ")
+	must(t, out, e, " crashes=1 ")
+	if strings.Contains(firstLine(out), "anrs=") {
+		t.Errorf("zero anrs= must be omitted:\n%s", firstLine(out))
+	}
 }
