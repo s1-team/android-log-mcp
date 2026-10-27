@@ -1,6 +1,9 @@
 package mcpserver
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/s1crab/android-log-mcp/server/internal/analysis"
 	"github.com/s1crab/android-log-mcp/server/internal/device"
 	"github.com/s1crab/android-log-mcp/server/internal/model"
@@ -11,7 +14,7 @@ import (
 // (intersection of from/to/age and after/before). Zero fields mean open.
 // limit / matched-line range / wait do not belong here.
 type packageCrashBounds struct {
-	fromNs, toNs       int64
+	fromNs, toNs        int64
 	afterSeq, beforeSeq uint64
 }
 
@@ -118,13 +121,27 @@ func seqTimeNs(d *device.Device, seq uint64) int64 {
 }
 
 // packageCrashAttach builds header KV (and the optional next: note) for a
-// package-scoped MCP ok/empty response. withPackage adds package=<pkg>.
-// Only non-zero crashes=/anrs= keys are emitted; when both are zero the
-// package_crash_counts note is omitted too (#269 follow-up).
-func packageCrashAttach(d *device.Device, pkg string, withPackage bool, b packageCrashBounds) (kv []any, note string) {
-	if withPackage {
-		kv = append(kv, "package", pkg)
+// package-scoped MCP ok/empty response. withPackage adds package=<list>.
+//
+// Single package (#269): numeric crashes=/anrs=; zeros omitted; note when any
+// non-zero. Multi package (#276): named non-zero only, e.g.
+// crashes=com.foo:2,com.bar:1 / anrs=com.baz:1; packages with both zero are
+// omitted from both keys; all-zero omits keys and the note. next: points at
+// logcat_crashes with the first non-zero package in request order (document).
+func packageCrashAttach(d *device.Device, pkgs []string, withPackage bool, b packageCrashBounds) (kv []any, note string) {
+	if len(pkgs) == 0 {
+		return nil, ""
 	}
+	if withPackage {
+		kv = append(kv, "package", packageHeader(pkgs))
+	}
+	if len(pkgs) == 1 {
+		return packageCrashAttachOne(d, pkgs[0], kv, b)
+	}
+	return packageCrashAttachMulti(d, pkgs, kv, b)
+}
+
+func packageCrashAttachOne(d *device.Device, pkg string, kv []any, b packageCrashBounds) ([]any, string) {
 	crashes, anrs, ok := packageCrashCounts(d, pkg, b)
 	if !ok {
 		return kv, ""
@@ -135,32 +152,91 @@ func packageCrashAttach(d *device.Device, pkg string, withPackage bool, b packag
 	if anrs != 0 {
 		kv = append(kv, "anrs", anrs)
 	}
-	if crashes+anrs > 0 {
-		next := "logcat_crashes " + param("package", pkg)
-		if !b.empty() {
-			loc := d.Loc()
-			if b.fromNs != 0 {
-				next += " " + param("from", isoNs(b.fromNs, loc))
-			}
-			if b.toNs != 0 {
-				next += " " + param("to", isoNs(b.toNs, loc))
-			}
+	if crashes+anrs == 0 {
+		return kv, ""
+	}
+	return kv, packageCrashNote(pkg, crashes, anrs, b, d)
+}
+
+func packageCrashAttachMulti(d *device.Device, pkgs []string, kv []any, b packageCrashBounds) ([]any, string) {
+	var crashParts, anrParts []string
+	var nextPkg string
+	anyOK := false
+	for _, pkg := range pkgs {
+		crashes, anrs, ok := packageCrashCounts(d, pkg, b)
+		if !ok {
+			continue
 		}
-		noteKV := []any{"code", "package_crash_counts"}
+		anyOK = true
 		if crashes != 0 {
-			noteKV = append(noteKV, "crashes", crashes)
+			crashParts = append(crashParts, fmt.Sprintf("%s:%d", pkg, crashes))
 		}
 		if anrs != 0 {
-			noteKV = append(noteKV, "anrs", anrs)
+			anrParts = append(anrParts, fmt.Sprintf("%s:%d", pkg, anrs))
 		}
-		note = hdr("note", noteKV...) + nextClause(next) + "\n"
+		// first non-zero in request order for next: (#276)
+		if nextPkg == "" && crashes+anrs > 0 {
+			nextPkg = pkg
+		}
 	}
-	return kv, note
+	if !anyOK {
+		return kv, ""
+	}
+	if len(crashParts) > 0 {
+		kv = append(kv, "crashes", strings.Join(crashParts, ","))
+	}
+	if len(anrParts) > 0 {
+		kv = append(kv, "anrs", strings.Join(anrParts, ","))
+	}
+	if nextPkg == "" {
+		return kv, ""
+	}
+	noteKV := []any{"code", "package_crash_counts"}
+	if len(crashParts) > 0 {
+		noteKV = append(noteKV, "crashes", strings.Join(crashParts, ","))
+	}
+	if len(anrParts) > 0 {
+		noteKV = append(noteKV, "anrs", strings.Join(anrParts, ","))
+	}
+	next := crashesNext(nextPkg, b, d)
+	return kv, hdr("note", noteKV...) + nextClause(next) + "\n"
+}
+
+func crashesNext(pkg string, b packageCrashBounds, d *device.Device) string {
+	next := "logcat_crashes " + param("package", pkg)
+	if !b.empty() {
+		loc := d.Loc()
+		if b.fromNs != 0 {
+			next += " " + param("from", isoNs(b.fromNs, loc))
+		}
+		if b.toNs != 0 {
+			next += " " + param("to", isoNs(b.toNs, loc))
+		}
+	}
+	return next
+}
+
+// packageCrashNote is the single-package next: note (#269).
+func packageCrashNote(pkg string, crashes, anrs int, b packageCrashBounds, d *device.Device) string {
+	noteKV := []any{"code", "package_crash_counts"}
+	if crashes != 0 {
+		noteKV = append(noteKV, "crashes", crashes)
+	}
+	if anrs != 0 {
+		noteKV = append(noteKV, "anrs", anrs)
+	}
+	return hdr("note", noteKV...) + nextClause(crashesNext(pkg, b, d)) + "\n"
 }
 
 // packageCrashKV is header KV only. Prefer packageCrashAttach when the note
 // is also needed.
-func packageCrashKV(d *device.Device, pkg string, withPackage bool, b packageCrashBounds) []any {
-	kv, _ := packageCrashAttach(d, pkg, withPackage, b)
+func packageCrashKV(d *device.Device, pkgs []string, withPackage bool, b packageCrashBounds) []any {
+	kv, _ := packageCrashAttach(d, pkgs, withPackage, b)
 	return kv
+}
+
+// packageCrashKVOne is single-package header count KV without package= (for
+// status package fact lines).
+func packageCrashKVOne(d *device.Device, pkg string, b packageCrashBounds) []any {
+	return packageCrashKV(d, []string{pkg}, false, b)
 }
