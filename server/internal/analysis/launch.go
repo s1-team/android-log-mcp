@@ -13,39 +13,47 @@ import (
 
 // Step is one timeline point of a launch.
 type Step struct {
-	Name   string
-	Ns     int64 // 0 = not found
-	TookMs int64 // callback duration if reported (-1 unknown)
-	Note   string
+	Name   string `json:"name,omitempty"`
+	Ns     int64  `json:"ns,omitempty"`      // 0 = not found
+	TookMs int64  `json:"took_ms,omitempty"` // callback duration if reported (-1 unknown)
+	Note   string `json:"note,omitempty"`
 	// AfterJump: the step was logged after a device clock jump that
 	// followed the launch request, so Ns − RequestNs is not a duration
-	// (issue #54).
-	AfterJump bool
+	// (issue #54). Recomputed at query from current ClockJumps (#270 B).
+	AfterJump bool `json:"after_jump,omitempty"`
+	// Seq is the arrival seq of the record that filled this step (#270).
+	Seq uint64 `json:"seq,omitempty"`
 }
 
 // Launch is one computed app launch.
 type Launch struct {
-	Package    string
-	Component  string // com.foo/.ui.MainActivity as logged
-	Class      string // com.foo.ui.MainActivity
-	RequestNs  int64
-	RequestMsg string
-	Kind       string // COLD WARM HOT UNKNOWN
-	KindWhy    string // evidence for Kind
-	PID        int
-	ProcStart  Step
-	OnCreate   Step
-	OnRestart  Step
-	OnStart    Step
-	OnResume   Step
-	Displayed  Step // TookMs = system-measured TTID (Displayed line or *_activity_launch_time)
-	FullyDrawn Step
-	Events     string // "am_on_*" (API ≤ 29, no durations) or "wm_on_*"
-	Notes      []string
+	Package    string `json:"package,omitempty"`
+	Component  string `json:"component,omitempty"` // com.foo/.ui.MainActivity as logged
+	Class      string `json:"class,omitempty"`     // com.foo.ui.MainActivity
+	RequestNs  int64  `json:"t,omitempty"`
+	RequestMsg string `json:"msg,omitempty"`
+	Kind       string `json:"kind,omitempty"` // COLD WARM HOT UNKNOWN
+	KindWhy    string `json:"why,omitempty"`  // evidence for Kind
+	PID        int    `json:"pid,omitempty"`
+	// Seq is the arrival seq of the START request (#270).
+	Seq        uint64   `json:"seq,omitempty"`
+	ProcStart  Step     `json:"proc_start,omitempty"`
+	OnCreate   Step     `json:"on_create,omitempty"`
+	OnRestart  Step     `json:"on_restart,omitempty"`
+	OnStart    Step     `json:"on_start,omitempty"`
+	OnResume   Step     `json:"on_resume,omitempty"`
+	Displayed  Step     `json:"displayed,omitempty"` // TookMs = system-measured TTID
+	FullyDrawn Step     `json:"fully_drawn,omitempty"`
+	Events     string   `json:"events,omitempty"` // "am_on_*" (API ≤ 29) or "wm_on_*"
+	Notes      []string `json:"notes,omitempty"`
 	// ClockJumped: at least one step was logged after a device clock jump
-	// that followed the request (see Step.AfterJump).
-	ClockJumped bool
+	// that followed the request (see Step.AfterJump). Recomputed at query (#270 B).
+	ClockJumped bool `json:"clock_jumped,omitempty"`
 }
+
+// LaunchFormatVer is the launches.jsonl line format version (#270).
+// Bump when LaunchesAcross pairing semantics change; readers rebuild on mismatch.
+const LaunchFormatVer = 1
 
 // ClockStep is a device clock jump as the launch analysis uses it: the
 // first stored line after it (Seq) and its size (device time after −
@@ -201,7 +209,7 @@ func LaunchesAcross(in []*model.Record, pkg string, jumps []ClockStep) []*Launch
 		if pkg != "" && p != pkg {
 			continue
 		}
-		anchors = append(anchors, anchor{i, r.c, &Launch{Package: p, Component: m[1], Class: cls, RequestNs: r.TimeNs, RequestMsg: r.Msg, Kind: "UNKNOWN"}})
+		anchors = append(anchors, anchor{i, r.c, &Launch{Package: p, Component: m[1], Class: cls, RequestNs: r.TimeNs, RequestMsg: r.Msg, Kind: "UNKNOWN", Seq: r.Seq}})
 	}
 	var out []*Launch
 	for ai, a := range anchors {
@@ -228,6 +236,7 @@ func LaunchesAcross(in []*model.Record, pkg string, jumps []ClockStep) []*Launch
 		paused := false // the target activity itself paused first (intent delivered to it)
 		var launchTimeMs int64 = -1
 		var launchTimeNs int64
+		var launchTimeSeq uint64
 		launchTimeJump := false
 		for i := a.idx + 1; i < len(recs); i++ {
 			r := recs[i]
@@ -248,14 +257,14 @@ func LaunchesAcross(in []*model.Record, pkg string, jumps []ClockStep) []*Launch
 					pid, _ := strconv.Atoi(f[1])
 					l.PID = pid
 					appPIDs[pid] = true
-					l.ProcStart = Step{Name: "process started", Ns: r.TimeNs, TookMs: -1, Note: "am_proc_start pid " + f[1], AfterJump: jumped}
+					l.ProcStart = Step{Name: "process started", Ns: r.TimeNs, TookMs: -1, Note: "am_proc_start pid " + f[1], AfterJump: jumped, Seq: r.Seq}
 				}
 			case r.Tag == "ActivityManager" && strings.HasPrefix(r.Msg, "Start proc ") && l.ProcStart.Ns == 0 && inMain:
 				if m := reStartProcLine.FindStringSubmatch(r.Msg); m != nil && (m[2] == l.Package || strings.HasPrefix(m[2], l.Package+":")) {
 					pid, _ := strconv.Atoi(m[1])
 					l.PID = pid
 					appPIDs[pid] = true
-					l.ProcStart = Step{Name: "process started", Ns: r.TimeNs, TookMs: -1, Note: "Start proc pid " + m[1], AfterJump: jumped}
+					l.ProcStart = Step{Name: "process started", Ns: r.TimeNs, TookMs: -1, Note: "Start proc pid " + m[1], AfterJump: jumped, Seq: r.Seq}
 				}
 			case lifecycleStep(r.Tag) != "" && inMain:
 				f := logcat.EventFields(r.Msg, 0)
@@ -289,7 +298,7 @@ func LaunchesAcross(in []*model.Record, pkg string, jumps []ClockStep) []*Launch
 				}
 				// only the first lifecycle pass after the request
 				if st.Ns == 0 && l.OnResume.Ns == 0 {
-					*st = Step{Ns: r.TimeNs, TookMs: took, AfterJump: jumped}
+					*st = Step{Ns: r.TimeNs, TookMs: took, AfterJump: jumped, Seq: r.Seq}
 					l.Events = r.Tag[:2] + "_on_*"
 					if l.PID == 0 {
 						l.PID = r.PID
@@ -302,7 +311,7 @@ func LaunchesAcross(in []*model.Record, pkg string, jumps []ClockStep) []*Launch
 					_, cls := ExpandComponent(f[2])
 					if cls == l.Class {
 						if n, err := strconv.ParseInt(strings.TrimSpace(f[3]), 10, 64); err == nil {
-							launchTimeMs, launchTimeNs, launchTimeJump = n, r.TimeNs, jumped
+							launchTimeMs, launchTimeNs, launchTimeJump, launchTimeSeq = n, r.TimeNs, jumped, r.Seq
 						}
 					}
 				}
@@ -320,7 +329,7 @@ func LaunchesAcross(in []*model.Record, pkg string, jumps []ClockStep) []*Launch
 					st = &l.FullyDrawn
 				}
 				if st.Ns == 0 {
-					*st = Step{Ns: r.TimeNs, TookMs: ParseAndroidDuration(m[3]), Note: "ActivityTaskManager Displayed", AfterJump: jumped}
+					*st = Step{Ns: r.TimeNs, TookMs: ParseAndroidDuration(m[3]), Note: "ActivityTaskManager Displayed", AfterJump: jumped, Seq: r.Seq}
 					if m[1] == "Fully drawn" {
 						st.Note = "Fully drawn"
 					}
@@ -328,7 +337,7 @@ func LaunchesAcross(in []*model.Record, pkg string, jumps []ClockStep) []*Launch
 			}
 		}
 		if l.Displayed.Ns == 0 && launchTimeNs != 0 {
-			l.Displayed = Step{Ns: launchTimeNs, TookMs: launchTimeMs, Note: "activity_launch_time event", AfterJump: launchTimeJump}
+			l.Displayed = Step{Ns: launchTimeNs, TookMs: launchTimeMs, Note: "activity_launch_time event", AfterJump: launchTimeJump, Seq: launchTimeSeq}
 		}
 		for _, s := range []Step{l.ProcStart, l.OnCreate, l.OnRestart, l.OnStart, l.OnResume, l.Displayed, l.FullyDrawn} {
 			if s.Ns != 0 && s.AfterJump {
@@ -377,4 +386,36 @@ func classMatches(logged, cls string) bool {
 		return c == cls
 	}
 	return strings.HasSuffix(cls, "."+logged)
+}
+
+// ApplyLaunchJumps recomputes Step.AfterJump and Launch.ClockJumped from the
+// current jump table (#270 strategy B). Device times and seqs on the launch
+// are facts; jump flags are not trusted from the stored line.
+func ApplyLaunchJumps(l *Launch, jumps []ClockStep) {
+	if l == nil {
+		return
+	}
+	ec := eventClockSteps(jumps)
+	req := ec.Stamp(clock.ArrivalSeq(l.Seq), clock.DeviceInstant(l.RequestNs))
+	apply := func(s *Step) {
+		if s.Ns == 0 {
+			return
+		}
+		seq := s.Seq
+		if seq == 0 {
+			seq = l.Seq
+		}
+		st := ec.Stamp(clock.ArrivalSeq(seq), clock.DeviceInstant(s.Ns))
+		s.AfterJump = st.Epoch != req.Epoch
+	}
+	for _, s := range []*Step{&l.ProcStart, &l.OnCreate, &l.OnRestart, &l.OnStart, &l.OnResume, &l.Displayed, &l.FullyDrawn} {
+		apply(s)
+	}
+	l.ClockJumped = false
+	for _, s := range []Step{l.ProcStart, l.OnCreate, l.OnRestart, l.OnStart, l.OnResume, l.Displayed, l.FullyDrawn} {
+		if s.Ns != 0 && s.AfterJump {
+			l.ClockJumped = true
+			break
+		}
+	}
 }

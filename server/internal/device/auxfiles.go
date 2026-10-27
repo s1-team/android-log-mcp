@@ -55,10 +55,10 @@ func parseSeen(b []byte) (key string, hostNs int64, ok bool) {
 
 // CompactAux trims the append-only auxiliary files of a device directory
 // (writer only) and returns the bytes saved:
-//   - procs.jsonl and crashes.jsonl keep only the newest version of each
-//     entry (the readers already use "last version wins"), in the order the
-//     entries first appeared, so LoadProcs / LoadCrashes return the same;
-//   - ended processes, crashes and dropbox_seen keys whose newest version
+//   - procs.jsonl, crashes.jsonl and launches.jsonl keep only the newest
+//     version of each entry (the readers already use "last version wins"),
+//     in the order the entries first appeared;
+//   - ended processes, crashes, launches and dropbox_seen keys whose newest version
 //     was written longer ago than the retention window (Config.MaxAge,
 //     ANDROID_LOG_MCP_MAX_AGE) are dropped. "Ago" is host time (now is the
 //     host clock); entries written before host times were stored fall back
@@ -104,6 +104,25 @@ func CompactAux(st *store.Store, now time.Time) int64 {
 				return l.ID, l.HostNs >= ageCut
 			}
 			return l.ID, l.TimeNs == 0 || l.TimeNs >= ageCut // legacy line
+		})
+	}))
+	add(st.CompactAux("launches", func(lines [][]byte) [][]byte {
+		return lastVersions(lines, func(b []byte) (string, bool) {
+			l := launchAuxLine{Launch: new(analysis.Launch)}
+			if json.Unmarshal(b, &l) != nil || l.ID == "" {
+				return "", false
+			}
+			if l.Ver != 0 && l.Ver != analysis.LaunchFormatVer {
+				return "", false // drop stale format; EnsureLaunches rebuilds
+			}
+			if l.HostNs > 0 {
+				return l.ID, l.HostNs >= ageCut
+			}
+			req := int64(0)
+			if l.Launch != nil {
+				req = l.RequestNs
+			}
+			return l.ID, req == 0 || req >= ageCut
 		})
 	}))
 	add(st.CompactAux("dropbox_seen", func(lines [][]byte) [][]byte {

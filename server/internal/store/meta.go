@@ -43,10 +43,11 @@ type Meta struct {
 	// written, kept here so age retention and rotation do not depend on file
 	// mtimes (issues #184, #186, #189). Older stores have none; they are
 	// filled from the mtimes on first open, and older binaries ignore it.
-	SegTimes []SegTime `json:"seg_times,omitempty"`
-	CrashSeq int       `json:"crash_seq,omitempty"`
-	AnrSeq   int       `json:"anr_seq,omitempty"`
-	State    string    `json:"state,omitempty"` // last known adb state
+	SegTimes  []SegTime `json:"seg_times,omitempty"`
+	CrashSeq  int       `json:"crash_seq,omitempty"`
+	AnrSeq    int       `json:"anr_seq,omitempty"`
+	LaunchSeq int       `json:"launch_seq,omitempty"` // launches.jsonl ids lnN (#270)
+	State     string    `json:"state,omitempty"`      // last known adb state
 	// Addr is the last adb serial the device was reached at (connection
 	// address only; Serial is the stable device ID since layout v1).
 	Addr string `json:"addr,omitempty"`
