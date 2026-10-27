@@ -844,19 +844,24 @@ func namesPid(body string) bool {
 }
 
 // syncLaunches feeds launch-relevant records into the launches.jsonl index
-// (#270): keeps a recent LaunchTag buffer, runs LaunchesAcross (oracle), and
-// appends a version per request until Displayed/FullyDrawn/next START/slack.
+// (#270): buffers LaunchTag lines; runs LaunchesAcross (oracle) only on
+// START / Displayed / FullyDrawn / Tick so ingest stays linear. Intermediate
+// lifecycle lines wait in the buffer until one of those seals or updates.
 func (p *Pipeline) syncLaunches(batch []*model.Record) {
 	p.launchMu.Lock()
 	defer p.launchMu.Unlock()
-	added := false
+	run := batch == nil // Tick: seal open launches past slack
 	for _, r := range batch {
-		if analysis.LaunchTag(r) {
-			p.launchBuf = append(p.launchBuf, r)
-			added = true
+		if !analysis.LaunchTag(r) {
+			continue
+		}
+		p.launchBuf = append(p.launchBuf, r)
+		if analysis.LaunchRequest(r) || launchDisplayedOrFullyDrawn(r) ||
+			r.Tag == "am_activity_launch_time" || r.Tag == "wm_activity_launch_time" {
+			run = true
 		}
 	}
-	if !added && len(p.launchBuf) == 0 {
+	if !run || len(p.launchBuf) == 0 {
 		return
 	}
 	p.trimLaunchBufLocked()
@@ -872,6 +877,11 @@ func (p *Pipeline) syncLaunches(batch []*model.Record) {
 	for _, l := range ls {
 		p.emitLaunchLocked(l, bootOf[l.Seq])
 	}
+}
+
+func launchDisplayedOrFullyDrawn(r *model.Record) bool {
+	return (r.Tag == "ActivityTaskManager" || r.Tag == "ActivityManager") &&
+		(strings.HasPrefix(r.Msg, "Displayed ") || strings.HasPrefix(r.Msg, "Fully drawn "))
 }
 
 // trimLaunchBufLocked drops launch tags older than DisplayedSlackNs of
