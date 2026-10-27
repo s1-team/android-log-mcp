@@ -47,6 +47,10 @@ type Config struct {
 	// after this long without queries (default 2 min; negative: never).
 	IdleRelease time.Duration
 	BlockBytes  int64 // history read/cache granularity (default 512 KiB)
+	// SkipSegCRC64 skips full-segment CRC64 verify when loading seg-*.idx
+	// (ANDROID_LOG_MCP_SKIP_SEG_CRC64). Payload CRC, magic, version, first_seq,
+	// and size are still checked. Default false (verify). Opt-in only (#271).
+	SkipSegCRC64 bool
 }
 
 // Defaults (see README "环境变量与数据目录").
