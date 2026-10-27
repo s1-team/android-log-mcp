@@ -544,19 +544,18 @@ func (t *Tools) search(ctx context.Context, a searchArgs) (out string, err error
 // key=value fields, ending with the clock fields and fmt.
 func (t *Tools) head(q *query, word, view string, extra ...any) string {
 	kv := append([]any{"view", view, "device", q.d.Serial}, extra...)
+	var note string
 	if q.pkg != "" { // #269: store-known crash/ANR counts on package-scoped ok/empty
-		kv = append(kv, packageCrashKV(q.d, q.pkg, true)...)
+		var pckv []any
+		pckv, note = packageCrashAttach(q.d, q.pkg, true)
+		kv = append(kv, pckv...)
 	}
 	if q.verbose {
 		kv = append(kv, "tz", q.d.TZName())
 	}
 	kv = append(kv, clockKV(q.clock, q.verbose)...)
 	kv = append(kv, "fmt", fmtVersion)
-	s := hdr(word, kv...) + "\n"
-	if q.pkg != "" {
-		s += packageCrashNote(q.d, q.pkg)
-	}
-	return s
+	return hdr(word, kv...) + "\n" + note
 }
 
 // clockNotes: the clock jumps inside the scanned range. Default: ONE line,
