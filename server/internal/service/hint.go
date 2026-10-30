@@ -52,6 +52,6 @@ Developer reporting is on (%s). This looks like a bug in android-log-mcp. Ask th
 1. Run: android-log-mcp --offline "%s" report --logs-only --out "%s"
    It works while the service is down. It packs the service log, service.json, a diagnosis of the lock and "adb devices -l", with tokens, emails, phone numbers, IP addresses and similar values redacted, into one zip. It sends nothing anywhere.
 2. Tell the user the zip's path and ask them to open it and check what it contains.
-3. Give the user this link and the text of the error above to paste: https://github.com/s1crab/android-log-mcp/issues/new
+3. Give the user this link and the text of the error above to paste: https://github.com/s1-team/android-log-mcp/issues/new
    The user attaches the zip and submits the issue. Never upload or send the file yourself.`, ReportHintEnv, root, zipPath)
 }

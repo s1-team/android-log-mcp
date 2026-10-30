@@ -36,7 +36,7 @@ concurrency:
 
 jobs:
   plan:
-    if: github.repository == 's1crab/android-log-mcp'
+    if: github.repository == 's1-team/android-log-mcp'
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.m.outputs.matrix }}

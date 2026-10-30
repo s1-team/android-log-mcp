@@ -84,7 +84,7 @@ It prints the path: `<user cache dir>/android-log-mcp/exe/android-log-mcp[.exe]`
 | macOS | `/Users/<you>/Library/Caches/android-log-mcp/exe/android-log-mcp` |
 | Linux | `/home/<you>/.cache/android-log-mcp/exe/android-log-mcp` (`$XDG_CACHE_HOME` if set) |
 
-`android-log-mcp root --json` also shows it as `exe`. Without Node.js, download the platform tarball from the [GitHub Releases](https://github.com/s1crab/android-log-mcp/releases) (`android-log-mcp-win32-x64-<version>.tgz`, `-darwin-arm64-`, `-linux-x64-`, …) and extract `package/bin/android-log-mcp[.exe]` (`tar -xzf <file>.tgz`, also built into Windows 10 1803+); run `<extracted binary> install` to put it at the fixed path, or keep it wherever you like. Building from source (Go 1.24+): `cd server && go build -o android-log-mcp ./cmd/android-log-mcp`.
+`android-log-mcp root --json` also shows it as `exe`. Without Node.js, download the platform tarball from the [GitHub Releases](https://github.com/s1-team/android-log-mcp/releases) (`android-log-mcp-win32-x64-<version>.tgz`, `-darwin-arm64-`, `-linux-x64-`, …) and extract `package/bin/android-log-mcp[.exe]` (`tar -xzf <file>.tgz`, also built into Windows 10 1803+); run `<extracted binary> install` to put it at the fixed path, or keep it wherever you like. Building from source (Go 1.24+): `cd server && go build -o android-log-mcp ./cmd/android-log-mcp`.
 
 **Configure the MCP host** with the absolute path and no args.
 

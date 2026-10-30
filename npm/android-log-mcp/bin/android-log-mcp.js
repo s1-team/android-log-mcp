@@ -31,7 +31,7 @@ function binaryPath() {
   if (!pkg) {
     fail(
       "unsupported platform " + key + ". Supported: " + Object.keys(PLATFORMS).join(", ") +
-        ". Build from source: https://github.com/s1crab/android-log-mcp (go build ./server/cmd/android-log-mcp) " +
+        ". Build from source: https://github.com/s1-team/android-log-mcp (go build ./server/cmd/android-log-mcp) " +
         "and set ANDROID_LOG_MCP_BINARY to the binary path."
     );
   }
