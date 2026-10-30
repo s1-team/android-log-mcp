@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+### Fixed
+
+- Windows: a leftover `service.sock` after a force-killed hung service no longer makes every later start fail with bind `WSAEINVAL` ("An invalid argument was supplied"). `Listen` clears the stale AF_UNIX sock (dial-then-remove, rename aside if needed) and retries bind once, so independent-process start and the in-process fallback recover without a manual delete ([#285](https://github.com/s1-team/android-log-mcp/issues/285)).
+
 ## [0.12.0] - 2026-10-27
 
 Highlights: (1) **Package-scoped crash/ANR counts** on MCP `ok`/`empty` responses, with zero keys omitted ([#269](https://github.com/s1crab/android-log-mcp/issues/269) / [#272](https://github.com/s1crab/android-log-mcp/pull/272) / [#273](https://github.com/s1crab/android-log-mcp/pull/273)). (2) **`launches.jsonl` aux index** for `logcat_app_launches` (G3, [#270](https://github.com/s1crab/android-log-mcp/issues/270) / [#274](https://github.com/s1crab/android-log-mcp/pull/274)). (3) **Multi-package structured `package`** with named per-package crash/ANR counts ([#276](https://github.com/s1crab/android-log-mcp/issues/276) / [#278](https://github.com/s1crab/android-log-mcp/pull/278)). (4) Opt-in `ANDROID_LOG_MCP_SKIP_SEG_CRC64` for cold idx load ([#271](https://github.com/s1crab/android-log-mcp/issues/271) / [#275](https://github.com/s1crab/android-log-mcp/pull/275)); default remains verify. No format-version bump: `launches.jsonl` is additive aux; older binaries ignore it.

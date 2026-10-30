@@ -53,12 +53,23 @@ func PrepareDir(dir string) error {
 // socket is made 0600 and its directory current-user only. Accepted
 // connections from another user are rejected (where the OS reports the
 // peer).
+//
+// On Windows, bind against a leftover sock file (for example after a
+// force-killed service) returns WSAEINVAL rather than address-in-use. A
+// first remove can also lose a race with the kernel releasing the name; if
+// bind still fails and the path is present, clear it and retry once (#285).
 func Listen(path string) (net.Listener, error) {
 	if err := PrepareDir(filepath.Dir(path)); err != nil {
 		return nil, err
 	}
-	os.Remove(path)
+	removeStaleSocket(path)
 	l, err := net.Listen("unix", path)
+	if err != nil {
+		if _, statErr := os.Lstat(path); statErr == nil {
+			removeStaleSocket(path)
+			l, err = net.Listen("unix", path)
+		}
+	}
 	if err != nil {
 		if unsupported(err) {
 			return nil, ErrUnsupported

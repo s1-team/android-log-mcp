@@ -264,3 +264,42 @@ func TestWriteTimeoutIsNotPeerGone(t *testing.T) {
 		t.Fatal("peerGone classification")
 	}
 }
+
+// Listen must recover when a previous AF_UNIX listener left its sock file
+// behind (force-kill / crash). On Windows a leftover sock makes a bare
+// bind return WSAEINVAL; without cleanup+retry the service never starts again (#285).
+func TestListenRecoversLeftoverSocket(t *testing.T) {
+	run := shortDir(t)
+	path := SocketPath(run)
+	if err := PrepareDir(filepath.Dir(path)); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ul, ok := raw.(*net.UnixListener)
+	if !ok {
+		raw.Close()
+		t.Fatal("net.Listen(unix) did not return *net.UnixListener")
+	}
+	ul.SetUnlinkOnClose(false)
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(path); err != nil {
+		t.Fatalf("setup: leftover sock missing: %v", err)
+	}
+
+	l, err := Listen(path)
+	if err != nil {
+		t.Fatalf("Listen over leftover sock: %v", err)
+	}
+	defer l.Close()
+
+	c, err := Dial(path, time.Second)
+	if err != nil {
+		t.Fatalf("dial after recover: %v", err)
+	}
+	c.Close()
+}
