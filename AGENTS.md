@@ -30,7 +30,7 @@ Read [docs/GOALS.md](docs/GOALS.md) first, and check every change against its pr
    - Run independent nodes in parallel, each in its own git worktree from the latest `main`.
    - **Never sit blocked.** While a node waits for a review, CI or the emulator, take the next unblocked node.
    - Design reviews still go to the release owner, but unrelated nodes continue in the meantime; only the nodes that depend on the design wait.
-   - Keep the graph current in the pinned tracking issue [#67](https://github.com/s1crab/android-log-mcp/issues/67): update a node's status (and its PR) when it starts, blocks or merges.
+   - Keep the graph current in the pinned tracking issue [#67](https://github.com/s1-team/android-log-mcp/issues/67): update a node's status (and its PR) when it starts, blocks or merges.
 9. **Branch rules.**
    - `0.7.x` and `0.8.x` are release branches; change them only via a PR.
    - Dev branches use an OkHttp-style prefix: `feature/` for features and docs (for example `feature/output-redesign`) and `fix/` for bug fixes (for example `fix/anr-window`). Version-number branches such as `0.7.x` are release branches (above), never dev branches.
@@ -42,7 +42,7 @@ Read [docs/GOALS.md](docs/GOALS.md) first, and check every change against its pr
 
 Release only after **explicit sign-off from the user or maintainer**.
 
-**Pre-release verification** ([#106](https://github.com/s1crab/android-log-mcp/issues/106)). CI alone is not enough: before the release PR is merged, run the checklist below: device checks on the emulator (API 29 and API 35, software emulation only, never KVM, §6), race tests by the `race-gate` workflow and copy the results into the release PR body (the [release PR template](.github/PULL_REQUEST_TEMPLATE/release.md) carries it). **Raw evidence stays out of the repository** (logs, zips, screenshots, run directories, one-off run scripts): pack the local evidence into one archive (`android-log-mcp-X.Y.Z-evidence.tar.gz`, with a `MANIFEST.txt` and a sha256) and upload it as an asset of the GitHub Release after tagging; CI logs stay as Actions artifacts. The repository holds only `validation/X.Y.Z/README.md`, a short summary with the results and the links to the archive, the Actions runs and the release PR, plus small baselines, fixtures and reusable tools. Do not rewrite history to remove evidence committed earlier.
+**Pre-release verification** ([#106](https://github.com/s1-team/android-log-mcp/issues/106)). CI alone is not enough: before the release PR is merged, run the checklist below: device checks on the emulator (API 29 and API 35, software emulation only, never KVM, §6), race tests by the `race-gate` workflow and copy the results into the release PR body (the [release PR template](.github/PULL_REQUEST_TEMPLATE/release.md) carries it). **Raw evidence stays out of the repository** (logs, zips, screenshots, run directories, one-off run scripts): pack the local evidence into one archive (`android-log-mcp-X.Y.Z-evidence.tar.gz`, with a `MANIFEST.txt` and a sha256) and upload it as an asset of the GitHub Release after tagging; CI logs stay as Actions artifacts. The repository holds only `validation/X.Y.Z/README.md`, a short summary with the results and the links to the archive, the Actions runs and the release PR, plus small baselines, fixtures and reusable tools. Do not rewrite history to remove evidence committed earlier.
 
 - [ ] CI green on all OSes for the release commit.
 - [ ] `scripts/service-e2e.sh` on API 29 and API 35.

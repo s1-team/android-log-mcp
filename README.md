@@ -58,7 +58,7 @@ or `claude mcp add android-log -- npx -y android-log-mcp`.
 npx -y android-log-mcp@latest install    # copies the binary to a fixed path and prints it
 ```
 
-Without Node.js, download the tarball from [GitHub Releases](https://github.com/s1crab/android-log-mcp/releases). Then point the MCP host at the absolute path with no args, for example Cursor / Claude Code on Windows:
+Without Node.js, download the tarball from [GitHub Releases](https://github.com/s1-team/android-log-mcp/releases). Then point the MCP host at the absolute path with no args, for example Cursor / Claude Code on Windows:
 
 ```json
 {
