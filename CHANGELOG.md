@@ -13,6 +13,7 @@ Patch: Windows leftover `service.sock` / bind `WSAEINVAL` recovery after a force
 ### Fixed
 
 - Windows: a leftover `service.sock` after a force-killed hung service no longer makes every later start fail with bind `WSAEINVAL` ("An invalid argument was supplied"). `Listen` clears the stale AF_UNIX sock (dial-then-remove, rename aside if needed) and retries bind once, so independent-process start and the in-process fallback recover without a manual delete ([#285](https://github.com/s1-team/android-log-mcp/issues/285)).
+- `Listen` no longer returns a listener when the sock name vanished between bind and chmod, and a failed attempt no longer `UnlinkOnClose`s a successor's sock (default `UnlinkOnClose(true)` after `net.Listen` could turn a name race into `chmod … ENOENT` for both; keep unlink disabled until restrict succeeds and retry once). Fixes a flaky `TestWantedGarbageAndUnknownKeys` failure seen on ubuntu-latest in the 0.12.1 release CI ([#287](https://github.com/s1-team/android-log-mcp/pull/287)).
 
 ## [0.12.0] - 2026-10-27
 
