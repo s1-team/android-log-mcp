@@ -18,7 +18,7 @@ import (
 )
 
 // Version of the server.
-var Version = "0.12.0" // overridden at build time: -ldflags "-X main.version=..."
+var Version = "0.12.1" // overridden at build time: -ldflags "-X main.version=..."
 
 const instructions = `Android logcat recorder. Recording starts on use: the first log tool call for a device starts recording it and backfills what is still in the device's log buffer (the call waits up to 10 s for that). Each device stops recording after a while without calls; stored logs stay queryable across sessions.
 Typical flows: a log file for a human to read → logcat_export (written as recorded unless redact=true). Crashes/ANRs → logcat_crashes. Startup time → logcat_app_launches. Anything else → logcat_search (use view="summary" first for wide ranges).
