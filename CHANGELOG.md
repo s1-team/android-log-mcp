@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-10-30
+
+Patch: Windows leftover `service.sock` / bind `WSAEINVAL` recovery after a force-killed hung service ([#285](https://github.com/s1-team/android-log-mcp/issues/285) / [#286](https://github.com/s1-team/android-log-mcp/pull/286)). This cut targets **Windows AF_UNIX startup recovery**; CI `windows-latest` includes `TestListenRecoversLeftoverSocket`. Windows and macOS with a real or emulator-attached adb remain **unverified**. No adb / ingest path change; Linux emulator e2e was not re-dispatched (does not exercise AF_UNIX sock recovery). Details: [validation/0.12.1/README.md](validation/0.12.1/README.md).
+
 ### Fixed
 
 - Windows: a leftover `service.sock` after a force-killed hung service no longer makes every later start fail with bind `WSAEINVAL` ("An invalid argument was supplied"). `Listen` clears the stale AF_UNIX sock (dial-then-remove, rename aside if needed) and retries bind once, so independent-process start and the in-process fallback recover without a manual delete ([#285](https://github.com/s1-team/android-log-mcp/issues/285)).
@@ -436,7 +440,8 @@ Upgrade notes are in the **Breaking** entries below.
 - First release: an MCP stdio server giving AI agents read-only access to Android logcat, with background recording of every connected device, the tools `logcat_status`, `logcat_search` (Android Studio filter syntax with strict errors), `logcat_crashes` and `logcat_app_launches`, and the `call` debug subcommand.
 - npm packaging: a Node launcher plus per-platform binary packages (linux / darwin / win32 × x64 / arm64), CI and release workflows.
 
-[Unreleased]: https://github.com/s1crab/android-log-mcp/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/s1-team/android-log-mcp/compare/v0.12.1...HEAD
+[0.12.1]: https://github.com/s1-team/android-log-mcp/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/s1crab/android-log-mcp/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/s1crab/android-log-mcp/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/s1crab/android-log-mcp/compare/v0.10.0...v0.10.1
