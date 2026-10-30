@@ -58,32 +58,57 @@ func PrepareDir(dir string) error {
 // force-killed service) returns WSAEINVAL rather than address-in-use. A
 // first remove can also lose a race with the kernel releasing the name; if
 // bind still fails and the path is present, clear it and retry once (#285).
+//
+// After a successful bind, the sock name can still vanish before we chmod
+// it (another Listen's removeStaleSocket, or Close with UnlinkOnClose on a
+// prior listener for the same path). net.Listen's default UnlinkOnClose is
+// true, so closing a listener whose name was already stolen would delete
+// the successor's sock and turn a race into chmod ENOENT for both. We keep
+// UnlinkOnClose false until restrictSocket succeeds, and retry once when
+// the name is gone (#287 CI flake on TestWantedGarbageAndUnknownKeys).
 func Listen(path string) (net.Listener, error) {
 	if err := PrepareDir(filepath.Dir(path)); err != nil {
 		return nil, err
 	}
-	removeStaleSocket(path)
-	l, err := net.Listen("unix", path)
-	if err != nil {
-		if _, statErr := os.Lstat(path); statErr == nil {
-			removeStaleSocket(path)
-			l, err = net.Listen("unix", path)
+	var lastErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		removeStaleSocket(path)
+		l, err := net.Listen("unix", path)
+		if err != nil {
+			lastErr = err
+			if _, statErr := os.Lstat(path); statErr == nil {
+				// Leftover name (Windows WSAEINVAL path): clear and retry.
+				continue
+			}
+			break
 		}
-	}
-	if err != nil {
-		if unsupported(err) {
-			return nil, ErrUnsupported
+		if ul, ok := l.(*net.UnixListener); ok {
+			// Own the FD only; do not unlink on Close until the path name
+			// is confirmed ours (avoids deleting a concurrent successor).
+			ul.SetUnlinkOnClose(false)
 		}
-		return nil, err
+		if _, statErr := os.Lstat(path); statErr != nil {
+			l.Close()
+			lastErr = statErr
+			continue
+		}
+		if err := restrictSocket(path); err != nil {
+			l.Close()
+			lastErr = err
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, err
+		}
+		if ul, ok := l.(*net.UnixListener); ok {
+			ul.SetUnlinkOnClose(true)
+		}
+		return &peerListener{Listener: l}, nil
 	}
-	if err := restrictSocket(path); err != nil {
-		l.Close()
-		return nil, err
+	if lastErr != nil && unsupported(lastErr) {
+		return nil, ErrUnsupported
 	}
-	if ul, ok := l.(*net.UnixListener); ok {
-		ul.SetUnlinkOnClose(true)
-	}
-	return &peerListener{Listener: l}, nil
+	return nil, lastErr
 }
 
 func dial(path string, timeout time.Duration) (net.Conn, error) {
